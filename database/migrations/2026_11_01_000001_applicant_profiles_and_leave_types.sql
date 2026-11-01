@@ -186,7 +186,7 @@ do $$
 declare relation record;
 begin
   for relation in select tablename from pg_tables where schemaname='public'
-    and tablename not in ('applicants','applicant_profiles','user_accounts','leave_types','job_postings')
+    and tablename not in ('applicants','applicant_profiles','user_accounts','leave_types','job_postings','employee_leave_balances')
   loop
     execute format('alter table public.%I enable row level security', relation.tablename);
     execute format('drop policy if exists "Internal account access" on public.%I', relation.tablename);

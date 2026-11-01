@@ -1,6 +1,6 @@
 # Applicant accounts, employee filters and leave types
 
-Apply `database/migrations/2026_11_01_000001_applicant_profiles_and_leave_types.sql` in Supabase before using this release. It is transactional and can be rerun safely. Back up the database using the normal project process before a release.
+Apply `database/migrations/2026_11_01_000001_applicant_profiles_and_leave_types.sql`, then `2026_11_01_000002_restore_leave_balance_storage.sql` in Supabase before using this release. Both are transactional and can be rerun safely. The second migration fills missing company allowance rows without replacing existing balances. Back up the database using the normal project process before a release.
 
 Production authentication also needs the live site URL, exact `/applicant` redirect URLs for the canonical and apex production domains, and a working custom SMTP sender. The project uses Resend: `smtp.resend.com`, port `465`, username `resend`, with the server's Resend API key as the SMTP password. Enter that secret through the provider's secure settings; never commit it. See [Resend SMTP settings](https://resend.com/docs/send-with-smtp).
 
