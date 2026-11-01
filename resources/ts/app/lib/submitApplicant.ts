@@ -24,9 +24,16 @@ export async function nextApplicantNumber(client: Pick<SupabaseClient, 'from'>, 
 
 /** Insert only: a collision must never overwrite another applicant's record. */
 export async function submitApplicant(
-  client: Pick<SupabaseClient, 'from'>,
+  client: Pick<SupabaseClient, 'from'> & Partial<Pick<SupabaseClient, 'rpc'>>,
   application: Record<string, unknown>,
 ): Promise<string> {
+  if (application.auth_user_id) {
+    if (!client.rpc) throw new Error('The signed-in application service is unavailable. Please refresh.');
+    const { data, error } = await client.rpc('submit_profile_application', { p_application: application });
+    if (error) throw error;
+    if (typeof data !== 'string' || !data.startsWith('APP-')) throw new Error('The application service did not return a tracking ID.');
+    return data;
+  }
   const year = new Date().getFullYear();
   let nextNumber = await nextApplicantNumber(client, year);
   for (let attempt = 0; attempt < MAX_ID_ATTEMPTS; attempt++) {

@@ -50,7 +50,7 @@ export default function LoginPage() {
     }
 
     if (!loading && user) {
-      navigate("/dashboard", { replace: true });
+      navigate(user.role === 'applicant' ? '/applicant' : '/dashboard', { replace: true });
     }
   }, [freshLogin, loading, logout, navigate, setSearchParams, user]);
 

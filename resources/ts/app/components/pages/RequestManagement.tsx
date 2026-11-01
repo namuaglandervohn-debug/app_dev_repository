@@ -52,6 +52,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from "../../lib/supabaseClient";
 import ActionSnackbar from '../ActionSnackbar';
+import LeaveTypeUtility, { type LeaveType } from '../LeaveTypeUtility';
 
 type RequestType = 'Leave' | 'Overtime' | 'Undertime';
 type RequestStatus = 'Pending' | 'Supervisor Approved' | 'Approved' | 'Disapproved' | 'Rejected' | 'Cancelled';
@@ -106,7 +107,7 @@ interface NewRequestState {
 
 const EMPTY: NewRequestState = {
   type: 'Leave',
-  leaveType: 'Vacation Leave',
+  leaveType: '',
   startDate: '',
   endDate: '',
   startTime: '',
@@ -153,7 +154,7 @@ const STATUS_CHIP: Record<string, { color: any; label: string }> = {
   Cancelled: { color: 'default', label: 'Cancelled' },
 };
 
-const LEAVE_TYPES = [
+const LEGACY_BALANCE_TYPES = [
   'Vacation Leave',
   'Sick Leave',
   'Emergency Leave',
@@ -439,12 +440,29 @@ export default function RequestManagement() {
   const { user } = useAuth();
   const currentUser = user as any;
 
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [leaveTypesError, setLeaveTypesError] = useState('');
+  const [leaveUtilityOpen, setLeaveUtilityOpen] = useState(false);
+  const activeLeaveTypes = leaveTypes.filter(type => type.is_active);
+  const fetchLeaveTypes = async () => {
+    const { data, error } = await supabase.from('leave_types').select('id,name,description,is_active').order('name');
+    if (error) { setLeaveTypesError('Leave types could not be loaded. Please refresh or contact HR.'); return; }
+    setLeaveTypesError(''); setLeaveTypes(data || []);
+    setNewRequest(previous => previous.leaveType && !data?.some(type => type.name === previous.leaveType && type.is_active) ? { ...previous, leaveType: '' } : previous);
+  };
+  useEffect(() => {
+    void fetchLeaveTypes();
+    const refresh = () => { void fetchLeaveTypes(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [employeeLeaveDirectory, setEmployeeLeaveDirectory] = useState<EmployeeLeaveDirectoryRow[]>([]);
   const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
+  useEffect(() => { if (openDialog) void fetchLeaveTypes(); }, [openDialog]);
   const [viewDialog, setViewDialog] = useState(false);
   const [balanceEditDialog, setBalanceEditDialog] = useState(false);
   const [selectedReq, setSelectedReq] = useState<RequestRecord | null>(null);
@@ -576,7 +594,7 @@ export default function RequestManagement() {
         if (!employeeId || !leaveType) return;
 
         if (!nextMap[employeeId]) nextMap[employeeId] = {};
-        const normalizedLeaveType = LEAVE_TYPES.includes(leaveType) ? COMPANY_PAID_LEAVE_TYPE : leaveType;
+        const normalizedLeaveType = LEGACY_BALANCE_TYPES.includes(leaveType) ? COMPANY_PAID_LEAVE_TYPE : leaveType;
         const available = Number(row.available ?? DEFAULT_LEAVE_ENTITLEMENTS[normalizedLeaveType] ?? COMPANY_ANNUAL_LEAVE_ALLOWANCE);
         nextMap[employeeId][normalizedLeaveType] = Math.max(nextMap[employeeId][normalizedLeaveType] ?? 0, available);
       });
@@ -677,7 +695,7 @@ export default function RequestManagement() {
       return;
     }
 
-    if (newRequest.type === 'Leave' && !newRequest.leaveType) {
+    if (newRequest.type === 'Leave' && (!newRequest.leaveType || !activeLeaveTypes.some(type => type.name === newRequest.leaveType))) {
       setSnackbar({ open: true, message: 'Please select a leave type.', severity: 'error' });
       return;
     }
@@ -1056,6 +1074,8 @@ export default function RequestManagement() {
               }}
             >
               <Box sx={{ p: 2.25, textAlign: 'center' }}>
+
+
                 <Typography
                   sx={{
                     fontSize: { xs: '2.35rem', sm: '3.2rem' },
@@ -1229,7 +1249,7 @@ export default function RequestManagement() {
     setNewRequest(prev => ({
       ...prev,
       type,
-      leaveType: type === 'Leave' ? prev.leaveType || 'Vacation Leave' : '',
+      leaveType: type === 'Leave' ? prev.leaveType || '' : '',
       startTime: type === 'Leave' ? '' : prev.startTime,
       endTime: type === 'Leave' ? '' : prev.endTime,
       endDate: type === 'Undertime' ? prev.startDate : prev.endDate,
@@ -1424,6 +1444,9 @@ export default function RequestManagement() {
         borderRadius: { xs: 0, md: '32px' },
       }}
     >
+      {isHR && <Box sx={{ mb: 2, textAlign: 'right' }}><Button variant="outlined" onClick={() => setLeaveUtilityOpen(true)}>Manage leave types</Button></Box>}
+      {leaveTypesError && <Alert severity="error" sx={{ mb: 2 }}>{leaveTypesError}</Alert>}
+      {isHR && <LeaveTypeUtility open={leaveUtilityOpen} onClose={() => setLeaveUtilityOpen(false)} types={leaveTypes} onSaved={fetchLeaveTypes} />}
       <Paper
         elevation={0}
         sx={{
@@ -2026,13 +2049,14 @@ export default function RequestManagement() {
                   fullWidth
                   select
                   label="Leave Type"
-                  value={newRequest.leaveType}
+                  value={activeLeaveTypes.some(type => type.name === newRequest.leaveType) ? newRequest.leaveType : ''}
+                  helperText={activeLeaveTypes.length ? 'Only active leave types are available.' : 'No active leave types. Please contact HR/Admin.'}
                   onChange={event => setNewRequest({ ...newRequest, leaveType: event.target.value })}
                   InputLabelProps={{ shrink: true }}
                   sx={softTextFieldSx}
                 >
-                  {LEAVE_TYPES.map(type => (
-                    <MenuItem key={type} value={type}>{type}</MenuItem>
+                  {activeLeaveTypes.map(type => (
+                    <MenuItem key={type.id} value={type.name}>{type.name}</MenuItem>
                   ))}
                 </TextField>
               </Grid>

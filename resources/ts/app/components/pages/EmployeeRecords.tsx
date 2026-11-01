@@ -58,6 +58,8 @@ import {
 } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
 
+import { employeeSearchFields, emptyEmployeeFilters, filterEmployeeRecords, type EmployeeSearchField } from '../../lib/employeeFilters';
+
 interface Employee {
   id: string;
   name: string;
@@ -195,6 +197,8 @@ export default function EmployeeRecords() {
   const { user } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
+  const [searchField, setSearchField] = useState<EmployeeSearchField>('all');
+  const [columnFilters, setColumnFilters] = useState({ ...emptyEmployeeFilters });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -384,18 +388,7 @@ export default function EmployeeRecords() {
   }
 };
 
-  const filtered = employees.filter(
-    (emp) =>
-      (emp.name ?? "")
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      (emp.id ?? "")
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      (emp.position ?? "")
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+  const filtered = filterEmployeeRecords(employees, search, searchField, columnFilters);
 
   // Only HR can add employees; HR and GM can delete
   const canModify = user?.role === "hr";
@@ -613,13 +606,18 @@ export default function EmployeeRecords() {
               Employee Directory
             </Typography>
             <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-              Search employee records using name, employee ID, or position.
+              Choose a search field and combine independent column filters.
             </Typography>
           </Box>
         </Box>
-        <TextField
+        <Grid container spacing={2} alignItems="center">
+        <Grid size={{ xs: 12, sm: 4 }}><TextField select fullWidth label="Search field" value={searchField} onChange={e => setSearchField(e.target.value as EmployeeSearchField)} sx={softTextFieldSx}>
+          {Object.entries(employeeSearchFields).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}
+        </TextField></Grid>
+        <Grid size={{ xs: 12, sm: 6 }}><TextField
           fullWidth
-          placeholder="Search by name, ID, or position..."
+          label="Search employees"
+          placeholder="Enter a search term"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           sx={softTextFieldSx}
@@ -630,7 +628,9 @@ export default function EmployeeRecords() {
               </InputAdornment>
             ),
           }}
-        />
+        /></Grid>
+        <Grid size={{ xs: 12, sm: 2 }}><Button onClick={() => { setSearch(''); setSearchField('all'); setColumnFilters({ ...emptyEmployeeFilters }); }}>Clear all</Button></Grid>
+        </Grid>
       </Paper>
 
       {/* Table */}
@@ -672,6 +672,14 @@ export default function EmployeeRecords() {
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>Status</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>Contact</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap', minWidth: 210 }}>Actions</TableCell>
+              </TableRow>
+              <TableRow>
+                {(Object.keys(emptyEmployeeFilters) as (keyof typeof emptyEmployeeFilters)[]).map(key => <TableCell key={key} sx={{ minWidth: 150 }}>
+                  <TextField fullWidth size="small" select={['position', 'outlet', 'status'].includes(key)} label={`Filter ${employeeSearchFields[key]}`} value={columnFilters[key]} onChange={e => setColumnFilters(prev => ({ ...prev, [key]: e.target.value }))}>
+                    {['position', 'outlet', 'status'].includes(key) ? [<MenuItem key="all" value="">All</MenuItem>, ...Array.from(new Set(employees.map(employee => employee[key]).filter(Boolean))).sort().map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)] : null}
+                  </TextField>
+                </TableCell>)}
+                <TableCell><Typography variant="caption">{filtered.length} results</Typography></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>

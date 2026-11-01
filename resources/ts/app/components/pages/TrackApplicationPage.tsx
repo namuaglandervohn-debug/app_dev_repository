@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
+import { useAuth } from '../../context/AuthContext';
 import {
   Box,
   Typography,
@@ -131,7 +132,9 @@ const inputSx = {
 
 export default function TrackApplicationPage() {
   const navigate = useNavigate();
-  const [applicantId, setApplicantId] = useState('');
+  const { user, loading: authLoading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const [applicantId, setApplicantId] = useState(searchParams.get('id') || '');
   const [applicationData, setApplicationData] = useState<ApplicationStatus | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -254,6 +257,9 @@ export default function TrackApplicationPage() {
       </Stack>
     </Paper>
   );
+
+  if (authLoading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
+  if (!user) return <Navigate to="/applicant" replace />;
 
   return (
     <AuthBackground>
