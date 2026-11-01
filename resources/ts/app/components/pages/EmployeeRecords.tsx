@@ -675,7 +675,7 @@ export default function EmployeeRecords() {
               </TableRow>
               <TableRow>
                 {(Object.keys(emptyEmployeeFilters) as (keyof typeof emptyEmployeeFilters)[]).map(key => <TableCell key={key} sx={{ minWidth: 150 }}>
-                  <TextField fullWidth size="small" select={['position', 'outlet', 'status'].includes(key)} label={`Filter ${employeeSearchFields[key]}`} value={columnFilters[key]} onChange={e => setColumnFilters(prev => ({ ...prev, [key]: e.target.value }))}>
+                  <TextField fullWidth size="small" InputLabelProps={{ shrink: true }} select={['position', 'outlet', 'status'].includes(key)} label={`Filter ${employeeSearchFields[key]}`} value={columnFilters[key]} onChange={e => setColumnFilters(prev => ({ ...prev, [key]: e.target.value }))}>
                     {['position', 'outlet', 'status'].includes(key) ? [<MenuItem key="all" value="">All</MenuItem>, ...Array.from(new Set(employees.map(employee => employee[key]).filter(Boolean))).sort().map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)] : null}
                   </TextField>
                 </TableCell>)}
