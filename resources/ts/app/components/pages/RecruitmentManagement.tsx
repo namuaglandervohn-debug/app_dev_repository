@@ -29,7 +29,6 @@ import {
   HowToReg,
   AutoAwesome,
   ContentPasteSearch,
-  Sms,
 } from '@mui/icons-material';
 import {
   Alert,
@@ -748,17 +747,6 @@ const extractResumeFields = (text: string): Partial<Application> => {
     experience: experienceLine,
     hasResume: true,
   };
-};
-
-const buildSmsMessage = (app: Application, status: AppStatus = app.status) => {
-  const applicantName = buildApplicantFullName(app);
-  if (status === 'For Interview') {
-    const schedule = app.interviewDate ? ` on ${formatInterviewDateTime(app.interviewDate, app.interviewTime)}` : '';
-    return `Good day ${applicantName}. Your application for ${app.position || 'the position'} is for interview${schedule}. Please bring your requirements.`;
-  }
-  if (status === 'Hired') return `Good day ${applicantName}. Congratulations, you are hired for ${app.position || 'the position'}. Please wait for HR instructions.`;
-  if (status === 'Not Qualified') return `Good day ${applicantName}. Thank you for applying. After review, your application is not qualified at this time.`;
-  return `Good day ${applicantName}. Your application status is ${status}. Please keep your Applicant ID ${app.id} for tracking.`;
 };
 
 export default function RecruitmentManagement() {
@@ -2314,18 +2302,6 @@ export default function RecruitmentManagement() {
                           <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>{app.position || 'No position'} • {app.phone || app.email || 'No contact'}</Typography>
                         </Box>
                         <Chip label={`${score}% match`} size="small" variant="outlined" sx={{ fontWeight: 700, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }} />
-                        <Chip
-                          icon={<Sms />}
-                          label="SMS"
-                          size="small"
-                          clickable
-                          variant="outlined"
-                          onClick={() => {
-                            navigator.clipboard?.writeText(`${app.phone}\n${buildSmsMessage(app)}`);
-                            setSnackbar({ open: true, message: 'Applicant contact and SMS message copied for FO handoff.', severity: 'success' });
-                          }}
-                          sx={{ ...chipIconSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
-                        />
                       </Box>
                     </Paper>
                   ))}
@@ -2692,29 +2668,6 @@ export default function RecruitmentManagement() {
                         )}
                         {(isHR || isGM) && (
                           <Chip
-                            icon={<Sms />}
-                            label="SMS Copy"
-                            size="small"
-                            clickable
-                            variant="outlined"
-                            onClick={() => {
-                              navigator.clipboard?.writeText(`${app.phone}\n${buildSmsMessage(app)}`);
-                              setSnackbar({ open: true, message: 'SMS-ready status notification copied.', severity: 'success' });
-                            }}
-                            sx={{
-                              ...chipIconSx,
-                              minWidth: 92,
-                              justifyContent: 'center',
-                              fontWeight: 600,
-                              borderColor: GREEN_UI.borderStrong,
-                              color: GREEN_UI.greenDark,
-                              bgcolor: '#ffffff',
-                              '&:hover': { bgcolor: GREEN_UI.greenSoft },
-                            }}
-                          />
-                        )}
-                        {(isHR || isGM) && (
-                          <Chip
                             icon={app.isArchived ? <UnarchiveOutlined /> : <ArchiveOutlined />}
                             label={app.isArchived ? 'Restore' : 'Archive'}
                             size="small"
@@ -3014,19 +2967,6 @@ export default function RecruitmentManagement() {
                 </MenuItem>
               ))}
             </TextField>
-          )}
-          {selectedApp && (isHR || isGM) && (
-            <Button
-              variant="outlined"
-              startIcon={<Sms />}
-              onClick={() => {
-                navigator.clipboard?.writeText(`${selectedApp.phone}\n${buildSmsMessage(selectedApp)}`);
-                setSnackbar({ open: true, message: 'SMS-ready applicant notification copied.', severity: 'success' });
-              }}
-              sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
-            >
-              Copy SMS Notice
-            </Button>
           )}
           {selectedApp && (isHR || isGM) && (
             <Button
