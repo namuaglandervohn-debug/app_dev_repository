@@ -53,6 +53,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from "../../lib/supabaseClient";
 import ActionSnackbar from '../ActionSnackbar';
 import LeaveTypeUtility, { type LeaveType } from '../LeaveTypeUtility';
+import { currentLeaveDate, leaveDateError } from '../../lib/leaveRequestDates';
 
 type RequestType = 'Leave' | 'Overtime' | 'Undertime';
 type RequestStatus = 'Pending' | 'Supervisor Approved' | 'Approved' | 'Disapproved' | 'Rejected' | 'Cancelled';
@@ -437,6 +438,7 @@ function mapRequestRow(row: any): RequestRecord {
 }
 
 export default function RequestManagement() {
+  const today = currentLeaveDate();
   const { user } = useAuth();
   const currentUser = user as any;
 
@@ -692,6 +694,12 @@ export default function RequestManagement() {
 
     if (endDate < startDate) {
       setSnackbar({ open: true, message: 'End date cannot be earlier than start date.', severity: 'error' });
+      return;
+    }
+
+    const leaveDatesError = newRequest.type === 'Leave' ? leaveDateError(startDate, endDate) : null;
+    if (leaveDatesError) {
+      setSnackbar({ open: true, message: leaveDatesError, severity: 'error' });
       return;
     }
 
@@ -2082,6 +2090,7 @@ export default function RequestManagement() {
                     fullWidth
                     label="Start Date"
                     type="date"
+                    inputProps={newRequest.type === 'Leave' ? { min: today } : undefined}
                     value={newRequest.startDate}
                     onChange={event => setNewRequest({ ...newRequest, startDate: event.target.value })}
                     InputLabelProps={{ shrink: true }}
@@ -2093,6 +2102,7 @@ export default function RequestManagement() {
                     fullWidth
                     label="End Date"
                     type="date"
+                    inputProps={newRequest.type === 'Leave' ? { min: newRequest.startDate > today ? newRequest.startDate : today } : undefined}
                     value={newRequest.endDate}
                     onChange={event => setNewRequest({ ...newRequest, endDate: event.target.value })}
                     InputLabelProps={{ shrink: true }}
