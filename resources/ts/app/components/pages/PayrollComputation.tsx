@@ -2074,8 +2074,19 @@ export default function PayrollComputation() {
                   </Box>
                   {/* NET PAY */}
                   <Box sx={{ display: 'flex', borderBottom: '1px solid #999', bgcolor: '#fff9c4', fontWeight: 700, alignItems: 'center' }}>
-                    <Box sx={{ flex: 1, p: '4px 8px', borderRight: '1px solid #ccc', textAlign: 'center', fontSize: '0.77rem' }}>NET PAY</Box>
-                    <Box sx={{ width: '22%', p: '2px 6px', textAlign: 'right' }}>{money(payslipTotals.net)}</Box>
+                    <Box component="label" htmlFor="payslip-net-pay" sx={{ flex: 1, p: '4px 8px', borderRight: '1px solid #ccc', textAlign: 'center', fontSize: '0.77rem' }}>NET PAY</Box>
+                    <Box sx={{ width: '22%', px: 0.75 }}>
+                      <TextField
+                        id="payslip-net-pay"
+                        variant="standard"
+                        fullWidth
+                        value={money(payslipTotals.net)}
+                        slotProps={{
+                          input: { readOnly: true, disableUnderline: true },
+                          htmlInput: { style: { textAlign: 'right', fontSize: '0.77rem', fontWeight: 700, padding: '2px 0' } },
+                        }}
+                      />
+                    </Box>
                   </Box>
                   {/* Acknowledgment */}
                   <Box sx={{ p: '8px', fontSize: '0.72rem', lineHeight: 1.7, bgcolor: '#fafafa', borderBottom: '1px solid #eee' }}>
