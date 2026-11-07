@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { ArchiveOutlined, Edit } from '@mui/icons-material';
 import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Stack, TextField, Typography } from '@mui/material';
 import { supabase } from '../lib/supabaseClient';
 import { readableErrorMessage } from '../lib/apiError';
 
 export interface LeaveType { id: string; name: string; description: string; is_active: boolean }
+
+const rowActionSx = { borderRadius: '10px', textTransform: 'none', fontWeight: 700, px: 1.5 } as const;
 
 export default function LeaveTypeUtility({ open, onClose, types, onSaved }: { open: boolean; onClose: () => void; types: LeaveType[]; onSaved: () => Promise<void> }) {
   const [editing, setEditing] = useState<LeaveType | null>(null);
@@ -55,9 +58,32 @@ export default function LeaveTypeUtility({ open, onClose, types, onSaved }: { op
         <Box><Button variant="contained" disabled={saving} onClick={() => void save()}>{saving ? 'Saving...' : editing ? 'Save changes' : 'Add leave type'}</Button>{editing && <Button disabled={saving} onClick={reset}>Cancel edit</Button>}</Box>
         {types.map(type => <Box key={type.id} sx={{ borderTop: '1px solid #dcefe0', pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box><Typography fontWeight={600}>{type.name}</Typography><Typography variant="caption">{type.is_active ? 'Active' : 'Archived'}</Typography></Box>
-          <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
-            <Button disabled={saving} onClick={() => { setEditing(type); setName(type.name); setDescription(type.description); setActive(type.is_active); setError(''); }}>Edit</Button>
-            <Button disabled={saving || !type.is_active} aria-label={`Archive ${type.name}`} onClick={() => void archive(type)}>Archive</Button>
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+            <Button
+              variant="outlined"
+              startIcon={<Edit />}
+              sx={{ ...rowActionSx, borderColor: '#b9dfc6', bgcolor: '#fbfefb' }}
+              disabled={saving}
+              onClick={() => { setEditing(type); setName(type.name); setDescription(type.description); setActive(type.is_active); setError(''); }}
+            >
+              Edit
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<ArchiveOutlined />}
+              sx={{
+                ...rowActionSx,
+                color: '#98630b',
+                borderColor: '#edcd98',
+                bgcolor: '#fffbf2',
+                '&:hover': { bgcolor: '#fff3dc', borderColor: '#d9a14a' },
+              }}
+              disabled={saving || !type.is_active}
+              aria-label={`Archive ${type.name}`}
+              onClick={() => void archive(type)}
+            >
+              Archive
+            </Button>
           </Stack>
         </Box>)}
       </Stack>
