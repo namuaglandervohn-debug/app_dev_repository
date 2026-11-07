@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Stack, TextField, Typography } from '@mui/material';
 import { supabase } from '../lib/supabaseClient';
+import { readableErrorMessage } from '../lib/apiError';
 
 export interface LeaveType { id: string; name: string; description: string; is_active: boolean }
 
@@ -24,9 +25,28 @@ export default function LeaveTypeUtility({ open, onClose, types, onSaved }: { op
     } catch (e: any) { setError(e.code === '23505' ? 'A leave type with this name already exists.' : e.message || 'Could not save the leave type.'); }
     finally { setSaving(false); }
   };
+  const archive = async (type: LeaveType) => {
+    if (saving || !type.is_active) return;
+    setSaving(true);
+    setError('');
+    try {
+      const { error } = await supabase.from('leave_types')
+        .update({ is_active: false })
+        .eq('id', type.id)
+        .select('id')
+        .single();
+      if (error) throw error;
+      if (editing?.id === type.id) setActive(false);
+      await onSaved();
+    } catch (error) {
+      setError(readableErrorMessage(error, 'Could not archive the leave type.'));
+    } finally {
+      setSaving(false);
+    }
+  };
   return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="sm">
     <DialogTitle>Leave types - Super Admin utility</DialogTitle>
-    <DialogContent><Typography variant="body2" sx={{ mb: 2 }}>Add or update leave types. Deactivated types remain in past requests but cannot be selected for new requests.</Typography>
+    <DialogContent><Typography variant="body2" sx={{ mb: 2 }}>Add, edit, or archive leave types. Archived types remain in past requests but cannot be selected for new requests.</Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Stack spacing={2}>
         <TextField label="Leave type name" value={name} onChange={e => setName(e.target.value)} inputProps={{ maxLength: 100 }} disabled={saving} />
@@ -34,8 +54,11 @@ export default function LeaveTypeUtility({ open, onClose, types, onSaved }: { op
         <FormControlLabel control={<Checkbox checked={active} onChange={e => setActive(e.target.checked)} disabled={saving} />} label="Available for new requests" />
         <Box><Button variant="contained" disabled={saving} onClick={() => void save()}>{saving ? 'Saving...' : editing ? 'Save changes' : 'Add leave type'}</Button>{editing && <Button disabled={saving} onClick={reset}>Cancel edit</Button>}</Box>
         {types.map(type => <Box key={type.id} sx={{ borderTop: '1px solid #dcefe0', pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box><Typography fontWeight={600}>{type.name}</Typography><Typography variant="caption">{type.is_active ? 'Active' : 'Inactive'}</Typography></Box>
-          <Button disabled={saving} onClick={() => { setEditing(type); setName(type.name); setDescription(type.description); setActive(type.is_active); setError(''); }}>Edit</Button>
+          <Box><Typography fontWeight={600}>{type.name}</Typography><Typography variant="caption">{type.is_active ? 'Active' : 'Archived'}</Typography></Box>
+          <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+            <Button disabled={saving} onClick={() => { setEditing(type); setName(type.name); setDescription(type.description); setActive(type.is_active); setError(''); }}>Edit</Button>
+            <Button disabled={saving || !type.is_active} aria-label={`Archive ${type.name}`} onClick={() => void archive(type)}>Archive</Button>
+          </Stack>
         </Box>)}
       </Stack>
     </DialogContent><DialogActions><Button disabled={saving} onClick={onClose}>Close</Button></DialogActions>
