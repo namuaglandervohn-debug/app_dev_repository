@@ -445,7 +445,7 @@ export default function RequestManagement() {
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [leaveTypesError, setLeaveTypesError] = useState('');
   const [leaveUtilityOpen, setLeaveUtilityOpen] = useState(false);
-  const activeLeaveTypes = leaveTypes.filter(type => type.is_active);
+  const availableLeaveTypes = leaveTypes.filter(type => type.is_active && type.name.trim().toLowerCase() !== 'other');
   const fetchLeaveTypes = async () => {
     const { data, error } = await supabase.from('leave_types').select('id,name,description,is_active').order('name');
     if (error) { setLeaveTypesError('Leave types could not be loaded. Please refresh or contact HR.'); return; }
@@ -703,7 +703,7 @@ export default function RequestManagement() {
       return;
     }
 
-    if (newRequest.type === 'Leave' && (!newRequest.leaveType || !activeLeaveTypes.some(type => type.name === newRequest.leaveType))) {
+    if (newRequest.type === 'Leave' && (!newRequest.leaveType || !availableLeaveTypes.some(type => type.name === newRequest.leaveType))) {
       setSnackbar({ open: true, message: 'Please select a leave type.', severity: 'error' });
       return;
     }
@@ -2057,13 +2057,13 @@ export default function RequestManagement() {
                   fullWidth
                   select
                   label="Leave Type"
-                  value={activeLeaveTypes.some(type => type.name === newRequest.leaveType) ? newRequest.leaveType : ''}
-                  helperText={activeLeaveTypes.length ? 'Only active leave types are available.' : 'No active leave types. Please contact HR/Admin.'}
+                  value={availableLeaveTypes.some(type => type.name === newRequest.leaveType) ? newRequest.leaveType : ''}
+                  helperText={availableLeaveTypes.length ? 'Only active leave types are available.' : 'No leave types are available. Please contact HR/Admin.'}
                   onChange={event => setNewRequest({ ...newRequest, leaveType: event.target.value })}
                   InputLabelProps={{ shrink: true }}
                   sx={softTextFieldSx}
                 >
-                  {activeLeaveTypes.map(type => (
+                  {availableLeaveTypes.map(type => (
                     <MenuItem key={type.id} value={type.name}>{type.name}</MenuItem>
                   ))}
                 </TextField>
