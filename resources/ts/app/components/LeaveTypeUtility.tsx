@@ -57,7 +57,15 @@ export default function LeaveTypeUtility({ open, onClose, types, onSaved }: { op
         <FormControlLabel control={<Checkbox checked={active} onChange={e => setActive(e.target.checked)} disabled={saving} />} label="Available for new requests" />
         <Box><Button variant="contained" disabled={saving} onClick={() => void save()}>{saving ? 'Saving...' : editing ? 'Save changes' : 'Add leave type'}</Button>{editing && <Button disabled={saving} onClick={reset}>Cancel edit</Button>}</Box>
         {types.map(type => <Box key={type.id} sx={{ borderTop: '1px solid #dcefe0', pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box><Typography fontWeight={600}>{type.name}</Typography><Typography variant="caption">{type.is_active ? 'Active' : 'Archived'}</Typography></Box>
+          <Box>
+            <Typography fontWeight={600}>{type.name}</Typography>
+            <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+              {type.is_active && (
+                <Box component="span" aria-hidden="true" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main' }} />
+              )}
+              {type.is_active ? 'Active' : 'Archived'}
+            </Typography>
+          </Box>
           <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
             <Button
               variant="outlined"
