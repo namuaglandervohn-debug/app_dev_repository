@@ -9,6 +9,7 @@ import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt,
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { POSITIONS } from '../../lib/constants';
+import { calculatePayslipTotals, netPayAfterDeductions } from '../../lib/payslipTotals';
 import ActionSnackbar from '../ActionSnackbar';
 
 // ── Position → Default Monthly Salary mapping ────────────────────────────
@@ -74,6 +75,7 @@ interface Payroll {
   pagibigLoan?: string;
   uploadedPayslipName?: string;
   uploadedPayslipPath?: string;
+  payslipDetails?: Record<string, unknown>;
 }
 
 interface EmployeeOption {
@@ -84,7 +86,7 @@ interface EmployeeOption {
   salary?: string | number | null;
 }
 
-const EMPTY = { employee: '', position: '', period: new Date().toISOString().slice(0, 7), totalHours: '', overtime: '0', deductions: '0', grossPay: '', netPay: '' };
+const EMPTY = { employee: '', position: '', period: new Date().toISOString().slice(0, 7), totalHours: '', overtime: '0', deductions: '0', grossPay: '' };
 
 const money = (value: number | string | null | undefined) => {
   const n = typeof value === 'number'
@@ -330,6 +332,9 @@ export default function PayrollComputation() {
   const [generateCutoff, setGenerateCutoff] = useState('5');
   const [generateBase, setGenerateBase] = useState('510');
   const [form, setForm] = useState(EMPTY);
+  const manualGross = roundMoney(toNumber(form.grossPay));
+  const manualDeductions = roundMoney(toNumber(form.deductions));
+  const manualNetPay = netPayAfterDeductions(manualGross, manualDeductions);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [filterPeriod, setFilterPeriod] = useState('');
@@ -354,12 +359,13 @@ export default function PayrollComputation() {
     silDays: '', silAmt: '',
     allowanceAmt: '', retroAmt: '',
     tardinessMin: '', undertimeHours: '',
-    grossPay: '',
     sssAmt: '', phicAmt: '', hdmfAmt: '',
     cashAdvance: '', atd: '', otherCharges: '', breakages: '', amesco: '', pagibigLoan: '',
-    deductions: '', netPay: '',
   };
   const [payslipEditForm, setPayslipEditForm] = useState(EDIT_EMPTY);
+  const payslipTotals = editingPayslip && selectedPayroll
+    ? calculatePayslipTotals(selectedPayroll, payslipEditForm)
+    : { gross: 0, deductions: 0, net: 0 };
   const pef = (k: keyof typeof EDIT_EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setPayslipEditForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -474,6 +480,7 @@ export default function PayrollComputation() {
       pagibigLoan: details.pagibigLoan ?? '',
       uploadedPayslipName: details.uploadedPayslipName ?? '',
       uploadedPayslipPath: details.uploadedPayslipPath ?? '',
+      payslipDetails: details,
     };
   };
 
@@ -683,9 +690,9 @@ export default function PayrollComputation() {
       const employeeName = [employee.first_name, employee.middle_name, employee.last_name, employee.suffix].filter(Boolean).join(' ');
       const payrollDisplayId = formatPayrollDisplayIdFromEmployee(employee.employee_id, start, summary.payroll_id);
       const employeeOutlet = getEmployeeOutlet(employee, userAccount?.outlet);
-      const gross = toNumber(form.grossPay);
-      const deductions = toNumber(form.deductions);
-      const net = toNumber(form.netPay) || Math.max(gross - deductions, 0);
+      const gross = manualGross;
+      const deductions = manualDeductions;
+      const net = manualNetPay;
 
       const { data: item, error: itemError } = await supabase
         .from('payroll_items')
@@ -1124,6 +1131,7 @@ export default function PayrollComputation() {
       if (uploadError) throw uploadError;
 
       const payslipDetails = {
+        ...selectedPayroll.payslipDetails,
         nsdHours: selectedPayroll.nsdHours ?? '',
         nsdAmt: selectedPayroll.nsdAmt ?? '',
         regularHolidayDays: selectedPayroll.regularHolidayDays ?? '',
@@ -1159,6 +1167,7 @@ export default function PayrollComputation() {
 
       const updated = {
         ...selectedPayroll,
+        payslipDetails,
         uploadedPayslipName: file.name,
         uploadedPayslipPath: objectPath,
       };
@@ -1956,7 +1965,7 @@ export default function PayrollComputation() {
             <Grid size={6}><TextField label="Overtime (hrs)" fullWidth value={form.overtime} onChange={e => setForm({ ...form, overtime: e.target.value })} /></Grid>
             <Grid size={4}><TextField label="Gross Pay" fullWidth required value={form.grossPay} onChange={e => setForm({ ...form, grossPay: e.target.value })} placeholder="₱0" /></Grid>
             <Grid size={4}><TextField label="Deductions" fullWidth value={form.deductions} onChange={e => setForm({ ...form, deductions: e.target.value })} placeholder="₱0" /></Grid>
-            <Grid size={4}><TextField label="Net Pay" fullWidth value={form.netPay} onChange={e => setForm({ ...form, netPay: e.target.value })} placeholder="₱0" /></Grid>
+            <Grid size={4}><TextField label="Net Pay" fullWidth value={money(manualNetPay)} InputProps={{ readOnly: true }} /></Grid>
           </Grid>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfff9' }}>
@@ -2038,7 +2047,7 @@ export default function PayrollComputation() {
                   <Box sx={{ display: 'flex', borderTop: '1px solid #999', borderBottom: '1px solid #999', bgcolor: '#fff9c4', fontWeight: 700, alignItems: 'center' }}>
                     <Box sx={{ flex: 1, p: '4px 8px', borderRight: '1px solid #ccc', textAlign: 'center', fontSize: '0.77rem' }}>GROSS PAY</Box>
                     <Box sx={{ width: '24%', borderRight: '1px solid #ccc' }} />
-                    <Box sx={{ width: '22%', px: 0.5 }}><TextField variant="standard" fullWidth size="small" value={payslipEditForm.grossPay} onChange={pef('grossPay')} inputProps={{ style: { fontSize: '0.73rem', textAlign: 'right', fontWeight: 700, padding: '2px 0' } }} /></Box>
+                    <Box sx={{ width: '22%', p: '2px 6px', textAlign: 'right' }}>{money(payslipTotals.gross)}</Box>
                   </Box>
                   {/* DEDUCTIONS header */}
                   <Box sx={{ p: '4px 8px', borderBottom: '1px solid #ccc', fontWeight: 700, fontSize: '0.77rem', bgcolor: '#f5f5f5' }}>DEDUCTIONS:</Box>
@@ -2061,16 +2070,16 @@ export default function PayrollComputation() {
                   {/* TOTAL DEDUCTIONS */}
                   <Box sx={{ display: 'flex', borderTop: '1px solid #999', borderBottom: '1px solid #999', fontWeight: 700, alignItems: 'center' }}>
                     <Box sx={{ flex: 1, p: '4px 8px', borderRight: '1px solid #ccc', textAlign: 'right', fontSize: '0.77rem' }}>TOTAL DEDUCTIONS:</Box>
-                    <Box sx={{ width: '22%', px: 0.5 }}><TextField variant="standard" fullWidth size="small" value={payslipEditForm.deductions} onChange={pef('deductions')} inputProps={{ style: { fontSize: '0.73rem', textAlign: 'right', fontWeight: 700, padding: '2px 0' } }} /></Box>
+                    <Box sx={{ width: '22%', p: '2px 6px', textAlign: 'right' }}>{money(payslipTotals.deductions)}</Box>
                   </Box>
                   {/* NET PAY */}
                   <Box sx={{ display: 'flex', borderBottom: '1px solid #999', bgcolor: '#fff9c4', fontWeight: 700, alignItems: 'center' }}>
                     <Box sx={{ flex: 1, p: '4px 8px', borderRight: '1px solid #ccc', textAlign: 'center', fontSize: '0.77rem' }}>NET PAY</Box>
-                    <Box sx={{ width: '22%', px: 0.5 }}><TextField variant="standard" fullWidth size="small" value={payslipEditForm.netPay} onChange={pef('netPay')} inputProps={{ style: { fontSize: '0.73rem', textAlign: 'right', fontWeight: 700, padding: '2px 0' } }} /></Box>
+                    <Box sx={{ width: '22%', p: '2px 6px', textAlign: 'right' }}>{money(payslipTotals.net)}</Box>
                   </Box>
                   {/* Acknowledgment */}
                   <Box sx={{ p: '8px', fontSize: '0.72rem', lineHeight: 1.7, bgcolor: '#fafafa', borderBottom: '1px solid #eee' }}>
-                    I acknowledge to have received the amount of <strong>{payslipEditForm.netPay || '—'}</strong> and have no further claim for services rendered.
+                    I acknowledge to have received the amount of <strong>{money(payslipTotals.net)}</strong> and have no further claim for services rendered.
                   </Box>
                 </Box>
               ) : (
@@ -2261,7 +2270,6 @@ export default function PayrollComputation() {
             <Button variant="outlined" color="primary"
               onClick={() => {
                 if (selectedPayroll) {
-                  const g = parseAmt(selectedPayroll.grossPay);
                   const today = new Date().toISOString().split('T')[0];
                   setPayslipEditForm({
                     employee:            selectedPayroll.employee         ?? '',
@@ -2269,7 +2277,7 @@ export default function PayrollComputation() {
                     period:              selectedPayroll.period           ?? '',
                     payslipDate:         selectedPayroll.payslipDate      ?? today,
                     totalHours:          selectedPayroll.totalHours       ?? '',
-                    basicPayAmt:         selectedPayroll.basicPayAmt      ?? selectedPayroll.grossPay ?? '',
+                    basicPayAmt:         selectedPayroll.basicPayAmt      ?? '',
                     overtime:            selectedPayroll.overtime         ?? '',
                     otAmt:               selectedPayroll.otAmt            ?? '',
                     nsdHours:            selectedPayroll.nsdHours         ?? '',
@@ -2284,18 +2292,15 @@ export default function PayrollComputation() {
                     retroAmt:            selectedPayroll.retroAmt         ?? '',
                     tardinessMin:        selectedPayroll.tardinessMin     ?? '',
                     undertimeHours:      selectedPayroll.undertimeHours   ?? '',
-                    grossPay:            selectedPayroll.grossPay         ?? '',
-                    sssAmt:              selectedPayroll.sssAmt           ?? (g > 0 ? `₱${(g * 0.045).toFixed(2)}` : ''),
-                    phicAmt:             selectedPayroll.phicAmt          ?? (g > 0 ? `₱${(g * 0.02).toFixed(2)}`  : ''),
-                    hdmfAmt:             selectedPayroll.hdmfAmt          ?? (g > 0 ? '₱100.00' : ''),
+                    sssAmt:              selectedPayroll.sssAmt           ?? '',
+                    phicAmt:             selectedPayroll.phicAmt          ?? '',
+                    hdmfAmt:             selectedPayroll.hdmfAmt          ?? '',
                     cashAdvance:         selectedPayroll.cashAdvance      ?? '',
                     atd:                 selectedPayroll.atd              ?? '',
                     otherCharges:        selectedPayroll.otherCharges     ?? '',
                     breakages:           selectedPayroll.breakages        ?? '',
                     amesco:              selectedPayroll.amesco           ?? '',
                     pagibigLoan:         selectedPayroll.pagibigLoan      ?? '',
-                    deductions:          selectedPayroll.deductions       ?? '',
-                    netPay:              selectedPayroll.netPay           ?? '',
                   });
                   setEditingPayslip(true);
                 }
@@ -2310,11 +2315,10 @@ export default function PayrollComputation() {
                 if (!selectedPayroll) return;
                 setSaving(true);
                 try {
-                  const gross = toNumber(payslipEditForm.grossPay);
-                  const deductions = toNumber(payslipEditForm.deductions);
-                  const net = toNumber(payslipEditForm.netPay) || Math.max(gross - deductions, 0);
+                  const { gross, deductions, net } = payslipTotals;
 
                   const details = {
+                    ...selectedPayroll.payslipDetails,
                     nsdHours: payslipEditForm.nsdHours,
                     nsdAmt: payslipEditForm.nsdAmt,
                     regularHolidayDays: payslipEditForm.regularHolidayDays,
@@ -2348,8 +2352,8 @@ export default function PayrollComputation() {
                       overtime_hours: toNumber(payslipEditForm.overtime),
                       total_late_minutes: Math.round(toNumber(payslipEditForm.tardinessMin)),
                       total_undertime_minutes: Math.round(toNumber(payslipEditForm.undertimeHours) * 60),
-                      basic_pay: toNumber(payslipEditForm.basicPayAmt),
-                      overtime_pay: toNumber(payslipEditForm.otAmt),
+                      basic_pay: roundMoney(toNumber(payslipEditForm.basicPayAmt)),
+                      overtime_pay: roundMoney(toNumber(payslipEditForm.otAmt)),
                       gross_pay: gross,
                       total_deductions: deductions,
                       net_pay: net,
@@ -2363,6 +2367,7 @@ export default function PayrollComputation() {
                   const updated: Payroll = {
                     ...selectedPayroll,
                     ...payslipEditForm,
+                    payslipDetails: details,
                     deductions: money(deductions),
                     grossPay: money(gross),
                     netPay: money(net),

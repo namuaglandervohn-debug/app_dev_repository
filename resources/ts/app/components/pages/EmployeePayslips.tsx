@@ -443,12 +443,6 @@ export default function EmployeePayslips() {
 
   const handlePrint = (slip: Payslip) => {
     const grossAmt = parseAmt(slip.grossPay);
-    const dedAmt   = parseAmt(slip.deductions);
-    const netAmt   = parseAmt(slip.netPay);
-    const sss      = parseFloat((grossAmt * 0.045).toFixed(2));
-    const phic     = parseFloat((grossAmt * 0.02).toFixed(2));
-    const hdmf     = 100;
-    const totalDed = dedAmt > 0 ? dedAmt : sss + phic + hdmf;
 
     const win = window.open('', '_blank', 'width=720,height=960');
     if (!win) return;
@@ -495,20 +489,20 @@ export default function EmployeePayslips() {
         <tr><td>Undertime (Hours)</td><td class="right">${slip.undertimeHours || '—'}</td><td class="right">—</td></tr>
         <tr class="gross-row"><td colspan="2" class="center">GROSS PAY</td><td class="right">${fmt(grossAmt)}</td></tr>
         <tr class="sec-hdr"><td colspan="3">DEDUCTIONS:</td></tr>
-        <tr><td colspan="2">SSS Premium</td><td class="right">${slip.sssAmt || (grossAmt > 0 ? fmt(sss) : '—')}</td></tr>
-        <tr><td colspan="2">PHIC Premium</td><td class="right">${slip.phicAmt || (grossAmt > 0 ? fmt(phic) : '—')}</td></tr>
-        <tr><td colspan="2">HDMF Premium</td><td class="right">${slip.hdmfAmt || (grossAmt > 0 ? fmt(hdmf) : '—')}</td></tr>
+        <tr><td colspan="2">SSS Premium</td><td class="right">${slip.sssAmt || '—'}</td></tr>
+        <tr><td colspan="2">PHIC Premium</td><td class="right">${slip.phicAmt || '—'}</td></tr>
+        <tr><td colspan="2">HDMF Premium</td><td class="right">${slip.hdmfAmt || '—'}</td></tr>
         <tr><td colspan="2">CASH ADVANCE</td><td class="right">${slip.cashAdvance || '—'}</td></tr>
         <tr><td colspan="2">ATD</td><td class="right">${slip.atd || '—'}</td></tr>
         <tr><td colspan="2">Other Charges</td><td class="right">${slip.otherCharges || '—'}</td></tr>
         <tr><td colspan="2">BREAKAGES Charges (last)</td><td class="right">${slip.breakages || '—'}</td></tr>
         <tr><td colspan="2">AMESCO/OTHER CHARGES</td><td class="right">${slip.amesco || '—'}</td></tr>
         <tr><td colspan="2">PAG-IBIG LOAN</td><td class="right">${slip.pagibigLoan || '—'}</td></tr>
-        <tr class="sec-hdr"><td colspan="2" class="right">TOTAL DEDUCTIONS:</td><td class="right">${fmt(totalDed)}</td></tr>
-        <tr class="net-row"><td colspan="2" class="center">NET PAY</td><td class="right">${fmt(netAmt)}</td></tr>
+        <tr class="sec-hdr"><td colspan="2" class="right">TOTAL DEDUCTIONS:</td><td class="right">${slip.deductions}</td></tr>
+        <tr class="net-row"><td colspan="2" class="center">NET PAY</td><td class="right">${slip.netPay}</td></tr>
       </table>
       <div class="ack">
-        I acknowledge to have received the amount of <b>${fmt(netAmt)}</b> and have no further claim for services rendered.
+        I acknowledge to have received the amount of <b>${slip.netPay}</b> and have no further claim for services rendered.
       </div>
       <div class="sig">
         <div class="sig-line">Date: ${slip.payslipDate ? new Date(slip.payslipDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : '___________'}</div>
@@ -1010,12 +1004,6 @@ export default function EmployeePayslips() {
         <DialogContent sx={{ p: { xs: 1.5, sm: 2.25 }, bgcolor: '#fbfef9' }}>
           {selected && (() => {
             const grossAmt = parseAmt(selected.grossPay);
-            const dedAmt   = parseAmt(selected.deductions);
-            const netAmt   = parseAmt(selected.netPay);
-            const sss      = parseFloat((grossAmt * 0.045).toFixed(2));
-            const phic     = parseFloat((grossAmt * 0.02).toFixed(2));
-            const hdmf     = 100;
-            const totalDed = dedAmt > 0 ? dedAmt : sss + phic + hdmf;
 
             const labelSx = { fontWeight: 600, color: GREEN_UI.muted, fontSize: '0.76rem' };
             const valueSx = { fontWeight: 600, color: GREEN_UI.text, fontSize: '0.78rem' };
@@ -1034,9 +1022,9 @@ export default function EmployeePayslips() {
             ];
 
             const deductionRows: [string, string][] = [
-              ['SSS Premium',              selected.sssAmt      || (grossAmt > 0 ? fmt(sss)  : '—')],
-              ['PHIC Premium',             selected.phicAmt     || (grossAmt > 0 ? fmt(phic) : '—')],
-              ['HDMF Premium',             selected.hdmfAmt     || (grossAmt > 0 ? fmt(hdmf) : '—')],
+              ['SSS Premium',              selected.sssAmt      || '—'],
+              ['PHIC Premium',             selected.phicAmt     || '—'],
+              ['HDMF Premium',             selected.hdmfAmt     || '—'],
               ['CASH ADVANCE',             selected.cashAdvance || '—'],
               ['ATD',                      selected.atd         || '—'],
               ['Other Charges',            selected.otherCharges || '—'],
@@ -1120,18 +1108,18 @@ export default function EmployeePayslips() {
                     ))}
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 130px', bgcolor: GREEN_UI.cardBgSoft, borderBottom: `1px solid ${GREEN_UI.border}` }}>
                       <Typography sx={{ p: 1, fontSize: '0.78rem', fontWeight: 700, color: GREEN_UI.text, textAlign: 'right' }}>TOTAL DEDUCTIONS</Typography>
-                      <Typography sx={{ p: 1, fontSize: '0.78rem', fontWeight: 700, color: '#9c2f2f', textAlign: 'right' }}>{fmt(totalDed)}</Typography>
+                      <Typography sx={{ p: 1, fontSize: '0.78rem', fontWeight: 700, color: '#9c2f2f', textAlign: 'right' }}>{selected.deductions}</Typography>
                     </Box>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 130px', bgcolor: '#fff9d7' }}>
                       <Typography sx={{ p: 1, fontSize: '0.82rem', fontWeight: 700, color: GREEN_UI.greenDark, textAlign: 'center' }}>NET PAY</Typography>
-                      <Typography sx={{ p: 1, fontSize: '0.82rem', fontWeight: 700, color: GREEN_UI.greenDark, textAlign: 'right' }}>{fmt(netAmt)}</Typography>
+                      <Typography sx={{ p: 1, fontSize: '0.82rem', fontWeight: 700, color: GREEN_UI.greenDark, textAlign: 'right' }}>{selected.netPay}</Typography>
                     </Box>
                   </Box>
                 </Box>
 
                 <Box sx={{ p: 1.5, borderTop: `1px solid ${GREEN_UI.border}` }}>
                   <Typography variant="caption" sx={{ color: GREEN_UI.muted, lineHeight: 1.7, display: 'block' }}>
-                    I acknowledge to have received the amount of <strong>{fmt(netAmt)}</strong> and have no further claim for services rendered.
+                    I acknowledge to have received the amount of <strong>{selected.netPay}</strong> and have no further claim for services rendered.
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'flex-end', mt: 2, gap: 2, flexWrap: 'wrap' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, color: GREEN_UI.muted }}>
