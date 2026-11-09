@@ -9,6 +9,10 @@
 
 ## Employee account API deployment
 
+This checkout targets **APP_DEV_DATABASE** (`taxxflvboflolnnptwkp`) and the Vercel project **app-dev-repository** in `namuaglandervohn-9523s-projects`.
+Set `VITE_SUPABASE_URL=https://taxxflvboflolnnptwkp.supabase.co` and `VITE_SUPABASE_PUBLISHABLE_KEY` (or `VITE_SUPABASE_ANON_KEY`) to this project's public key in Vercel. The frontend also contains public defaults for this project. Set server-only `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from the same project; credentials from the previous project will not work.
+The schema and access rules used to initialize the new project are recorded in `database/app_dev_schema.sql` and `database/app_dev_rules.sql`. These files contain no HR records or login credentials and are intended for initializing an empty database, not reapplying to the populated project.
+
 Vercel serves `api/applications/hired-account.js`; local Laravel serves the same URL through `routes/api.php`. Deploy the API functions together with the frontend, rather than uploading only `dist/`.
 
 Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the server hosting environment and redeploy after changing them. The service-role key must remain server-only. HR/Admin or General Manager must be signed in to create or reset an employee login. Existing employee accounts retain their login email; new emails include the employee ID to distinguish employees with the same name.

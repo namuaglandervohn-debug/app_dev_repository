@@ -23,6 +23,7 @@
 /storage/pail
 /vendor
 /dist
+/.migration/
 _ide_helper.php
 Homestead.json
 Homestead.yaml
