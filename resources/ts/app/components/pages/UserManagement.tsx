@@ -743,30 +743,6 @@ export default function UserManagement() {
         ))}
       </Grid>
 
-      <Alert
-        severity="info"
-        sx={{
-          mb: 2,
-          borderRadius: '18px',
-          border: `1px solid ${GREEN_UI.border}`,
-          bgcolor: 'rgba(240, 249, 241, 0.92)',
-          color: '#365a3b',
-          '& .MuiAlert-icon': { color: GREEN_UI.green },
-          '& code': {
-            px: 0.7,
-            py: 0.18,
-            mx: 0.25,
-            borderRadius: 1.2,
-            bgcolor: 'rgba(58, 168, 101, 0.10)',
-            color: GREEN_UI.greenDark,
-            fontWeight: 600,
-          },
-        }}
-      >
-        <strong>System Accounts</strong> are always active and not listed here: <code>admin</code> / admin123 (HR),
-        and demo accounts (hr / employee / supervisor / gm / accounting @company.com). Additional accounts created here are stored in database.
-      </Alert>
-
       {error && (
         <Alert
           severity="error"
