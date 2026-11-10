@@ -667,11 +667,6 @@ export default function JobPostingManagement() {
                   Job Posting Management
                 </Typography>
 
-                <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-                  Create, update, and publish open positions using a clean
-                  career-board layout inspired by the soft green dashboard
-                  design.
-                </Typography>
               </Box>
 
               <Button

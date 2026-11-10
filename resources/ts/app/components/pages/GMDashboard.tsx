@@ -234,10 +234,6 @@ export default function GMDashboard() {
             >
               General Manager Dashboard
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, mt: 1, lineHeight: 1.7, maxWidth: 650 }}>
-              Welcome, {user?.name} — monitor estate-wide operations, hiring priorities, evaluation approvals,
-              and workforce activity from one soft dashboard view.
-            </Typography>
           </Box>
         </Box>
       </Paper>

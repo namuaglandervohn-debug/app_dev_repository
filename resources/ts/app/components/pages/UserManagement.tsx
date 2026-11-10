@@ -651,9 +651,6 @@ export default function UserManagement() {
             >
               User Account Management
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-              Create login accounts, assign role access, connect employee IDs, and manage active or inactive system users in one clean workspace.
-            </Typography>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>

@@ -793,9 +793,6 @@ export default function Reports() {
             >
               Reports
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-              Generate, print, and export HRIS reports in a clean, organized reporting workspace.
-            </Typography>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>

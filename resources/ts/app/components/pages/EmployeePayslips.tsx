@@ -647,10 +647,11 @@ export default function EmployeePayslips() {
             >
               My Payslips
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-              View and print your released electronic payslips in a clean employee payroll record.
-              {employeeContext?.employeeId ? ` Linked employee ID: ${employeeContext.employeeId}.` : ''}
-            </Typography>
+            {employeeContext?.employeeId && (
+              <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
+                Employee ID: {employeeContext.employeeId}
+              </Typography>
+            )}
           </Box>
 
           <Tooltip title="Refresh payslips">

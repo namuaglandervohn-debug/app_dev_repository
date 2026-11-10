@@ -1457,11 +1457,6 @@ export default function ScheduleManagement() {
             >
               Employee Schedule Management
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-              {canPublish
-                ? 'Create weekly schedules, publish them for employee confirmation, and manage schedule revisions in one clean workspace.'
-                : 'View your published weekly schedules and confirm or decline them when needed.'}
-            </Typography>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>

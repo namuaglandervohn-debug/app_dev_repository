@@ -1454,9 +1454,6 @@ export default function PayrollComputation() {
             >
               Payroll Computation
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-              Generate payroll from attendance summaries, review deductions, prepare payslips, and release employee salary records in one clean workspace.
-            </Typography>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>

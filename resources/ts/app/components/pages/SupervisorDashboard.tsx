@@ -644,9 +644,6 @@ export default function SupervisorDashboard() {
             >
               Supervisor Dashboard
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 670, lineHeight: 1.7 }}>
-              Welcome, {currentUserName}. Monitor published schedules, review pending employee requests, and track submitted evaluations in one clean workspace.
-            </Typography>
           </Box>
         </Box>
       </Paper>

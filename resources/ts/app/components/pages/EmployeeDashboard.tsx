@@ -313,12 +313,6 @@ export default function EmployeeDashboard() {
             >
               Welcome back, {user?.name}! 👋
             </Typography>
-            <Typography
-              variant="body2"
-              sx={{ color: GREEN_UI.muted, mt: 1, maxWidth: 680, fontWeight: 500 }}
-            >
-              View your schedule, attendance, requests, payslips, evaluation, and profile in one clean workspace.
-            </Typography>
           </Box>
 
           <Box

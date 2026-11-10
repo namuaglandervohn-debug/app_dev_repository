@@ -666,18 +666,6 @@ export default function HRDashboard() {
             >
               HR / Admin Dashboard
             </Typography>
-            <Typography
-              sx={{
-                mt: 1.25,
-                color: GREEN_UI.muted,
-                maxWidth: 620,
-                fontSize: { xs: "0.92rem", md: "1rem" },
-              }}
-            >
-              Welcome to Buenaventura Estate HRIS. Monitor employees,
-              applications, requests, attendance, payroll, and performance evaluations
-              in one clean workspace.
-            </Typography>
           </Box>
 
           <Paper

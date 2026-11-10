@@ -676,11 +676,6 @@ export default function EmployeeDTR() {
               >
                 {isHR ? "Employee Daily Time Records" : "My Daily Time Record"}
               </Typography>
-              <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-                {isHR
-                  ? `Search an employee and view previous Daily Time Records for ${monthName} ${year}.`
-                  : `View your monthly Daily Time Record for ${monthName} ${year}, review attendance entries, and print a clean copy for submission.`}
-              </Typography>
             </Box>
 
             <Box sx={{ display: "flex", gap: 1.25, flexWrap: "wrap", alignItems: "center" }}>

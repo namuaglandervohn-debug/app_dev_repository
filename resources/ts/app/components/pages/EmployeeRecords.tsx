@@ -473,11 +473,6 @@ export default function EmployeeRecords() {
             >
               Employee Records
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-              {canModify
-                ? 'Manage employee information, outlet assignment, contact details, and schedule information in one clean workspace.'
-                : 'View employee directory information and employment details in a clean, read-only workspace.'}
-            </Typography>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>

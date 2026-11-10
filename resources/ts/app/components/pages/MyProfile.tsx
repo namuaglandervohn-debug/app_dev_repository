@@ -550,9 +550,6 @@ export default function MyProfile() {
               >
                 {profileName}
               </Typography>
-              <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 680, lineHeight: 1.7 }}>
-                Manage your personal information, employment profile, and supporting documents in one clean workspace.
-              </Typography>
               <Box sx={{ display: 'flex', gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
                 <Chip
                   icon={<BusinessCenter sx={{ fontSize: '16px !important' }} />}

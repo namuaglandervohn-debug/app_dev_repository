@@ -1106,9 +1106,6 @@ export default function PerformanceEvaluation() {
             >
               Performance Evaluation
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 680, lineHeight: 1.7 }}>
-              Manage criteria, assign employee evaluations, and review submitted performance scores in one clean workspace.
-            </Typography>
           </Box>
 
           <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>

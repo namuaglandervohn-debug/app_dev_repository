@@ -452,11 +452,6 @@ export default function AccountingDashboard() {
             >
               Accounting & Finance Dashboard
             </Typography>
-            <Typography
-               variant="body2" sx={{ color: GREEN_UI.muted, mt: 1, lineHeight: 1.7, maxWidth: 650 }}
-            >
-              Welcome, {(user as any)?.name ?? (user as any)?.full_name ?? (user as any)?.email ?? 'Accounting Staff'} — monitor payroll reviews, releases, and payable totals for Buenaventura Estate.
-            </Typography>
           </Box>
         </Box>
       </Paper>

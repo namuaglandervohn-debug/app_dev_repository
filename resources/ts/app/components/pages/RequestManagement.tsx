@@ -1523,13 +1523,6 @@ export default function RequestManagement() {
             >
               Leave, Overtime & Undertime Requests
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 690, lineHeight: 1.7 }}>
-              {isSupervisor
-                ? 'Review employee requests, add remarks, and forward approved items to HR for final validation.'
-                : isHR
-                  ? 'Validate supervisor-approved requests and keep request decisions properly documented.'
-                  : 'Submit and track your leave, overtime, and undertime requests in one clean workspace.'}
-            </Typography>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>

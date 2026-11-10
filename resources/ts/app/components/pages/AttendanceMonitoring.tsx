@@ -2154,9 +2154,6 @@ export default function AttendanceMonitoring() {
             >
               Attendance Monitoring
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 680, lineHeight: 1.7 }}>
-              Track biometric and manual attendance, review payroll metrics, and validate daily records against finalized schedules.
-            </Typography>
           </Box>
 
           <Box

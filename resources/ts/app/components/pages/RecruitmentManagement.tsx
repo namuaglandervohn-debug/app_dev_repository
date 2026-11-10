@@ -2171,13 +2171,6 @@ export default function RecruitmentManagement() {
             >
               Recruitment & Application Management
             </Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted, maxWidth: 650, lineHeight: 1.7 }}>
-              {isHR
-                ? 'Review applications, verify requirements, schedule interviews, and keep each applicant moving smoothly through the hiring flow.'
-                : isGM
-                  ? 'Review interview-ready applicants and record final hiring decisions in a clean, focused workspace.'
-                  : 'View submitted job applications and their current processing status.'}
-            </Typography>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
