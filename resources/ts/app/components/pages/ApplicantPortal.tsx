@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
-import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
@@ -245,7 +245,7 @@ export default function ApplicantPortal() {
   if (loading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
   if (user && user.role !== 'applicant') return <Navigate to="/dashboard" replace />;
   const backButton = (
-    <Button component={Link} to="/careers" startIcon={<ArrowBackRounded />} sx={{ mb: 1 }}>
+    <Button component={Link} to="/login" startIcon={<ArrowBackRounded />} sx={{ mb: 1 }}>
       Back
     </Button>
   );
@@ -392,7 +392,6 @@ export default function ApplicantPortal() {
     <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>Applicant account</Typography>
     <Typography sx={{ mb: 3 }}>Create your profile once. Review and reuse it whenever you apply for another position.</Typography>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}{notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
-    <Tabs value={mode} onChange={(_, value) => { setMode(value); setError(''); }} sx={{ mb: 3 }}><Tab label="Sign in" /><Tab label="Create account" /></Tabs>
     <Box component="form" onSubmit={submit}><Stack spacing={3}>
       <TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy} />
       <TextField label="Password" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode ? 'new-password' : 'current-password'} inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy} />
@@ -403,6 +402,7 @@ export default function ApplicantPortal() {
       <Stack direction="row" flexWrap="wrap" sx={{ mt: 1 }}>
         <Button disabled={busy} onClick={() => void sendPasswordReset()}>Forgot password?</Button>
         <Button disabled={busy} onClick={() => void resendConfirmation()}>Resend confirmation email</Button>
+        <Button disabled={busy} onClick={() => { setMode(1); setError(''); setNotice(''); }}>Create account</Button>
       </Stack>
     )}
   </Paper></Container></AuthBackground>;
