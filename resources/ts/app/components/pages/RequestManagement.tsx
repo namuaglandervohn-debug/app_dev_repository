@@ -1280,11 +1280,6 @@ export default function RequestManagement() {
           <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
             {isEmployee ? 'Leave Balance' : 'Employee Leave Balances'}
           </Typography>
-          <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-            {isEmployee
-              ? 'One annual company-paid leave allowance of 5 days. Final HR-approved leave requests reduce the shared balance.'
-              : 'Annual allowance, used leave, remaining balance, and estimated year-end cash conversion. Only final HR-approved leave requests reduce balances.'}
-          </Typography>
         </Box>
       </Box>
       {isEmployee ? (
