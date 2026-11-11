@@ -18,7 +18,6 @@ import {
 } from "@mui/material";
 import {
   AccessTime,
-  ArticleOutlined,
   BadgeOutlined,
   CalendarMonth,
   CheckCircleOutline,
@@ -639,18 +638,6 @@ export default function EmployeeDTR() {
             }}
           >
             <Box sx={{ maxWidth: 720 }}>
-              <Chip
-                icon={<ArticleOutlined />}
-                label="Employee DTR Workspace"
-                size="small"
-                sx={{
-                  mb: 1.2,
-                  bgcolor: GREEN_UI.greenSoft,
-                  color: GREEN_UI.greenDark,
-                  fontWeight: 700,
-                  "& .MuiChip-icon": { color: GREEN_UI.greenDark },
-                }}
-              />
               <Typography
                 variant="h4"
                 fontWeight={700}

@@ -27,7 +27,6 @@ import {
   Edit,
   LocationOn,
   Work,
-  TuneOutlined,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import ActionSnackbar from "../ActionSnackbar";
@@ -642,17 +641,6 @@ export default function JobPostingManagement() {
               spacing={2.5}
             >
               <Box sx={{ maxWidth: 680 }}>
-                <Chip
-                  icon={<TuneOutlined fontSize="small" />}
-                  label="Recruitment Control Panel"
-                  size="small"
-                  sx={{
-                    mb: 1.2,
-                    bgcolor: GREEN_UI.greenSoft,
-                    color: GREEN_UI.greenDark,
-                    fontWeight: 700,
-                  }}
-                />
 
                 <Typography
                   variant="h4"

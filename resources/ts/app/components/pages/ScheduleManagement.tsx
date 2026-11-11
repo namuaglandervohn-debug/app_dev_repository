@@ -1428,18 +1428,6 @@ export default function ScheduleManagement() {
           }}
         >
           <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<CalendarMonth sx={{ fontSize: '0.9rem !important' }} />}
-              label="Schedule Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-                '& .MuiChip-icon': { color: GREEN_UI.greenDark },
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}
@@ -1599,27 +1587,7 @@ export default function ScheduleManagement() {
       )}
 
       <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 1.5, sm: 2 }, mb: 2.5 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: { xs: 'flex-start', md: 'center' }, flexWrap: 'wrap', mb: 1.5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '16px',
-                display: 'grid',
-                placeItems: 'center',
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-              }}
-            >
-              <ManageSearch fontSize="small" />
-            </Box>
-            <Box>
-              <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
-                Schedule Directory
-              </Typography>
-            </Box>
-          </Box>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
           <Chip
             icon={<Storefront sx={{ fontSize: '0.9rem !important' }} />}
             label={filterOutlet === 'all' ? 'All Outlets' : displayWorkArea(filterOutlet)}

@@ -620,18 +620,6 @@ export default function EmployeePayslips() {
           }}
         >
           <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<ReceiptLong sx={{ fontSize: '1rem !important' }} />}
-              label="Employee Payroll Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-                '& .MuiChip-icon': { color: GREEN_UI.greenDark },
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}

@@ -1077,18 +1077,6 @@ export default function PerformanceEvaluation() {
           }}
         >
           <Box sx={{ maxWidth: 760 }}>
-            <Chip
-              icon={<EmojiEvents sx={{ fontSize: 16 }} />}
-              label="Performance Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-                "& .MuiChip-icon": { color: GREEN_UI.greenDark },
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}

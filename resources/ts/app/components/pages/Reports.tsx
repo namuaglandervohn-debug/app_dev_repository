@@ -764,18 +764,6 @@ export default function Reports() {
           }}
         >
           <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<BarChartIcon sx={{ fontSize: 16 }} />}
-              label="Reports Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-                '& .MuiChip-icon': { color: GREEN_UI.greenDark },
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}

@@ -449,17 +449,6 @@ export default function EmployeeRecords() {
           }}
         >
           <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<GroupsRounded sx={{ fontSize: '16px !important' }} />}
-              label="Employee Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}
@@ -585,16 +574,6 @@ export default function EmployeeRecords() {
 
       {/* Search */}
       <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.5 }}>
-          <Box sx={{ ...iconTileSx, width: 38, height: 38}}>
-            <ManageSearch fontSize="small" />
-          </Box>
-          <Box>
-            <Typography fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }}>
-              Employee Directory
-            </Typography>
-          </Box>
-        </Box>
         <Grid container spacing={2} alignItems="center">
         <Grid size={{ xs: 12, sm: 4 }}><TextField select fullWidth label="Search field" value={searchField} onChange={e => setSearchField(e.target.value as EmployeeSearchField)} sx={softTextFieldSx}>
           {Object.entries(employeeSearchFields).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}

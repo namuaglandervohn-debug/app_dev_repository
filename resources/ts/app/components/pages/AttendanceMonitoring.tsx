@@ -39,10 +39,8 @@ import {
   WarningAmber,
   ArrowBackIosNew,
   ArrowForwardIos,
-  DashboardCustomizeRounded,
   FactCheckRounded,
   CalendarMonthRounded,
-  TuneRounded,
   BadgeRounded,
   PersonRounded,
   AccessTimeRounded,
@@ -2130,17 +2128,6 @@ export default function AttendanceMonitoring() {
           }}
         >
           <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<DashboardCustomizeRounded sx={{ fontSize: "16px !important" }} />}
-              label="Attendance Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}
@@ -2298,16 +2285,6 @@ export default function AttendanceMonitoring() {
       )}
 
       <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, mb: 1.5 }}>
-          <Box sx={{ ...iconTileSx, width: 38, height: 38}}>
-            <TuneRounded fontSize="small" />
-          </Box>
-          <Box>
-            <Typography fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }}>
-              Attendance Filters
-            </Typography>
-          </Box>
-        </Box>
         <Grid container spacing={2} alignItems="center">
           <Grid size={{ xs: 12, md: 3 }}>
             <TextField

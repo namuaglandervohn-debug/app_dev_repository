@@ -302,22 +302,6 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
       >
         <Box sx={{ position: 'relative', zIndex: 1 }}>
           {!inDialog && <Stack alignItems="center" textAlign="center" spacing={1.4} sx={{ mb: 3.5 }}>
-            <Chip
-              icon={<AssignmentTurnedIn sx={{ fontSize: 17 }} />}
-              label="Application Tracker"
-              sx={{
-                borderRadius: '999px',
-                px: 1,
-                py: 2.4,
-                height: 34,
-                bgcolor: 'rgba(220, 245, 224, 0.92)',
-                color: '#23643c',
-                fontSize: 12,
-                fontWeight: 600,
-                border: '1px solid rgba(56, 142, 83, 0.16)',
-                '& .MuiChip-icon': { color: '#2f8f56' },
-              }}
-            />
             <Typography
               variant="h4"
               sx={{

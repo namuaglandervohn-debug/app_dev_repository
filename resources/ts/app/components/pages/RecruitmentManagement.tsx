@@ -1929,18 +1929,6 @@ export default function RecruitmentManagement() {
           }}
         >
           <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<PersonSearch />}
-              label="Recruitment Workspace"
-              size="small"
-              sx={{
-                ...chipIconSx,
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}
@@ -2041,30 +2029,11 @@ export default function RecruitmentManagement() {
 
 
       <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 1.5 }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '16px',
-              display: 'grid',
-              placeItems: 'center',
-              bgcolor: GREEN_UI.greenSoft,
-              color: GREEN_UI.greenDark,
-            }}
-          >
-            <PersonSearch fontSize="small" />
-          </Box>
-          <Box>
-            <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
-              Applicant Directory
-            </Typography>
-          </Box>
-        </Box>
         <TextField
           fullWidth
           size="small"
           placeholder="Search applications..."
+          inputProps={{ 'aria-label': 'Search applications' }}
           value={search}
           onChange={event => setSearch(event.target.value)}
           sx={softTextFieldSx}

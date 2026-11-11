@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
-import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
@@ -272,8 +272,6 @@ export default function ApplicantPortal() {
               <Stack direction="row" alignItems="center" gap={2} sx={{ minWidth: 0 }}>
                 <Avatar aria-hidden="true" sx={profileAvatarSx}>{initials}</Avatar>
                 <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                  <Chip label="My Profile" size="small" icon={<AccountCircle sx={{ fontSize: '16px !important' }} />}
-                    sx={{ mb: 1.2, bgcolor: '#e6f8e9', color: '#1f7a46', fontWeight: 700 }} />
                   <Typography component="h1" variant="h4" fontWeight={700}
                     sx={{ fontSize: { xs: '1.55rem', sm: '2rem', md: '2.35rem' }, color: '#1e2d24', letterSpacing: '-0.04em', lineHeight: 1.08 }}>
                     {name}

@@ -37,7 +37,6 @@ import {
   LocalCafe,
   ArrowForward,
   CheckCircle,
-  MenuBook,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
@@ -1003,11 +1002,6 @@ export default function LandingPage() {
         >
           <Grid container spacing={3} alignItems="center">
             <Grid size={{ xs: 12, md: 8 }}>
-              <Chip
-                icon={<MenuBook />}
-                label="Applicant Portal"
-                sx={{ bgcolor: "rgba(255,255,255,0.13)", color: "#fff", fontWeight: 900, mb: 2 }}
-              />
               <Typography
                 sx={{
                   fontSize: { xs: "1.9rem", md: "3rem" },

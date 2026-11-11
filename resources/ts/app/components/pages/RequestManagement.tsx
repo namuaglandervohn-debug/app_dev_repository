@@ -44,7 +44,6 @@ import {
   DeleteOutline,
   Close,
   DoneAll,
-  PlaylistAddCheck,
   ManageSearch,
   EditOutlined,
 } from '@mui/icons-material';
@@ -1485,18 +1484,6 @@ export default function RequestManagement() {
           }}
         >
           <Box sx={{ maxWidth: 760 }}>
-            <Chip
-              icon={<PlaylistAddCheck />}
-              label="Request Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-                '& .MuiChip-icon': { color: GREEN_UI.greenDark },
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}
@@ -1629,30 +1616,11 @@ export default function RequestManagement() {
       {isEmployee ? myLeaveLayout : (
       <>
       <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 1.5 }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '16px',
-              display: 'grid',
-              placeItems: 'center',
-              bgcolor: GREEN_UI.greenSoft,
-              color: GREEN_UI.greenDark,
-            }}
-          >
-            <ManageSearch fontSize="small" />
-          </Box>
-          <Box>
-            <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
-              Request Directory
-            </Typography>
-          </Box>
-        </Box>
         <TextField
           fullWidth
           size="small"
           placeholder="Search requests..."
+          inputProps={{ 'aria-label': 'Search requests' }}
           value={search}
           onChange={event => setSearch(event.target.value)}
           sx={softTextFieldSx}

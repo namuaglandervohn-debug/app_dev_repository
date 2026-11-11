@@ -627,17 +627,6 @@ export default function UserManagement() {
           }}
         >
           <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<AdminPanelSettings sx={{ fontSize: 15 }} />}
-              label="Access Control"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-              }}
-            />
             <Typography
               variant="h4"
               fontWeight={700}
@@ -755,30 +744,11 @@ export default function UserManagement() {
       )}
 
       <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 1.5 }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '16px',
-              display: 'grid',
-              placeItems: 'center',
-              bgcolor: GREEN_UI.greenSoft,
-              color: GREEN_UI.greenDark,
-            }}
-          >
-            <ManageSearch fontSize="small" />
-          </Box>
-          <Box>
-            <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
-              User Account Directory
-            </Typography>
-          </Box>
-        </Box>
         <TextField
           fullWidth
           size="small"
           placeholder="Search user accounts..."
+          inputProps={{ 'aria-label': 'Search user accounts' }}
           value={search}
           onChange={event => setSearch(event.target.value)}
           sx={softTextFieldSx}

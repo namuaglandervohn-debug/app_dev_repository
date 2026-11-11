@@ -18,7 +18,6 @@ import {
   FormGroup,
   FormControlLabel,
   Checkbox,
-  Chip,
   InputAdornment,
 } from '@mui/material';
 
@@ -924,19 +923,6 @@ export default function ApplyForJobPage() {
         <Container maxWidth="xl" disableGutters sx={{ px: { xs: 0, sm: 2, md: 3 } }}>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={2} sx={{ mb: { xs: 2, md: 3 } }}>
             <Box sx={{ minWidth: 0 }}>
-              <Chip
-                icon={<HomeWorkOutlined sx={{ color: '#166534 !important' }} />}
-                label="Applicant Portal"
-                sx={{
-                  mb: 1.25,
-                  borderRadius: '999px',
-                  bgcolor: 'rgba(220,252,231,0.92)',
-                  color: '#166534',
-                  border: '1px solid rgba(34,197,94,0.20)',
-                  fontWeight: 700,
-                  letterSpacing: '-0.01em',
-                }}
-              />
               <Typography variant="h3" fontWeight={700} sx={responsiveHeroTitleSx}>Buenaventura Estate</Typography>
               <Typography color="text.secondary" sx={{ mt: 1, fontSize: { xs: '0.9rem', sm: '1rem' }, fontWeight: 600, overflowWrap: 'anywhere' }}>Human Resource Information System — Applicant Portal</Typography>
             </Box>

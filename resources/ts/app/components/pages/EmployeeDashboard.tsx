@@ -61,15 +61,6 @@ const pillButtonSx = {
   px: 2,
 };
 
-const softChipSx = {
-  borderRadius: '12px',
-  fontWeight: 600,
-  bgcolor: GREEN_UI.greenSoft,
-  color: GREEN_UI.greenDark,
-  borderColor: GREEN_UI.borderStrong,
-  '& .MuiChip-label': { px: 1.25 },
-};
-
 const getAttendanceChipSx = (status?: string) => {
   const normalized = String(status ?? '').toLowerCase();
 
@@ -246,7 +237,6 @@ export default function EmployeeDashboard() {
             <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 2, sm: 2.75 }, height: '100%' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
                 <Box>
-                  <Chip icon={<AccessTimeRounded />} label="Attendance" variant="outlined" sx={{ ...softChipSx, mb: 1 }} />
                   <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, letterSpacing: '-0.02em' }}>
                     Recent Attendance
                   </Typography>
@@ -307,7 +297,6 @@ export default function EmployeeDashboard() {
             <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 2, sm: 2.75 }, height: '100%' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
                 <Box>
-                  <Chip icon={<Assignment />} label="Requests" variant="outlined" sx={{ ...softChipSx, mb: 1 }} />
                   <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, letterSpacing: '-0.02em' }}>
                     My Requests
                   </Typography>

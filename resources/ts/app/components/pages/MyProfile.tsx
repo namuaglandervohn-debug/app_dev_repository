@@ -443,17 +443,6 @@ export default function MyProfile() {
               {initials}
             </Avatar>
             <Box sx={{ minWidth: 0 }}>
-              <Chip
-                icon={<AccountCircle sx={{ fontSize: '16px !important' }} />}
-                label="Employee Self-Service"
-                size="small"
-                sx={{
-                  mb: 1.2,
-                  bgcolor: GREEN_UI.greenSoft,
-                  color: GREEN_UI.greenDark,
-                  fontWeight: 700,
-                }}
-              />
               <Typography
                 variant="h4"
                 fontWeight={700}
