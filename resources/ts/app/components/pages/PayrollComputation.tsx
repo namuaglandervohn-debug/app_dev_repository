@@ -9,7 +9,10 @@ import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt,
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { POSITIONS } from '../../lib/constants';
-import { calculatePayslipTotals, netPayAfterDeductions } from '../../lib/payslipTotals';
+import {
+  calculatePayslipLineAmount, calculatePayslipTotals, netPayAfterDeductions,
+  payrollHoursPerDay, payslipQuantityAmounts, regularOvertimeMultiplier, type PayslipQuantityField,
+} from '../../lib/payslipTotals';
 import ActionSnackbar from '../ActionSnackbar';
 
 // ── Position → Default Monthly Salary mapping ────────────────────────────
@@ -44,7 +47,9 @@ interface Payroll {
   period: string;
   cutoffLabel?: string;
   totalHours: string;
+  regularHours: string;
   overtime: string;
+  hourlyRate?: number;
   deductions: string;
   grossPay: string;
   netPay: string;
@@ -63,7 +68,9 @@ interface Payroll {
   leaveConversionAmt?: string;
   leaveConversionRate?: string;
   tardinessMin?: string;
+  lateDeductionAmt?: string;
   undertimeHours?: string;
+  undertimeDeductionAmt?: string;
   sssAmt?: string;
   phicAmt?: string;
   hdmfAmt?: string;
@@ -351,14 +358,14 @@ export default function PayrollComputation() {
   const EDIT_EMPTY = {
     employee: '', position: '', period: '',
     payslipDate: '',
-    totalHours: '', basicPayAmt: '',
+    regularHours: '', basicPayAmt: '',
     overtime: '', otAmt: '',
     nsdHours: '', nsdAmt: '',
     regularHolidayDays: '', regularHolidayAmt: '',
     specialHolidayDays: '', specialHolidayAmt: '',
     silDays: '', silAmt: '',
     allowanceAmt: '', retroAmt: '',
-    tardinessMin: '', undertimeHours: '',
+    tardinessMin: '', lateDeductionAmt: '', undertimeHours: '', undertimeDeductionAmt: '',
     sssAmt: '', phicAmt: '', hdmfAmt: '',
     cashAdvance: '', atd: '', otherCharges: '', breakages: '', amesco: '', pagibigLoan: '',
   };
@@ -366,8 +373,24 @@ export default function PayrollComputation() {
   const payslipTotals = editingPayslip && selectedPayroll
     ? calculatePayslipTotals(selectedPayroll, payslipEditForm)
     : { gross: 0, deductions: 0, net: 0 };
-  const pef = (k: keyof typeof EDIT_EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setPayslipEditForm(f => ({ ...f, [k]: e.target.value }));
+  const pef = (key: keyof typeof EDIT_EMPTY) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setPayslipEditForm(form => {
+      const next = { ...form, [key]: value };
+      if (!selectedPayroll || !Object.prototype.hasOwnProperty.call(payslipQuantityAmounts, key)) return next;
+
+      const quantityField = key as PayslipQuantityField;
+      const amountField = payslipQuantityAmounts[quantityField];
+      if (Number(form[quantityField]) === Number(value)) return next;
+      if (Number(selectedPayroll[quantityField] ?? '') === Number(value)) {
+        next[amountField] = selectedPayroll[amountField] ?? '';
+        return next;
+      }
+      const calculated = calculatePayslipLineAmount(selectedPayroll, quantityField, value);
+      if (calculated !== undefined) next[amountField] = money(calculated);
+      return next;
+    });
+  };
 
   const currentUserName = (user as any)?.name ?? (user as any)?.full_name ?? (user as any)?.email ?? 'System User';
   const currentUserRole = (user as any)?.role ?? 'user';
@@ -432,6 +455,8 @@ export default function PayrollComputation() {
     const details = parsePayslipDetails(item.payslip_details);
     const employee = employeesById.get(item.employee_id);
     const displayId = formatPayrollDisplayIdFromEmployee(item.employee_id, summary?.period_start, item.payroll_id);
+    const dailyRate = item.rate_type?.toLowerCase() === 'daily' ? toNumber(item.salary_rate) : 0;
+    const hourlyRate = dailyRate > 0 ? dailyRate / payrollHoursPerDay : toNumber(details.hourlyRate);
 
     return {
       id: item.payroll_item_id,
@@ -446,7 +471,9 @@ export default function PayrollComputation() {
       period: monthFromDate(summary?.period_start),
       cutoffLabel: summary?.cutoff_label ?? '',
       totalHours: String(item.total_work_hours ?? item.regular_hours ?? '0'),
+      regularHours: String(item.regular_hours ?? item.total_work_hours ?? '0'),
       overtime: String(item.overtime_hours ?? '0'),
+      hourlyRate: hourlyRate > 0 ? hourlyRate : undefined,
       deductions: money(item.total_deductions),
       grossPay: money(item.gross_pay),
       netPay: money(item.net_pay),
@@ -455,7 +482,9 @@ export default function PayrollComputation() {
       basicPayAmt: money(item.basic_pay),
       otAmt: money(item.overtime_pay),
       tardinessMin: String(item.total_late_minutes ?? ''),
+      lateDeductionAmt: money(item.late_deduction),
       undertimeHours: item.total_undertime_minutes ? String(Number(item.total_undertime_minutes) / 60) : '',
+      undertimeDeductionAmt: money(item.undertime_deduction),
       nsdHours: details.nsdHours ?? '',
       nsdAmt: details.nsdAmt ?? '',
       regularHolidayDays: details.regularHolidayDays ?? '',
@@ -507,6 +536,7 @@ export default function PayrollComputation() {
           position,
           outlet,
           salary_rate,
+          rate_type,
           total_work_hours,
           regular_hours,
           overtime_hours,
@@ -919,14 +949,14 @@ export default function PayrollComputation() {
         const employee = employeeMap.get(summary.employee_id);
         const position = String(summary.position || employee?.position || '');
         const salaryRate = jobSalaryMap.get(position) || fallbackRate || parseSalaryRate(employee?.salary) || 0;
-        const hourlyRate = salaryRate > 0 ? salaryRate / 8 : 0;
+        const hourlyRate = salaryRate > 0 ? salaryRate / payrollHoursPerDay : 0;
         const regularHours = toNumber(summary.regular_hours);
         const overtimeHours = toNumber(summary.overtime_hours);
         const lateMinutes = Math.round(toNumber(summary.total_late_minutes));
         const undertimeMinutes = Math.round(toNumber(summary.total_undertime_minutes));
         const absentDays = Math.round(toNumber(summary.total_absent_days));
         const basicPay = roundMoney(regularHours * hourlyRate);
-        const overtimePay = roundMoney(overtimeHours * hourlyRate * 1.25);
+        const overtimePay = roundMoney(overtimeHours * hourlyRate * regularOvertimeMultiplier);
         const lateDeduction = roundMoney((lateMinutes / 60) * hourlyRate);
         const undertimeDeduction = roundMoney((undertimeMinutes / 60) * hourlyRate);
         const absenceDeduction = roundMoney(absentDays * salaryRate);
@@ -1330,7 +1360,7 @@ export default function PayrollComputation() {
         <tr class="highlight"><td><b>Employee Name:</b></td><td colspan="2"><b>${p.employee.toUpperCase()}</b></td></tr>
         <tr><td><b>Position:</b></td><td colspan="2">${p.position || '—'}</td></tr>
         <tr class="sec-hdr"><td>Earnings:</td><td class="center" style="width:24%">Days/Hours/Mins.</td><td class="right" style="width:22%">Amount</td></tr>
-        <tr><td>Basic Pay</td><td class="right">${p.totalHours || '—'}</td><td class="right">${p.basicPayAmt || fmtAmt(grossAmt)}</td></tr>
+        <tr><td>Basic Pay</td><td class="right">${p.regularHours || '—'}</td><td class="right">${p.basicPayAmt || fmtAmt(grossAmt)}</td></tr>
         <tr><td>Reg.OT</td><td class="right">${p.overtime && p.overtime !== '0' ? p.overtime : '—'}</td><td class="right">${p.otAmt || '—'}</td></tr>
         <tr><td>NSD</td><td class="right">${p.nsdHours || '—'}</td><td class="right">${p.nsdAmt || '—'}</td></tr>
         <tr><td>Regular Holiday</td><td class="right">${p.regularHolidayDays || '—'}</td><td class="right">${p.regularHolidayAmt || '—'}</td></tr>
@@ -1339,8 +1369,8 @@ export default function PayrollComputation() {
         <tr><td>Allowance</td><td class="right">—</td><td class="right">${p.allowanceAmt || '—'}</td></tr>
         <tr><td>RETRO/ADJUSTMENT</td><td class="right">—</td><td class="right">${p.retroAmt || '—'}</td></tr>
         <tr><td>Unused Leave Conversion</td><td class="right">${p.leaveConversionDays || '—'}</td><td class="right">${p.leaveConversionAmt || '—'}</td></tr>
-        <tr><td>Tardiness (Mins.)</td><td class="right">${p.tardinessMin || '—'}</td><td class="right">—</td></tr>
-        <tr><td>Undertime (Hours)</td><td class="right">${p.undertimeHours || '—'}</td><td class="right">—</td></tr>
+        <tr><td>Tardiness (Mins.)</td><td class="right">${p.tardinessMin || '—'}</td><td class="right">${fmtAmt(toNumber(p.lateDeductionAmt))}</td></tr>
+        <tr><td>Undertime (Hours)</td><td class="right">${p.undertimeHours || '—'}</td><td class="right">${fmtAmt(toNumber(p.undertimeDeductionAmt))}</td></tr>
         <tr class="gross-row"><td colspan="2" class="center">GROSS PAY</td><td class="right">${fmtAmt(grossAmt)}</td></tr>
         <tr class="sec-hdr"><td colspan="3">DEDUCTIONS:</td></tr>
         <tr><td colspan="2">SSS Premium</td><td class="right">${p.sssAmt || '—'}</td></tr>
@@ -2022,7 +2052,7 @@ export default function PayrollComputation() {
                     <Box sx={{ width: '22%', fontWeight: 700, p: '4px 6px', textAlign: 'right', fontSize: '0.77rem' }}>Amount</Box>
                   </Box>
                   {([
-                    ['Basic Pay',          'totalHours',        'basicPayAmt'       ],
+                    ['Basic Pay',          'regularHours',      'basicPayAmt'       ],
                     ['Reg.OT',            'overtime',           'otAmt'             ],
                     ['NSD',               'nsdHours',           'nsdAmt'            ],
                     ['Regular Holiday',   'regularHolidayDays', 'regularHolidayAmt' ],
@@ -2030,18 +2060,17 @@ export default function PayrollComputation() {
                     ['SIL',              'silDays',             'silAmt'            ],
                     ['Allowance',         null,                  'allowanceAmt'      ],
                     ['RETRO/ADJUSTMENT',  null,                  'retroAmt'          ],
-                    ['Tardiness (Mins.)', 'tardinessMin',        null                ],
-                    ['Undertime (Hours)', 'undertimeHours',      null                ],
-                  ] as [string, string | null, string | null][]).map(([label, dk, ak]) => (
+                    ['Tardiness (Mins.)', 'tardinessMin',        'lateDeductionAmt'  ],
+                    ['Undertime (Hours)', 'undertimeHours',      'undertimeDeductionAmt'],
+                  ] as [string, PayslipQuantityField | null, keyof typeof EDIT_EMPTY][]).map(([label, dk, ak]) => (
                     <Box key={label} sx={{ display: 'flex', borderBottom: '1px solid #eee', alignItems: 'center' }}>
                       <Box sx={{ flex: 1, p: '1px 8px', borderRight: '1px solid #ccc', fontSize: '0.76rem' }}>{label}</Box>
                       <Box sx={{ width: '24%', px: 0.5, borderRight: '1px solid #ccc' }}>
-                        {dk ? <TextField variant="standard" fullWidth size="small" value={(payslipEditForm as any)[dk]} onChange={pef(dk as any)} placeholder="—" inputProps={{ style: { fontSize: '0.73rem', textAlign: 'right', padding: '1px 0' } }} />
+                        {dk ? <TextField variant="standard" fullWidth size="small" value={payslipEditForm[dk]} onChange={pef(dk)} placeholder="—" inputProps={{ 'aria-label': `${label} quantity`, inputMode: 'decimal', style: { fontSize: '0.73rem', textAlign: 'right', padding: '1px 0' } }} />
                              : <Box sx={{ textAlign: 'right', fontSize: '0.75rem', color: 'text.disabled', p: '3px 2px' }}>—</Box>}
                       </Box>
                       <Box sx={{ width: '22%', px: 0.5 }}>
-                        {ak ? <TextField variant="standard" fullWidth size="small" value={(payslipEditForm as any)[ak]} onChange={pef(ak as any)} placeholder="₱0" inputProps={{ style: { fontSize: '0.73rem', textAlign: 'right', padding: '1px 0' } }} />
-                             : <Box sx={{ textAlign: 'right', fontSize: '0.75rem', color: 'text.disabled', p: '3px 2px' }}>—</Box>}
+                        <TextField variant="standard" fullWidth size="small" value={payslipEditForm[ak]} onChange={pef(ak)} placeholder="₱0" inputProps={{ 'aria-label': `${label} amount`, inputMode: 'decimal', style: { fontSize: '0.73rem', textAlign: 'right', padding: '1px 0' } }} />
                       </Box>
                     </Box>
                   ))}
@@ -2113,7 +2142,7 @@ export default function PayrollComputation() {
                   const valSx   = { flex: 1, p: '4px 8px', fontSize: '0.78rem' };
 
                   const earningsRows: [string, string, string][] = [
-                    ['Basic Pay',           selectedPayroll.totalHours || '—',                           selectedPayroll.basicPayAmt || fmt(grossAmt)],
+                    ['Basic Pay',           selectedPayroll.regularHours || '—',                         selectedPayroll.basicPayAmt || fmt(grossAmt)],
                     ['Reg.OT',              selectedPayroll.overtime && selectedPayroll.overtime !== '0' ? selectedPayroll.overtime : '—', selectedPayroll.otAmt || '—'],
                     ['NSD',                 selectedPayroll.nsdHours  || '—',                            selectedPayroll.nsdAmt  || '—'],
                     ['Regular Holiday',     selectedPayroll.regularHolidayDays || '—',                   selectedPayroll.regularHolidayAmt || '—'],
@@ -2122,8 +2151,8 @@ export default function PayrollComputation() {
                     ['Allowance',           '—',                                                          selectedPayroll.allowanceAmt || '—'],
                     ['RETRO/ADJUSTMENT',    '—',                                                          selectedPayroll.retroAmt || '—'],
                     ['Unused Leave Conversion', selectedPayroll.leaveConversionDays || '—',                selectedPayroll.leaveConversionAmt || '—'],
-                    ['Tardiness (Mins.)',   selectedPayroll.tardinessMin   || '—',                       '—'],
-                    ['Undertime (Hours)',   selectedPayroll.undertimeHours || '—',                       '—'],
+                    ['Tardiness (Mins.)',   selectedPayroll.tardinessMin   || '—',                       fmt(toNumber(selectedPayroll.lateDeductionAmt))],
+                    ['Undertime (Hours)',   selectedPayroll.undertimeHours || '—',                       fmt(toNumber(selectedPayroll.undertimeDeductionAmt))],
                   ];
 
                   const deductionRows: [string, string][] = [
@@ -2309,7 +2338,7 @@ export default function PayrollComputation() {
                     position:            selectedPayroll.position         ?? '',
                     period:              selectedPayroll.period           ?? '',
                     payslipDate:         selectedPayroll.payslipDate      ?? today,
-                    totalHours:          selectedPayroll.totalHours       ?? '',
+                    regularHours:        selectedPayroll.regularHours     ?? '',
                     basicPayAmt:         selectedPayroll.basicPayAmt      ?? '',
                     overtime:            selectedPayroll.overtime         ?? '',
                     otAmt:               selectedPayroll.otAmt            ?? '',
@@ -2324,7 +2353,9 @@ export default function PayrollComputation() {
                     allowanceAmt:        selectedPayroll.allowanceAmt     ?? '',
                     retroAmt:            selectedPayroll.retroAmt         ?? '',
                     tardinessMin:        selectedPayroll.tardinessMin     ?? '',
+                    lateDeductionAmt:    selectedPayroll.lateDeductionAmt ?? '',
                     undertimeHours:      selectedPayroll.undertimeHours   ?? '',
+                    undertimeDeductionAmt: selectedPayroll.undertimeDeductionAmt ?? '',
                     sssAmt:              selectedPayroll.sssAmt           ?? '',
                     phicAmt:             selectedPayroll.phicAmt          ?? '',
                     hdmfAmt:             selectedPayroll.hdmfAmt          ?? '',
@@ -2346,9 +2377,22 @@ export default function PayrollComputation() {
               startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
               onClick={async () => {
                 if (!selectedPayroll) return;
+                const hasInvalidQuantity = (Object.keys(payslipQuantityAmounts) as PayslipQuantityField[]).some(field => {
+                  const quantity = Number(payslipEditForm[field]);
+                  return !Number.isFinite(quantity) || quantity < 0;
+                });
+                if (hasInvalidQuantity) {
+                  setSnackbar({ open: true, message: 'Enter a valid, nonnegative number for each quantity.', severity: 'error' });
+                  return;
+                }
                 setSaving(true);
                 try {
                   const { gross, deductions, net } = payslipTotals;
+                  const regularHours = Number(payslipEditForm.regularHours);
+                  const overtimeHours = Number(payslipEditForm.overtime);
+                  const timeChanged = regularHours !== Number(selectedPayroll.regularHours)
+                    || overtimeHours !== Number(selectedPayroll.overtime);
+                  const totalHours = timeChanged ? roundMoney(regularHours + overtimeHours) : toNumber(selectedPayroll.totalHours);
 
                   const details = {
                     ...selectedPayroll.payslipDetails,
@@ -2380,13 +2424,15 @@ export default function PayrollComputation() {
                     .update({
                       employee_name: payslipEditForm.employee,
                       position: payslipEditForm.position,
-                      total_work_hours: toNumber(payslipEditForm.totalHours),
-                      regular_hours: toNumber(payslipEditForm.totalHours),
-                      overtime_hours: toNumber(payslipEditForm.overtime),
-                      total_late_minutes: Math.round(toNumber(payslipEditForm.tardinessMin)),
-                      total_undertime_minutes: Math.round(toNumber(payslipEditForm.undertimeHours) * 60),
+                      total_work_hours: totalHours,
+                      regular_hours: regularHours,
+                      overtime_hours: overtimeHours,
+                      total_late_minutes: Math.round(Number(payslipEditForm.tardinessMin)),
+                      total_undertime_minutes: Math.round(Number(payslipEditForm.undertimeHours) * 60),
                       basic_pay: roundMoney(toNumber(payslipEditForm.basicPayAmt)),
                       overtime_pay: roundMoney(toNumber(payslipEditForm.otAmt)),
+                      late_deduction: roundMoney(toNumber(payslipEditForm.lateDeductionAmt)),
+                      undertime_deduction: roundMoney(toNumber(payslipEditForm.undertimeDeductionAmt)),
                       gross_pay: gross,
                       total_deductions: deductions,
                       net_pay: net,
@@ -2400,6 +2446,7 @@ export default function PayrollComputation() {
                   const updated: Payroll = {
                     ...selectedPayroll,
                     ...payslipEditForm,
+                    totalHours: String(totalHours),
                     payslipDetails: details,
                     deductions: money(deductions),
                     grossPay: money(gross),

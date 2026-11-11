@@ -4,17 +4,61 @@ const earningFields = [
 ] as const;
 const deductionFields = [
   'sssAmt', 'phicAmt', 'hdmfAmt', 'cashAdvance', 'atd', 'otherCharges',
-  'breakages', 'amesco', 'pagibigLoan',
+  'breakages', 'amesco', 'pagibigLoan', 'lateDeductionAmt', 'undertimeDeductionAmt',
 ] as const;
 
 type EditableAmounts = Partial<Record<(typeof earningFields)[number] | (typeof deductionFields)[number], string>>;
 type SavedPayslip = EditableAmounts & { grossPay: string; deductions: string };
+
+export const payrollHoursPerDay = 8;
+export const regularOvertimeMultiplier = 1.25;
+
+export const payslipQuantityAmounts = {
+  regularHours: 'basicPayAmt',
+  overtime: 'otAmt',
+  nsdHours: 'nsdAmt',
+  regularHolidayDays: 'regularHolidayAmt',
+  specialHolidayDays: 'specialHolidayAmt',
+  silDays: 'silAmt',
+  tardinessMin: 'lateDeductionAmt',
+  undertimeHours: 'undertimeDeductionAmt',
+} as const;
+
+export type PayslipQuantityField = keyof typeof payslipQuantityAmounts;
+type PayslipRatesSource = EditableAmounts & Partial<Record<PayslipQuantityField, string>> & { hourlyRate?: number };
 
 const roundMoney = (amount: number) => Number(amount.toFixed(2));
 
 function amount(value?: string) {
   const parsed = parseFloat(String(value ?? '').replace(/[₱,]/g, ''));
   return Number.isFinite(parsed) ? roundMoney(parsed) : 0;
+}
+
+export function calculatePayslipLineAmount(saved: PayslipRatesSource, field: PayslipQuantityField, value: string) {
+  const quantity = Number(value.trim());
+  if (!Number.isFinite(quantity) || quantity < 0) return undefined;
+
+  const savedQuantity = Number(saved[field]);
+  const savedAmount = amount(saved[payslipQuantityAmounts[field]]);
+  const savedUnitRate = savedQuantity > 0 && savedAmount > 0 ? savedAmount / savedQuantity : undefined;
+  const regularHours = Number(saved.regularHours);
+  const basicPay = amount(saved.basicPayAmt);
+  const hourlyRate = saved.hourlyRate ?? (regularHours > 0 && basicPay > 0 ? basicPay / regularHours : undefined);
+
+  switch (field) {
+    case 'regularHours':
+      return hourlyRate === undefined ? undefined : roundMoney(quantity * hourlyRate);
+    case 'overtime': {
+      const overtimeRate = hourlyRate === undefined ? savedUnitRate : hourlyRate * regularOvertimeMultiplier;
+      return overtimeRate === undefined ? undefined : roundMoney(quantity * overtimeRate);
+    }
+    case 'tardinessMin':
+      return hourlyRate === undefined ? undefined : roundMoney(Math.round(quantity) / 60 * hourlyRate);
+    case 'undertimeHours':
+      return hourlyRate === undefined ? undefined : roundMoney(Math.round(quantity * 60) / 60 * hourlyRate);
+    default:
+      return savedUnitRate === undefined ? undefined : roundMoney(quantity * savedUnitRate);
+  }
 }
 
 export function netPayAfterDeductions(gross: number, deductions: number) {
