@@ -1033,9 +1033,6 @@ export default function Reports() {
                         <Typography fontWeight={700} sx={{ fontSize: '0.9rem', lineHeight: 1.2 }} noWrap>
                           {rt.label}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: active ? 'rgba(255,255,255,0.76)' : GREEN_UI.muted }}>
-                          Report category
-                        </Typography>
                       </Box>
                     </Box>
                     {loadingAll ? (
