@@ -31,7 +31,6 @@ import {
   Login,
   Search,
   AssignmentTurnedIn,
-  TrackChanges,
   Groups,
   Restaurant,
   Pool,
@@ -290,7 +289,7 @@ export default function LandingPage() {
     navigate(`/apply?position=${selectedPosition}`);
   };
 
-  const handleEmployeeLogin = () => {
+  const handleSignIn = () => {
     if (user) logout();
     navigate("/login?fresh=1");
   };
@@ -409,15 +408,12 @@ export default function LandingPage() {
                 Apply
               </Button>
               <Button sx={navButtonSx} onClick={() => navigate("/applicant")}>Applicant account</Button>
-              <Button sx={navButtonSx} onClick={() => navigate("/track")}>
-                Track
-              </Button>
             </Stack>
 
             <Button
               variant="contained"
               startIcon={<Login />}
-              onClick={handleEmployeeLogin}
+              onClick={handleSignIn}
               sx={{
                 px: { xs: 1.8, sm: 3 },
                 py: 1.15,
@@ -432,7 +428,7 @@ export default function LandingPage() {
                 },
               }}
             >
-              Employee Login
+              Sign In
             </Button>
           </Box>
         </Container>
@@ -500,51 +496,6 @@ export default function LandingPage() {
                 Discover career opportunities at Buenaventura Estate, submit your application online,
                 and track your status.
               </Typography>
-
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 4 }}>
-                
-                <Button
-                  size="large"
-                  variant="contained"
-                  startIcon={<AssignmentTurnedIn />}
-                  endIcon={<ArrowForward />}
-                  onClick={() => navigate("/apply")}
-                  fullWidth={isMobile}
-                  sx={{
-                    px: 4,
-                    py: 1.55,
-                    fontWeight: 950,
-                    textTransform: "none",
-                    background: "linear-gradient(135deg, #154f31 0%, #1F7A47 60%, #4fb474 100%)",
-                    boxShadow: "0 18px 36px rgba(31,122,71,0.28)",
-                  }}
-                >
-                  Click here to Apply for Job
-                </Button>
-
-                <Button
-                  size="large"
-                  variant="outlined"
-                  startIcon={<TrackChanges />}
-                  onClick={() => navigate("/track")}
-                  fullWidth={isMobile}
-                  sx={{
-                    px: 4,
-                    py: 1.55,
-                    fontWeight: 950,
-                    textTransform: "none",
-                    color: "#174f32",
-                    borderColor: "rgba(31,122,71,0.28)",
-                    bgcolor: "rgba(255,255,255,0.70)",
-                    "&:hover": {
-                      borderColor: "#1F7A47",
-                      bgcolor: "rgba(31,122,71,0.07)",
-                    },
-                  }}
-                >
-                  Track Application
-                </Button>
-              </Stack>
 
               <Grid
                 container
@@ -1088,22 +1039,6 @@ export default function LandingPage() {
                   }}
                 >
                   Start Application
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="large"
-                  startIcon={<TrackChanges />}
-                  onClick={() => navigate("/track")}
-                  sx={{
-                    borderColor: "rgba(255,255,255,0.55)",
-                    color: "#fff",
-                    py: 1.45,
-                    fontWeight: 950,
-                    textTransform: "none",
-                    "&:hover": { borderColor: "#fff", bgcolor: "rgba(255,255,255,0.09)" },
-                  }}
-                >
-                  Track Status
                 </Button>
               </Stack>
             </Grid>

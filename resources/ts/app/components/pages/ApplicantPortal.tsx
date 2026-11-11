@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Divider, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
-import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, LocationOn, Phone, Public, Save } from '@mui/icons-material';
+import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, LocationOn, Phone, Public, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
@@ -318,7 +318,10 @@ export default function ApplicantPortal() {
                     <Box aria-hidden="true" sx={profileIconSx}><Assignment /></Box>
                     <Typography component="h2" variant="h6" fontWeight={700}>Your applications</Typography>
                   </Stack>
-                  <Button onClick={() => window.location.reload()}>Refresh status</Button>
+                  <Stack direction="row" flexWrap="wrap" gap={1}>
+                    <Button component={Link} to="/track" variant="outlined" startIcon={<TrackChanges />}>Track Application</Button>
+                    <Button onClick={() => window.location.reload()}>Refresh status</Button>
+                  </Stack>
                 </Stack>
                 <Divider sx={{ mb: 2 }} />
                 {profileReady && applications.length === 0 && (

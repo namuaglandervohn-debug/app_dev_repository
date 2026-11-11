@@ -270,7 +270,7 @@ export default function TrackApplicationPage() {
       <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 } }}>
         <Button
           startIcon={<ArrowBackIosNew />}
-          onClick={() => navigate('/')}
+          onClick={() => navigate(user.role === 'applicant' ? '/applicant' : '/')}
           variant="contained"
           color="inherit"
           sx={{
