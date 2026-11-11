@@ -1,8 +1,7 @@
+import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Card,
-  CardContent,
   Typography,
   Box,
   Button,
@@ -18,7 +17,6 @@ import {
   EmojiEvents,
   Timelapse,
   TrendingUp,
-  DashboardCustomize,
   Apartment,
   CalendarMonth,
   ArrowForwardRounded,
@@ -130,113 +128,36 @@ export default function GMDashboard() {
       title: 'Active Employees',
       value: loading ? '…' : String(stats?.activeEmployees ?? 0),
       icon: <PeopleAlt />,
-      color: GREEN_UI.greenDark,
-      accent: 'rgba(58, 168, 101, 0.14)',
+      iconColor: GREEN_UI.greenDark,
+      iconBackground: 'rgba(58, 168, 101, 0.14)',
     },
     {
       title: 'For Interview',
       value: loading ? '…' : String(stats?.forInterviewCount ?? 0),
       icon: <PersonAddAlt1 />,
-      color: '#2f8f8b',
-      accent: 'rgba(47, 143, 139, 0.13)',
+      iconColor: '#2f8f8b',
+      iconBackground: 'rgba(47, 143, 139, 0.13)',
     },
     {
       title: 'Pending Evaluation Approvals',
       value: loading ? '…' : String(topEvaluations.length),
       icon: <TrendingUp />,
-      color: '#d9a441',
-      accent: 'rgba(217, 164, 65, 0.16)',
+      iconColor: '#d9a441',
+      iconBackground: 'rgba(217, 164, 65, 0.16)',
     },
     {
       title: 'Pending Requests',
       value: loading ? '…' : String(stats?.pendingRequests ?? 0),
       icon: <Timelapse />,
-      color: '#b73e2d',
-      accent: 'rgba(183, 62, 45, 0.13)',
+      iconColor: '#b73e2d',
+      iconBackground: 'rgba(183, 62, 45, 0.13)',
     },
   ];
 
 
   return (
-    <Box
-      sx={{
-        minHeight: '100%',
-        p: { xs: 1.5, sm: 2.25, md: 3 },
-        background: GREEN_UI.pageBg,
-        color: GREEN_UI.text,
-        borderRadius: { xs: 0, md: '32px' },
-      }}
-    >
-      {/* Header */}
-      <Paper
-        elevation={0}
-        sx={{
-          ...softCardSx,
-          p: { xs: 2, sm: 2.75, md: 3.25 },
-          mb: 2.5,
-          position: 'relative',
-          overflow: 'hidden',
-          background:
-            'linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(239,250,235,0.96) 60%, rgba(225,248,224,0.94) 100%)',
-          '&:before': {
-            content: '""',
-            position: 'absolute',
-            width: 260,
-            height: 260,
-            borderRadius: '50%',
-            right: -90,
-            top: -110,
-            background: 'rgba(76, 175, 80, 0.12)',
-          },
-          '&:after': {
-            content: '""',
-            position: 'absolute',
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            left: { xs: '72%', md: '46%' },
-            bottom: -95,
-            background: 'rgba(174, 222, 144, 0.18)',
-          },
-        }}
-      >
-        <Box
-          sx={{
-            position: 'relative',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: { xs: 'flex-start', md: 'center' },
-            gap: 2.5,
-            flexWrap: 'wrap',
-          }}
-        >
-          <Box sx={{ maxWidth: 720 }}>
-            <Chip
-              icon={<DashboardCustomize />}
-              label="General Manager Portal"
-              sx={{
-                mb: 1.5,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 600,
-                '& .MuiChip-icon': { color: GREEN_UI.greenDark },
-              }}
-            />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              sx={{
-                color: GREEN_UI.text,
-                fontSize: { xs: '1.55rem', sm: '2rem', md: '2.35rem' },
-                letterSpacing: '-0.045em',
-                lineHeight: 1.08,
-              }}
-            >
-              General Manager Dashboard
-            </Typography>
-          </Box>
-        </Box>
-      </Paper>
+    <Box sx={{ minWidth: 0 }}>
+      <DashboardHeader title="General Manager Dashboard" />
 
       {/* Loading */}
       {loading && (
@@ -248,53 +169,7 @@ export default function GMDashboard() {
         </Paper>
       )}
       {/* Stat Cards */}
-      <Grid container spacing={{ xs: 1.5, md: 2 }} sx={{ mb: 2.5 }}>
-        {statCards.map((stat, index) => (
-          <Grid key={index} size={{ xs: 12, sm: 6, md: 3 }} sx={{ display: 'flex' }}>
-            <Card
-              elevation={0}
-              sx={{
-                ...softCardSx,
-                width: '100%',
-                minHeight: 138,
-                transition: 'transform 180ms ease, box-shadow 180ms ease',
-                '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 24px 46px rgba(43, 91, 55, 0.14)' },
-              }}
-            >
-              <CardContent sx={{ p: { xs: 2, sm: 2.25 }, height: '100%', '&:last-child': { pb: { xs: 2, sm: 2.25 } } }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ color: GREEN_UI.muted, fontWeight: 600 }}>
-                      {stat.title}
-                    </Typography>
-                    <Typography
-                      variant="h4"
-                      fontWeight={700}
-                      sx={{ color: GREEN_UI.text, mt: 0.8, letterSpacing: '-0.045em' }}
-                    >
-                      {stat.value}
-                    </Typography>
-                  </Box>
-                  <Box
-                    sx={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: '18px',
-                      display: 'grid',
-                      placeItems: 'center',
-                      bgcolor: stat.accent,
-                      color: stat.color,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {stat.icon}
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+      <DashboardOverview metrics={statCards} />
 
       <Grid container spacing={{ xs: 1.5, md: 2.5 }}>
         {/* Applicants For Interview */}

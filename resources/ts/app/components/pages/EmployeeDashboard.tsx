@@ -1,8 +1,7 @@
+import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Card,
-  CardContent,
   Typography,
   Box,
   Button,
@@ -17,7 +16,6 @@ import {
   Assignment,
   Payments,
   Fingerprint,
-  DashboardRounded,
   ArrowForwardRounded,
   EventAvailableRounded,
   AccessTimeRounded,
@@ -208,194 +206,39 @@ export default function EmployeeDashboard() {
       title: 'Attendance Today',
       value: loading ? '…' : (todayAtt ? todayAtt.status : 'No entry'),
       icon: <Fingerprint />,
-      color: '#2F8F8B',
-      bg: '#e8f7f5',
+      iconColor: '#2F8F8B',
+      iconBackground: '#e8f7f5',
     },
     {
       title: 'Active Schedule',
       value: loading ? '…' : (mySchedule ? (mySchedule.outlet ?? mySchedule.week ?? 'Assigned') : 'No schedule'),
       icon: <CalendarMonth />,
-      color: GREEN_UI.greenDark,
-      bg: GREEN_UI.greenSoft,
+      iconColor: GREEN_UI.greenDark,
+      iconBackground: GREEN_UI.greenSoft,
     },
     {
       title: 'Pending Requests',
       value: loading ? '…' : String(pendingReqs),
       icon: <Assignment />,
-      color: '#9b6b00',
-      bg: '#fff7e0',
+      iconColor: '#9b6b00',
+      iconBackground: '#fff7e0',
     },
     {
       title: 'Latest Payslip',
       value: loading ? '...' : (latestPayslip ? 'Available' : 'No payslip'),
       icon: <Payments />,
-      color: '#6c3a8f',
-      bg: '#f3eaf9',
+      iconColor: '#6c3a8f',
+      iconBackground: '#f3eaf9',
     },
   ];
 
 
   return (
-    <Box
-      sx={{
-        minHeight: '100%',
-        mx: { xs: -2, sm: -3 },
-        my: { xs: -2, sm: -3 },
-        px: { xs: 2, sm: 3, md: 4 },
-        py: { xs: 2.5, sm: 3, md: 4 },
-        background: GREEN_UI.pageBg,
-        color: GREEN_UI.text,
-      }}
-    >
-      <Paper
-        elevation={0}
-        sx={{
-          ...softCardSx,
-          position: 'relative',
-          overflow: 'hidden',
-          p: { xs: 2.25, sm: 3, md: 3.5 },
-          mb: 3,
-        }}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            width: 220,
-            height: 220,
-            borderRadius: '50%',
-            bgcolor: 'rgba(58, 168, 101, 0.10)',
-            right: -72,
-            top: -112,
-          }}
-        />
-        <Box
-          sx={{
-            position: 'absolute',
-            width: 145,
-            height: 145,
-            borderRadius: '50%',
-            bgcolor: 'rgba(47, 143, 139, 0.10)',
-            right: 92,
-            bottom: -82,
-          }}
-        />
+    <Box sx={{ minWidth: 0 }}>
+      <DashboardHeader title={user?.name ? "Welcome back, " + user.name : "Employee Dashboard"} />
+      {loading && <LinearProgress aria-label="Loading employee dashboard" sx={{ mb: 2 }} />}
 
-        <Box
-          sx={{
-            position: 'relative',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: { xs: 'flex-start', md: 'center' },
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 2.5,
-          }}
-        >
-          <Box sx={{ minWidth: 0 }}>
-            <Chip
-              icon={<DashboardRounded />}
-              label="Employee Portal"
-              variant="outlined"
-              sx={{ ...softChipSx, mb: 1.5 }}
-            />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              sx={{
-                color: GREEN_UI.text,
-                letterSpacing: '-0.04em',
-                fontSize: { xs: '1.55rem', sm: '2rem', md: '2.35rem' },
-                lineHeight: 1.05,
-              }}
-            >
-              Welcome back, {user?.name}! 👋
-            </Typography>
-          </Box>
-
-          <Box
-            sx={{
-              display: 'flex',
-              gap: 1,
-              flexWrap: 'wrap',
-              justifyContent: { xs: 'flex-start', md: 'flex-end' },
-            }}
-          >
-          </Box>
-        </Box>
-
-        {loading && <LinearProgress sx={{ mt: 2.5, bgcolor: '#e7f3e7', '& .MuiLinearProgress-bar': { bgcolor: GREEN_UI.green } }} />}
-      </Paper>
-
-      <Grid container spacing={{ xs: 2, md: 2.5 }} sx={{ mb: 3 }}>
-        {statCards.map((stat, index) => (
-          <Grid key={index} size={{ xs: 12, sm: 6, md: 4, lg: 3 }} sx={{ display: 'flex' }}>
-            <Card
-              elevation={0}
-              sx={{
-                ...softCardSx,
-                width: '100%',
-                minHeight: 152,
-                transition: 'transform 180ms ease, box-shadow 180ms ease',
-                '&:hover': {
-                  transform: 'translateY(-3px)',
-                  boxShadow: '0 24px 60px rgba(43, 91, 55, 0.13)',
-                },
-              }}
-            >
-              <CardContent sx={{ p: { xs: 2, sm: 2.25 }, height: '100%', '&:last-child': { pb: { xs: 2, sm: 2.25 } } }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5 }}>
-                  <Box
-                    sx={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: '18px',
-                      bgcolor: stat.bg,
-                      color: stat.color,
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                      '& svg': { fontSize: 25 },
-                    }}
-                  >
-                    {stat.icon}
-                  </Box>
-                  <Chip
-                    label={`0${index + 1}`}
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#fbfef9',
-                      borderColor: GREEN_UI.border,
-                      color: GREEN_UI.muted,
-                    }}
-                  />
-                </Box>
-
-                <Typography
-                  variant="h5"
-                  fontWeight={700}
-                  title={String(stat.value)}
-                  sx={{
-                    mt: 2,
-                    mb: 0.45,
-                    color: GREEN_UI.text,
-                    fontSize: { xs: '1.35rem', sm: '1.45rem' },
-                    letterSpacing: '-0.03em',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stat.value}
-                </Typography>
-                <Typography variant="body2" fontWeight={600} sx={{ color: GREEN_UI.text }}>
-                  {stat.title}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+      <DashboardOverview metrics={statCards} />
 
       <Grid container spacing={{ xs: 2, md: 2.5 }}>
         {myAttendance.length > 0 && (

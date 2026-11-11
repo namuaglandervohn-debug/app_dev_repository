@@ -1,14 +1,12 @@
+import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
-  Grid,
   Paper,
   Table,
   TableBody,
@@ -355,106 +353,29 @@ export default function AccountingDashboard() {
       title: 'Payroll For Review',
       value: loading ? '…' : String(stats.payrollForReview),
       icon: <Timelapse />,
-      color: GREEN_UI.amber,
-      softColor: '#fff7e0',
+      iconColor: GREEN_UI.amber,
+      iconBackground: '#fff7e0',
     },
     {
       title: 'Payroll Released',
       value: loading ? '…' : String(stats.payrollReleased),
       icon: <TaskAlt />,
-      color: GREEN_UI.greenDark,
-      softColor: GREEN_UI.greenSoft,
+      iconColor: GREEN_UI.greenDark,
+      iconBackground: GREEN_UI.greenSoft,
     },
     {
       title: 'Payroll Items Queued',
       value: loading ? '...' : String(stats.payrollForReview + stats.payrollReleased),
       icon: <AccountBalanceWallet />,
-      color: GREEN_UI.teal,
-      softColor: '#e8f7f6',
+      iconColor: GREEN_UI.teal,
+      iconBackground: '#e8f7f6',
     },
   ], [loading, stats.payrollForReview, stats.payrollReleased]);
 
 
   return (
-    <Box
-      sx={{
-        minHeight: '100%',
-        p: { xs: 2, sm: 3, md: 4 },
-        background: GREEN_UI.pageBg,
-        color: GREEN_UI.text,
-      }}
-    >
-      <Paper
-        elevation={0}
-        sx={{
-          ...softCardSx,
-          overflow: 'hidden',
-          position: 'relative',
-          mb: 3,
-          background:
-            'linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(239,250,235,0.96) 60%, rgba(225,248,224,0.94) 100%)',
-          '&:before': {
-            content: '""',
-            position: 'absolute',
-            width: 260,
-            height: 260,
-            borderRadius: '50%',
-            right: -90,
-            top: -110,
-            background: 'rgba(76, 175, 80, 0.12)',
-          },
-          '&:after': {
-            content: '""',
-            position: 'absolute',
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            left: { xs: '72%', md: '46%' },
-            bottom: -95,
-            background: 'rgba(174, 222, 144, 0.18)',
-          },
-        }}
-      >
-        <Box
-          sx={{
-            position: 'relative',
-            p: { xs: 2.25, sm: 3, md: 3.5 },
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 2,
-            alignItems: { xs: 'flex-start', md: 'center' },
-            flexDirection: { xs: 'column', md: 'row' },
-          }}
-        >
-          <Box sx={{ minWidth: 0 }}>
-            <Chip
-              icon={<AccountBalanceWallet sx={{ fontSize: 17 }} />}
-              label="Accounting & Finance"
-              size="small"
-              sx={{
-                mb: 1.5,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 600,
-                border: `1px solid ${GREEN_UI.borderStrong}`,
-                '& .MuiChip-icon': { color: GREEN_UI.greenDark },
-              }}
-            />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              sx={{
-                color: GREEN_UI.text,
-                fontSize: { xs: '1.55rem', sm: '2rem', md: '2.35rem' },
-                letterSpacing: '-0.04em',
-                lineHeight: 1.05,
-              }}
-            >
-              Accounting & Finance Dashboard
-            </Typography>
-          </Box>
-        </Box>
-      </Paper>
+    <Box sx={{ minWidth: 0 }}>
+      <DashboardHeader title="Accounting & Finance Dashboard" />
 
       {error && (
         <Alert
@@ -470,83 +391,7 @@ export default function AccountingDashboard() {
         </Alert>
       )}
 
-      <Grid container spacing={{ xs: 2, md: 2.5 }} sx={{ mb: 3 }}>
-        {statCards.map((stat, index) => (
-          <Grid key={index} size={{ xs: 12, sm: 6, md: 4 }} sx={{ display: 'flex' }}>
-            <Card
-              elevation={0}
-              sx={{
-                ...innerCardSx,
-                width: '100%',
-                minHeight: 132,
-                transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: GREEN_UI.shadow,
-                  borderColor: GREEN_UI.borderStrong,
-                },
-              }}
-            >
-              <CardContent sx={{ height: '100%', p: { xs: 2, sm: 2.25 }, '&:last-child': { pb: { xs: 2, sm: 2.25 } } }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
-                  <Box
-                    sx={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: '18px',
-                      display: 'grid',
-                      placeItems: 'center',
-                      bgcolor: stat.softColor,
-                      color: stat.color,
-                      border: `1px solid ${GREEN_UI.border}`,
-                      flexShrink: 0,
-                      '& svg': { fontSize: 25 },
-                    }}
-                  >
-                    {stat.icon}
-                  </Box>
-                  <Box
-                    sx={{
-                      width: 34,
-                      height: 6,
-                      mt: 1.25,
-                      background: `linear-gradient(90deg, ${stat.color}, rgba(58, 168, 101, 0.08))`,
-                    }}
-                  />
-                </Box>
-
-                <Typography
-                  fontWeight={700}
-                  sx={{
-                    mt: 2,
-                    color: GREEN_UI.text,
-                    fontSize: { xs: '1.45rem', sm: '1.6rem' },
-                    lineHeight: 1.1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stat.value}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: GREEN_UI.muted,
-                    mt: 0.45,
-                    fontWeight: 700,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stat.title}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+      <DashboardOverview metrics={statCards} />
 
       <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 2, sm: 2.5, md: 3 } }}>
         <Box

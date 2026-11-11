@@ -1,11 +1,10 @@
+import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   CircularProgress,
   Grid,
   LinearProgress,
@@ -351,13 +350,6 @@ const softCardSx = {
   boxShadow: GREEN_UI.shadow,
 };
 
-const innerCardSx = {
-  borderRadius: "20px",
-  border: `1px solid ${GREEN_UI.border}`,
-  background: GREEN_UI.cardBgSoft,
-  boxShadow: GREEN_UI.shadowSoft,
-};
-
 const pillButtonSx = {
   borderRadius: 999,
   textTransform: "none",
@@ -481,50 +473,50 @@ export default function HRDashboard() {
         title: "Active Employees",
         value: loading ? "…" : String(stats.activeEmployees),
         icon: <PeopleAlt />,
-        color: "#2F9E5E",
-        softColor: "#E5F7EA",
+        iconColor: "#2F9E5E",
+        iconBackground: "#E5F7EA",
       },
       {
         title: "Pending Applications",
         value: loading ? "…" : String(stats.pendingApplications),
         icon: <PersonAddAlt1 />,
-        color: "#ED8A1F",
-        softColor: "#FFF1DE",
+        iconColor: "#ED8A1F",
+        iconBackground: "#FFF1DE",
       },
       {
         title: "For Interview",
         value: loading ? "…" : String(stats.forInterviewCount),
         icon: <EventAvailable />,
-        color: "#2B9C95",
-        softColor: "#DFF7F5",
+        iconColor: "#2B9C95",
+        iconBackground: "#DFF7F5",
       },
       {
         title: "Pending HR Validation",
         value: loading ? "…" : String(stats.supervisorApprovedRequests),
         icon: <PendingActions />,
-        color: "#8B5AD8",
-        softColor: "#F0E9FF",
+        iconColor: "#8B5AD8",
+        iconBackground: "#F0E9FF",
       },
       {
         title: "On Duty / On-Call",
         value: loading ? "..." : String(stats.onDutyOrOnCall),
         icon: <EventAvailable />,
-        color: "#2B9C95",
-        softColor: "#DFF7F5",
+        iconColor: "#2B9C95",
+        iconBackground: "#DFF7F5",
       },
       {
         title: "Attendance Issues",
         value: loading ? "…" : String(stats.attendanceIssues),
         icon: <WarningAmber />,
-        color: "#D85C5C",
-        softColor: "#FFEAEA",
+        iconColor: "#D85C5C",
+        iconBackground: "#FFEAEA",
       },
       {
         title: "Last Payroll Generated",
         value: loading ? "..." : (stats.lastPayrollGenerated ?? "No payroll yet"),
         icon: <AccountBalance />,
-        color: "#2E7BCF",
-        softColor: "#E7F0FF",
+        iconColor: "#2E7BCF",
+        iconBackground: "#E7F0FF",
       },
       {
         title: "Top Performer",
@@ -534,8 +526,8 @@ export default function HRDashboard() {
             ? `${stats.topEvaluee} (${stats.topScore?.toFixed(1) ?? "0.0"}%)`
             : "No data",
         icon: <EmojiEvents />,
-        color: "#B98913",
-        softColor: "#FFF4D8",
+        iconColor: "#B98913",
+        iconBackground: "#FFF4D8",
       },
     ],
     [loading, stats],
@@ -547,157 +539,15 @@ export default function HRDashboard() {
     : "Waiting for live data";
 
   return (
-    <Box
-      sx={{
-        minHeight: "100%",
-        p: { xs: 1.5, sm: 2.25, md: 3 },
-        background: GREEN_UI.pageBg,
-        color: GREEN_UI.text,
-        borderRadius: { xs: 0, md: "32px" },
-      }}
-    >
-      <Paper
-        elevation={0}
-        sx={{
-          ...softCardSx,
-          position: "relative",
-          overflow: "hidden",
-          mb: 2.5,
-          p: { xs: 2, sm: 2.75, md: 3.25 },
-          background:
-            "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(239,250,235,0.96) 60%, rgba(225,248,224,0.94) 100%)",
-        }}
-      >
-        <Box
-          sx={{
-            position: "absolute",
-            top: -80,
-            right: -60,
-            width: 220,
-            height: 220,
-            borderRadius: "50%",
-            background: "rgba(89, 188, 121, 0.16)",
-            filter: "blur(2px)",
-          }}
-        />
-        <Box
-          sx={{
-            position: "absolute",
-            bottom: -95,
-            right: 90,
-            width: 190,
-            height: 190,
-            borderRadius: "50%",
-            background: "rgba(185, 230, 162, 0.20)",
-          }}
-        />
-
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          spacing={{ xs: 2, md: 3 }}
-          alignItems={{ xs: "flex-start", md: "center" }}
-          justifyContent="space-between"
-          sx={{ position: "relative", zIndex: 1 }}
-        >
-          <Box sx={{ maxWidth: 720 }}>
-            <Box
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 1,
-                px: 1.4,
-                py: 0.65,
-                mb: 1.5,
-                borderRadius: 0.8,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                border: `1px solid ${GREEN_UI.borderStrong}`,
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                letterSpacing: "0.02em",
-              }}
-            >
-              <Box
-                sx={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  bgcolor: GREEN_UI.green,
-                }}
-              />
-              Live HR/Admin Workspace
-            </Box>
-
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              sx={{
-                color: GREEN_UI.text,
-                lineHeight: 1.08,
-                letterSpacing: "-0.045em",
-                fontSize: { xs: "1.55rem", sm: "2rem", md: "2.35rem" },
-              }}
-            >
-              HR / Admin Dashboard
-            </Typography>
-          </Box>
-
-          <Paper
-            elevation={0}
-            sx={{
-              width: { xs: "100%", md: 260 },
-              ...innerCardSx,
-              p: 2,
-            }}
-          >
-            <Typography
-              sx={{
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                color: GREEN_UI.muted,
-                mb: 1,
-              }}
-            >
-              SYSTEM STATUS
-            </Typography>
-            <Stack direction="row" spacing={1.3} alignItems="center">
-              {(loading || refreshing) && (
-                <CircularProgress
-                  size={22}
-                  thickness={4}
-                  sx={{ color: GREEN_UI.green }}
-                />
-              )}
-              {!(loading || refreshing) && (
-                <Box
-                  sx={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    bgcolor: GREEN_UI.greenSoft,
-                    border: `6px solid ${GREEN_UI.green}`,
-                  }}
-                />
-              )}
-              <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  sx={{
-                    color: GREEN_UI.text,
-                    fontWeight: 700,
-                    fontSize: "0.95rem",
-                  }}
-                >
-                  {loading
-                    ? "Loading live stats…"
-                    : refreshing
-                      ? "Refreshing live stats…"
-                      : "Live data synced"}
-                </Typography>
-              </Box>
-            </Stack>
-          </Paper>
+    <Box sx={{ minWidth: 0 }}>
+      <DashboardHeader title="HR / Admin Dashboard">
+        <Stack direction="row" gap={1} alignItems="center" role="status">
+          {(loading || refreshing) && <CircularProgress size={15} />}
+          <Typography variant="body2" color="text.secondary">
+            {loading ? "Loading live stats…" : refreshing ? "Refreshing live stats…" : "Live data synced"}
+          </Typography>
         </Stack>
-      </Paper>
+      </DashboardHeader>
 
       {errorMessage && !loading && (
         <Alert
@@ -725,109 +575,7 @@ export default function HRDashboard() {
         </Alert>
       )}
 
-      <Grid
-        container
-        spacing={{ xs: 2, md: 2.5 }}
-        sx={{ mb: { xs: 2.5, md: 3 } }}
-      >
-        {statCards.map((stat, index) => (
-          <Grid
-            key={stat.title}
-            size={{
-              xs: 12,
-              sm: 6,
-              md: 4,
-              lg: 3,
-            }}
-            sx={{ display: "flex" }}
-          >
-            <Card
-              elevation={0}
-              sx={{
-                position: "relative",
-                overflow: "hidden",
-                width: "100%",
-                minHeight: 126,
-                ...softCardSx,
-                transition:
-                  "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
-                "&::before": {
-                  content: '""',
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 4,
-                  bgcolor: stat.color,
-                  opacity: 0.86,
-                },
-                "&:hover": {
-                  transform: "translateY(-3px)",
-                  boxShadow: "0 22px 48px rgba(43, 91, 55, 0.13)",
-                  borderColor: GREEN_UI.borderStrong,
-                },
-              }}
-            >
-              <CardContent sx={{ p: { xs: 2, md: 2.25 }, height: "100%" }}>
-                <Stack
-                  direction="row"
-                  spacing={1.6}
-                  alignItems="flex-start"
-                  justifyContent="space-between"
-                >
-                  <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography
-                      sx={{
-                        color: GREEN_UI.muted,
-                        fontSize: "0.78rem",
-                        fontWeight: 600,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        mb: 1.1,
-                      }}
-                    >
-                      {stat.title}
-                    </Typography>
-                    <Typography
-                      fontWeight={700}
-                      sx={{
-                        color: GREEN_UI.text,
-                        fontSize: {
-                          xs: "2rem",
-                          md: "2.25rem",
-                        },
-                        lineHeight: 1.04,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {stat.value}
-                    </Typography>
-                  </Box>
-
-                  <Box
-                    sx={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: "16px",
-                      display: "grid",
-                      placeItems: "center",
-                      color: stat.color,
-                      bgcolor: stat.softColor,
-                      flexShrink: 0,
-                      boxShadow: `0 10px 26px ${stat.color}24`,
-                      "& svg": { fontSize: 27 },
-                    }}
-                  >
-                    {stat.icon}
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+      <DashboardOverview metrics={statCards} />
 
       {false && (
       <Grid container spacing={{ xs: 2, md: 2.5 }}>

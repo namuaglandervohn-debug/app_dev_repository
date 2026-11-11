@@ -1,3 +1,4 @@
+import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -536,22 +537,22 @@ export default function SupervisorDashboard() {
         title: 'Pending Requests',
         value: loading ? '…' : String(stats.pendingRequests),
         icon: <Timelapse />,
-        bg: GREEN_UI.amberSoft,
-        color: GREEN_UI.amberDark,
+        iconBackground: GREEN_UI.amberSoft,
+        iconColor: GREEN_UI.amberDark,
       },
       {
         title: 'Published Schedules',
         value: loading ? '…' : String(stats.publishedSchedules),
         icon: <EventAvailable />,
-        bg: GREEN_UI.greenSoft,
-        color: GREEN_UI.greenDark,
+        iconBackground: GREEN_UI.greenSoft,
+        iconColor: GREEN_UI.greenDark,
       },
       {
         title: 'Evaluations Submitted',
         value: loading ? '…' : String(stats.evaluationsSubmitted),
         icon: <QueryStats />,
-        bg: GREEN_UI.tealSoft,
-        color: GREEN_UI.tealDark,
+        iconBackground: GREEN_UI.tealSoft,
+        iconColor: GREEN_UI.tealDark,
       },
     ],
     [loading, stats],
@@ -563,87 +564,8 @@ export default function SupervisorDashboard() {
     : 'Waiting for live data';
 
   return (
-    <Box
-      sx={{
-        minHeight: '100%',
-        p: { xs: 1.5, sm: 2.25, md: 3 },
-        background: GREEN_UI.pageBg,
-        color: GREEN_UI.text,
-        borderRadius: { xs: 0, md: '32px' },
-      }}
-    >
-      <Paper
-        elevation={0}
-        sx={{
-          ...softCardSx,
-          p: { xs: 2, sm: 2.75, md: 3.25 },
-          mb: 2.5,
-          position: 'relative',
-          overflow: 'hidden',
-          background:
-            'linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(239,250,235,0.96) 60%, rgba(225,248,224,0.94) 100%)',
-          '&:before': {
-            content: '""',
-            position: 'absolute',
-            width: 260,
-            height: 260,
-            borderRadius: '50%',
-            right: -90,
-            top: -110,
-            background: 'rgba(76, 175, 80, 0.12)',
-          },
-          '&:after': {
-            content: '""',
-            position: 'absolute',
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            left: { xs: '70%', md: '44%' },
-            bottom: -95,
-            background: 'rgba(174, 222, 144, 0.18)',
-          },
-        }}
-      >
-        <Box
-          sx={{
-            position: 'relative',
-            zIndex: 1,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: { xs: 'flex-start', md: 'center' },
-            flexWrap: 'wrap',
-            gap: 2,
-          }}
-        >
-          <Box sx={{ maxWidth: 730 }}>
-            <Chip
-              icon={<TaskAlt sx={{ fontSize: '1rem !important' }} />}
-              label="Supervisor Workspace"
-              size="small"
-              sx={{
-                mb: 1.2,
-                bgcolor: GREEN_UI.greenSoft,
-                color: GREEN_UI.greenDark,
-                fontWeight: 700,
-                '& .MuiChip-icon': { color: GREEN_UI.greenDark },
-              }}
-            />
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              sx={{
-                fontSize: { xs: '1.55rem', sm: '2rem', md: '2.35rem' },
-                color: GREEN_UI.text,
-                letterSpacing: '-0.04em',
-                lineHeight: 1.08,
-                mb: 0.75,
-              }}
-            >
-              Supervisor Dashboard
-            </Typography>
-          </Box>
-        </Box>
-      </Paper>
+    <Box sx={{ minWidth: 0 }}>
+      <DashboardHeader title="Supervisor Dashboard" />
 
       {errorMessage && !loading && (
         <Alert
@@ -659,39 +581,7 @@ export default function SupervisorDashboard() {
         </Alert>
       )}
 
-      <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
-        {statCards.map((stat) => (
-          <Grid key={stat.title} size={{ xs: 12, sm: 6, md: 4 }}>
-            <Paper
-              elevation={0}
-              sx={{
-                ...softCardSx,
-                p: 2,
-                minHeight: 126,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                transition: 'transform 180ms ease, box-shadow 180ms ease',
-                '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 22px 48px rgba(43, 91, 55, 0.13)' },
-              }}
-            >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
-                <Box>
-                  <Typography variant="body2" sx={{ color: GREEN_UI.muted, fontWeight: 600 }}>
-                    {stat.title}
-                  </Typography>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: GREEN_UI.text, mt: 0.5, letterSpacing: '-0.04em' }}>
-                    {stat.value}
-                  </Typography>
-                </Box>
-                <Box sx={{ ...iconTileSx, bgcolor: stat.bg, color: stat.color }}>
-                  {stat.icon}
-                </Box>
-              </Box>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
+      <DashboardOverview metrics={statCards} />
 
       <Grid container spacing={2.5} alignItems="stretch">
         <Grid size={{ xs: 12, lg: 8 }}>

@@ -4,6 +4,8 @@ import { Alert, Box, Button, CircularProgress, Container, Grid, MenuItem, Paper,
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
+import BrandLogo from '../BrandLogo';
+import { DashboardHeader } from '../layouts/DashboardOverview';
 import { APPLICANT_COUNTRIES, APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, BARANGAYS_BY_CITY, ZIP_BY_CITY } from '../../lib/applicantAddress';
 
@@ -82,23 +84,74 @@ export default function ApplicantPortal() {
   };
   if (loading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
   if (user && user.role !== 'applicant') return <Navigate to="/dashboard" replace />;
+  if (user) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+        <Box component="header" sx={{ bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+          <Container maxWidth="lg">
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ minHeight: 60 }}>
+              <Stack direction="row" alignItems="center" gap={1}>
+                <BrandLogo size={36} />
+                <Typography fontWeight={750}>Buenaventura HRIS</Typography>
+              </Stack>
+              <Button onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setApplications([]); logout(); }}>Sign out</Button>
+            </Stack>
+          </Container>
+        </Box>
+        <Container component="main" maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
+          <DashboardHeader title="Applicant account">
+            <Stack direction="row" flexWrap="wrap" gap={1}>
+              <Button component={Link} to="/careers">Careers</Button>
+              <Button component={Link} to={next} variant="contained" disabled={!profileReady}>Apply for a job</Button>
+            </Stack>
+          </DashboardHeader>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
+          <Grid container spacing={2} alignItems="flex-start">
+            <Grid size={{ xs: 12, md: 7 }}>
+              <Paper component="section" variant="outlined" sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 2 }}>
+                <Typography component="h2" variant="h6" fontWeight={750} sx={{ mb: 2 }}>My profile</Typography>
+                {profileReady && (
+                  <Box component="form" onSubmit={submit}>
+                    {personalFields}
+                    <Button type="submit" variant="contained" disabled={busy} sx={{ mt: 2 }}>{busy ? 'Please wait...' : 'Save profile'}</Button>
+                  </Box>
+                )}
+                {!profileReady && !error && <CircularProgress size={24} aria-label="Loading applicant profile" />}
+              </Paper>
+            </Grid>
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Paper component="section" variant="outlined" sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 2 }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1.5 }}>
+                  <Typography component="h2" variant="h6" fontWeight={750}>Your applications</Typography>
+                  <Button onClick={() => window.location.reload()}>Refresh status</Button>
+                </Stack>
+                {applications.length === 0 && <Typography color="text.secondary">No applications submitted yet.</Typography>}
+                {profileReady && applications.map(app => (
+                  <Paper key={app.applicant_id} variant="outlined" sx={{ p: 1.5, mt: 1.25, borderRadius: 2 }}>
+                    <Typography fontWeight={700}>{app.position_applied} - {app.status}</Typography>
+                    <Typography variant="body2" color="text.secondary">{app.applicant_id}</Typography>
+                    <Button component={Link} to={`/track?id=${encodeURIComponent(app.applicant_id)}`} sx={{ mt: 0.5 }}>View application status</Button>
+                  </Paper>
+                ))}
+              </Paper>
+            </Grid>
+          </Grid>
+        </Container>
+      </Box>
+    );
+  }
   return <AuthBackground><Container maxWidth="md" sx={{ py: 4 }}><Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 5 }}>
     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography variant="h5" fontWeight={700}>Applicant account</Typography><Button component={Link} to="/careers">Careers</Button></Stack>
     <Typography sx={{ mb: 3 }}>Create your profile once. Review and reuse it whenever you apply for another position.</Typography>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}{notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
-    {!user && <Tabs value={mode} onChange={(_, value) => { setMode(value); setError(''); }} sx={{ mb: 3 }}><Tab label="Sign in" /><Tab label="Create account" /></Tabs>}
+    <Tabs value={mode} onChange={(_, value) => { setMode(value); setError(''); }} sx={{ mb: 3 }}><Tab label="Sign in" /><Tab label="Create account" /></Tabs>
     <Box component="form" onSubmit={submit}><Stack spacing={3}>
-      {(!user || profileReady) && <>
-        {!user && <><TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy} /><TextField label="Password" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode ? 'new-password' : 'current-password'} inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy} /></>}
-        {(user || mode === 1) && personalFields}
-        <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : user ? 'Save profile' : mode === 1 ? 'Create applicant account' : 'Sign in'}</Button>
-      </>}
-      {user && !profileReady && !error && <CircularProgress />}
+      <TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy} />
+      <TextField label="Password" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode ? 'new-password' : 'current-password'} inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy} />
+      {mode === 1 && personalFields}
+      <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : mode === 1 ? 'Create applicant account' : 'Sign in'}</Button>
     </Stack></Box>
-    {!user && mode === 0 && <Button disabled={busy} onClick={() => void resendConfirmation()} sx={{ mt: 1 }}>Resend confirmation email</Button>}
-    {user && <><Stack direction="row" spacing={1} sx={{ my: 3 }}><Button component={Link} to={next} variant="contained" disabled={!profileReady}>Apply for a job</Button><Button onClick={() => window.location.reload()}>Refresh status</Button><Button onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setApplications([]); logout(); }}>Sign out</Button></Stack>
-      <Typography variant="h6">Your applications</Typography>{applications.length === 0 && <Typography>No applications submitted yet.</Typography>}
-      {profileReady && applications.map(app => <Paper key={app.applicant_id} variant="outlined" sx={{ p: 2, mt: 1 }}><Typography fontWeight={600}>{app.position_applied} - {app.status}</Typography><Typography variant="body2">{app.applicant_id}</Typography><Button component={Link} to={`/track?id=${encodeURIComponent(app.applicant_id)}`}>View application status</Button></Paper>)}
-    </>}
+    {mode === 0 && <Button disabled={busy} onClick={() => void resendConfirmation()} sx={{ mt: 1 }}>Resend confirmation email</Button>}
   </Paper></Container></AuthBackground>;
 }
