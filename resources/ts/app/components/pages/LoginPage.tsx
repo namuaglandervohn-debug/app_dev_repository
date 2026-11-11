@@ -231,33 +231,6 @@ export default function LoginPage() {
               >
                 Human Resource Information System
               </Typography>
-
-              <Typography
-                align="center"
-                sx={{
-                  color: "#65766A",
-                  fontSize: { xs: "0.86rem", sm: "0.96rem" },
-                  fontWeight: 700,
-                  lineHeight: 1.5,
-                }}
-              >
-                Employee Management System
-              </Typography>
-
-              <Typography
-                align="center"
-                variant="caption"
-                sx={{
-                  maxWidth: 420,
-                  color: "#8A978D",
-                  fontSize: "0.72rem",
-                  fontWeight: 700,
-                  letterSpacing: 0.25,
-                  lineHeight: 1.45,
-                }}
-              >
-                {COMPANY.address}
-              </Typography>
             </Stack>
 
             {error && (
