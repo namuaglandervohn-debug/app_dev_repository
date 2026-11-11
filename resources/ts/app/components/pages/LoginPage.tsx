@@ -10,7 +10,6 @@ import {
   Box,
   Alert,
   MenuItem,
-  Divider,
   InputAdornment,
   IconButton,
   Stack,
@@ -18,7 +17,6 @@ import {
   CircularProgress,
 } from "@mui/material";
 import {
-  Lock,
   Search,
   Visibility,
   VisibilityOff,
@@ -260,31 +258,6 @@ export default function LoginPage() {
                 {COMPANY.address}
               </Typography>
             </Stack>
-
-            <Divider
-              sx={{
-                mb: 3,
-                borderColor: "rgba(46, 125, 50, 0.12)",
-                "&::before, &::after": {
-                  borderColor: "rgba(46, 125, 50, 0.12)",
-                },
-              }}
-            >
-              <Chip
-                icon={<Lock sx={{ fontSize: 15, color: "#006B3C !important" }} />}
-                label="Employee Sign In"
-                size="small"
-                sx={{
-                  height: 30,
-                  bgcolor: "rgba(221,245,229,0.95)",
-                  color: "#006B3C",
-                  border: "1px solid rgba(45,168,97,0.22)",
-                  fontSize: "0.74rem",
-                  fontWeight: 700,
-                  "& .MuiChip-label": { px: 1.1 },
-                }}
-              />
-            </Divider>
 
             {error && (
               <Alert
