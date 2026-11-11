@@ -7,7 +7,7 @@ import { readableErrorMessage } from '../resources/ts/app/lib/apiError.ts';
 const payload = { applicant_id: 'APP-2026-0016', email: 'applicant@example.com', name: 'Applicant', position: 'Staff', status: 'Under Review', note: 'Submitted: Resume, Birth Certificate\nHR note: ready for review', interview_date: '', interview_time: '', interview_location: '' };
 async function invoke(fetcher, body = payload, env = { RESEND_API_KEY: ' test-key\n' }, method = 'POST') {
   const response = { status(code) { this.code = code; return this; }, setHeader() {}, end(raw) { this.body = JSON.parse(raw); } };
-  await handleStatusEmail({ method, body }, response, { fetcher, env });
+  await handleStatusEmail({ method, body }, response, { fetcher, env, authorize: async () => 200 });
   return response;
 }
 
@@ -28,7 +28,7 @@ test('Save Requirements email includes the checklist note, applicant ID, positio
 });
 
 test('renders missing requirements, interview details and terminal statuses safely', async () => {
-  for (const status of ['Missing Requirements', 'For Interview', 'Not Qualified', 'Archived']) {
+  for (const status of ['Missing Requirements', 'For Interview', 'Not Qualified', 'Not Hired', 'Archived']) {
     const response = await invoke(async (_url, options) => {
       const mail = JSON.parse(options.body);
       assert.ok(mail.text.includes(status));
@@ -52,6 +52,16 @@ test('rejects invalid request bodies before contacting the provider', async () =
   assert.equal((await invoke(neverFetch, payload, {})).code, 503);
 });
 
+test('requires a staff session before sending a hiring outcome', async () => {
+  const response = { status(code) { this.code = code; return this; }, setHeader() {}, end(raw) { this.body = JSON.parse(raw); } };
+  await handleStatusEmail({ method: 'POST', body: { ...payload, status: 'Not Hired' } }, response, {
+    env: { RESEND_API_KEY: 'test-key' },
+    fetcher: () => assert.fail('Provider must not be called without a session'),
+  });
+  assert.equal(response.code, 401);
+  assert.equal(response.body.sent, false);
+});
+
 test('allows a generated checklist note longer than 1000 characters', async () => {
   const response = await invoke(async () => Response.json({ id: 'mail-id' }), { ...payload, note: 'Detailed checklist. '.repeat(100) });
   assert.equal(response.code, 200);
@@ -67,16 +77,16 @@ test('provider objects, malformed responses and connection failures return reada
 });
 
 test('client flattens object errors and identifies a missing hosted endpoint', async () => {
-  await assert.rejects(sendApplicationStatusEmail(payload, async () => Response.json({ error: { message: 'Email rejected.' } }, { status: 502 })), /Email rejected\./);
-  await assert.rejects(sendApplicationStatusEmail(payload, async () => new Response('NOT_FOUND', { status: 404 })), /status email endpoint is unavailable/);
+  await assert.rejects(sendApplicationStatusEmail(payload, 'staff-token', async () => Response.json({ error: { message: 'Email rejected.' } }, { status: 502 })), /Email rejected\./);
+  await assert.rejects(sendApplicationStatusEmail(payload, 'staff-token', async () => new Response('NOT_FOUND', { status: 404 })), /status email endpoint is unavailable/);
   assert.equal(readableErrorMessage({ message: { error: { message: 'Actual error' } } }, 'Fallback'), 'Actual error');
   assert.equal(readableErrorMessage({}, 'Fallback'), 'Fallback');
 });
 
 test('client only reports success when sending was acknowledged', async () => {
-  await sendApplicationStatusEmail(payload, async () => Response.json({ sent: true }));
-  await sendApplicationStatusEmail(payload, async () => Response.json({ resend: { id: 'legacy-laravel-id' } }));
+  await sendApplicationStatusEmail(payload, 'staff-token', async () => Response.json({ sent: true }));
+  await sendApplicationStatusEmail(payload, 'staff-token', async () => Response.json({ resend: { id: 'legacy-laravel-id' } }));
   for (const response of [Response.json({ sent: false }), new Response('<html>SPA fallback</html>')]) {
-    await assert.rejects(sendApplicationStatusEmail(payload, async () => response), /did not confirm/);
+    await assert.rejects(sendApplicationStatusEmail(payload, 'staff-token', async () => response), /did not confirm/);
   }
 });

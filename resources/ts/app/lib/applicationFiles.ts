@@ -1,5 +1,14 @@
 const _fileStore = new Map<string, any>();
 
+export function fileToDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read the file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function saveFile(appId: string, fileData: {
   resumeFileName?: string | null;
   resumeFileData?: string | null;

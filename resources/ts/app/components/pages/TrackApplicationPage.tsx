@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import AuthBackground from '../AuthBackground';
 import { supabase } from '../../lib/supabaseClient';
+import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 
 interface ApplicationStatus {
   id: string;
@@ -44,7 +45,7 @@ interface ApplicationStatus {
   position: string;
   email: string;
   phone: string;
-  status: 'Submitted' | 'Under Review' | 'Missing Requirements' | 'For Interview' | 'Hired' | 'Not Qualified';
+  status: 'Submitted' | 'Under Review' | 'Missing Requirements' | 'For Interview' | 'Hired' | 'Not Qualified' | 'Not Hired' | 'Archived';
   dateApplied: string;
   // Interview fields set by HR
   interviewDate?: string;
@@ -63,15 +64,18 @@ const STATUS_COLORS: Record<string, any> = {
   'For Interview': 'info',
   Hired: 'success',
   'Not Qualified': 'error',
+  'Not Hired': 'error',
 };
 
 const STATUS_MESSAGES: Record<string, string> = {
   Submitted: 'Your application has been received and is in the queue for review.',
   'Under Review': 'Your application is currently being reviewed by our HR team.',
-  'Missing Requirements': 'Additional documents are required to complete your application. Please contact HR.',
+  'Missing Requirements': 'Open your applicant account to view and upload the requested documents.',
   'For Interview': 'Congratulations! You have been selected for an interview. Please see your schedule below.',
   Hired: 'Congratulations! You have been selected to join Buenaventura Estate.',
   'Not Qualified': 'Thank you for your interest. Unfortunately, you do not meet the requirements for this position.',
+  'Not Hired': 'Thank you for attending the interview. We will not be moving forward with your application.',
+  Archived: 'This application has been archived.',
 };
 
 const formatTime = (time?: string) => {
@@ -92,7 +96,7 @@ const formatTime = (time?: string) => {
 const getStatusSeverity = (status: ApplicationStatus['status']) => {
   if (status === 'Hired') return 'success';
   if (status === 'For Interview') return 'info';
-  if (status === 'Not Qualified') return 'error';
+  if (status === 'Not Qualified' || status === 'Not Hired') return 'error';
   if (status === 'Missing Requirements') return 'warning';
   return 'info';
 };
@@ -189,7 +193,7 @@ export default function TrackApplicationPage() {
         position: data.position_applied ?? '',
         email: data.email ?? '',
         phone: data.phone_number ?? '',
-        status: data.status ?? 'Submitted',
+        status: data.is_archived ? 'Archived' : data.status ?? 'Submitted',
         dateApplied: data.created_at ? new Date(data.created_at).toLocaleDateString() : '',
         interviewDate: data.interview_date ?? '',
         interviewTime: data.interview_time ?? '',
@@ -514,12 +518,12 @@ export default function TrackApplicationPage() {
                       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={1}>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 700, fontSize: 14.5 }}>
-                            {applicationData.status}
+                            {recruitmentStatusLabel(applicationData.status)}
                           </Typography>
                           <Typography variant="body2" sx={{ fontSize: 13.5 }}>{STATUS_MESSAGES[applicationData.status]}</Typography>
                         </Box>
                         <Chip
-                          label={applicationData.status}
+                          label={recruitmentStatusLabel(applicationData.status)}
                           color={STATUS_COLORS[applicationData.status]}
                           size="small"
                           sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, borderRadius: '999px', fontWeight: 600 }}
@@ -543,7 +547,7 @@ export default function TrackApplicationPage() {
                           label="Current Status"
                           chip={
                             <Chip
-                              label={applicationData.status}
+                              label={recruitmentStatusLabel(applicationData.status)}
                               color={STATUS_COLORS[applicationData.status]}
                               size="small"
                               sx={{ mt: 0.25, borderRadius: '999px', fontWeight: 600 }}

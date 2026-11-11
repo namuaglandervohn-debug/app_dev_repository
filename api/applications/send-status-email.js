@@ -1,12 +1,39 @@
 import { renderApplicationStatusEmail } from '../../lib/emails/application-status.js';
+import { createClient } from '@supabase/supabase-js';
 
 const sendJson = (response, status, body) => {
   response.status(status).setHeader('Content-Type', 'application/json');
   response.end(JSON.stringify(body));
 };
-const STATUSES = ['Submitted', 'Under Review', 'Missing Requirements', 'For Interview', 'Hired', 'Not Qualified', 'Archived'];
+const STATUSES = ['Submitted', 'Under Review', 'Missing Requirements', 'For Interview', 'Hired', 'Not Qualified', 'Not Hired', 'Archived'];
 
-export async function handleStatusEmail(request, response, { env = process.env, fetcher = fetch } = {}) {
+async function authorizeStatusEmail(request, data, env) {
+  const token = /^Bearer\s+(\S+)$/i.exec(request.headers?.authorization ?? '')?.[1];
+  if (!token) return 401;
+  const url = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return 503;
+  const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: identity, error: authError } = await admin.auth.getUser(token);
+  if (authError || !identity.user?.email) return 401;
+
+  const email = identity.user.email.toLowerCase();
+  const staffQuery = () => admin.from('user_accounts').select('email,role').eq('is_active', true);
+  let staff = await staffQuery().eq('auth_user_id', identity.user.id).maybeSingle();
+  if (!staff.error && !staff.data) {
+    staff = await staffQuery().eq('email', email).is('auth_user_id', null).maybeSingle();
+  }
+  if (staff.error) return 503;
+  if (staff.data?.email.toLowerCase() !== email
+    || !['hr', 'hr_admin', 'gm', 'general_manager'].includes(staff.data.role)) return 403;
+
+  const result = await admin.from('applicants').select('email,status').eq('applicant_id', data.applicant_id).maybeSingle();
+  if (result.error) return 503;
+  if (result.data?.email.toLowerCase() !== data.email || result.data?.status !== data.status) return 409;
+  return 200;
+}
+
+export async function handleStatusEmail(request, response, { env = process.env, fetcher = fetch, authorize = authorizeStatusEmail } = {}) {
   response.setHeader('Cache-Control', 'no-store');
   if (request.method !== 'POST') return sendJson(response, 405, { sent: false, message: 'Method not allowed.' });
   let body;
@@ -33,6 +60,21 @@ export async function handleStatusEmail(request, response, { env = process.env, 
   }
   const apiKey = String(env.RESEND_API_KEY ?? '').trim();
   if (!apiKey) return sendJson(response, 503, { sent: false, message: 'Status email is not configured on this server. Set RESEND_API_KEY and redeploy.' });
+  let permission;
+  try {
+    permission = await authorize(request, data, env);
+  } catch {
+    permission = 503;
+  }
+  if (permission !== 200) {
+    const messages = {
+      401: 'Sign in again to send an application status email.',
+      403: 'Only HR and General Manager accounts can send application status emails.',
+      409: 'This application changed. Refresh it before sending a status email.',
+      503: 'Could not verify the application status email request.',
+    };
+    return sendJson(response, permission, { sent: false, message: messages[permission] });
+  }
   const appName = env.APP_NAME || 'Buenaventura HRIS';
   const fromAddress = env.RESEND_FROM_ADDRESS || 'no-reply@buenaventura-hris.me';
   const fromName = env.RESEND_FROM_NAME || appName;

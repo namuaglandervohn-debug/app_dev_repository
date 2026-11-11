@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
 import BrandLogo from '../BrandLogo';
 import { DashboardHeader } from '../layouts/DashboardOverview';
+import { fileToDataUrl } from '../../lib/applicationFiles';
+import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import { accountColors } from '../layouts/accountColors';
 import { APPLICANT_COUNTRIES, APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, BARANGAYS_BY_CITY, ZIP_BY_CITY } from '../../lib/applicantAddress';
@@ -17,6 +19,36 @@ const fields: [keyof typeof initial, string, boolean][] = [
   ['birthdate', 'Date of birth', true], ['contactNumber', 'Mobile number', true], ['gender', 'Gender', false], ['civilStatus', 'Civil status', false],
   ['nationality', 'Nationality', false], ['currentCountry', 'Country', true], ['currentRegion', 'Region', false], ['currentProvince', 'Province', false], ['currentCity', 'City / Municipality', true], ['currentBarangay', 'Barangay', false], ['currentStreet', 'Street / House No. / Purok', true], ['currentZipCode', 'ZIP Code', false],
 ];
+const requirementFileTypes: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+};
+type ApplicantSubmission = {
+  applicant_id: string;
+  position_applied: string;
+  status: string;
+  requirements_note: string | null;
+  is_archived: boolean;
+  has_resume: boolean;
+  has_birth_cert: boolean;
+  has_tor: boolean;
+  has_med_cert: boolean;
+  custom_requirements: { label: string; checked: boolean }[] | null;
+};
+
+function missingRequirements(app: ApplicantSubmission) {
+  return [
+    !app.has_resume && 'Resume / CV',
+    !app.has_birth_cert && 'Birth Certificate',
+    !app.has_tor && 'Transcript of Records',
+    !app.has_med_cert && 'Medical Certificate',
+    ...(app.custom_requirements ?? []).filter(requirement => !requirement.checked).map(requirement => requirement.label),
+  ].filter(Boolean).join(', ');
+}
 
 export default function ApplicantPortal() {
   const { user, loading, login, logout } = useAuth();
@@ -30,7 +62,9 @@ export default function ApplicantPortal() {
   const [profileOwner, setProfileOwner] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [applications, setApplications] = useState<any[]>([]);
+  const [applications, setApplications] = useState<ApplicantSubmission[]>([]);
+  const [uploadFor, setUploadFor] = useState<string | null>(null);
+  const [requirementFiles, setRequirementFiles] = useState<File[]>([]);
   const profileReady = ready && profileOwner === user?.id;
   const next = params.get('next')?.startsWith('/apply') ? params.get('next')! : '/apply';
   useEffect(() => {
@@ -41,7 +75,9 @@ export default function ApplicantPortal() {
       try {
         const result = await supabase.from('applicant_profiles').select('profile').eq('auth_user_id', user.id).single();
         if (result.error) throw result.error;
-        const list = await supabase.from('applicants').select('applicant_id,position_applied,status,created_at').eq('auth_user_id', user.id).order('created_at', { ascending: false });
+        const list = await supabase.from('applicants')
+          .select('applicant_id,position_applied,status,requirements_note,is_archived,has_resume,has_birth_cert,has_tor,has_med_cert,custom_requirements')
+          .eq('auth_user_id', user.id).order('created_at', { ascending: false });
         if (list.error) throw list.error;
         if (active) { setProfile({ ...initial, ...completeApplicantAddress(result.data.profile) }); setApplications(list.data || []); setProfileOwner(user.id); setReady(true); }
       } catch (e: any) { if (active) setError(e.message || 'Could not load your profile.'); }
@@ -86,6 +122,33 @@ export default function ApplicantPortal() {
     } catch (e: any) { setError(e.message || 'Could not resend the confirmation email.'); }
     finally { setBusy(false); }
   };
+  const submitRequirements = async (applicantId: string) => {
+    if (busy || requirementFiles.length === 0) return;
+    setError('');
+    setNotice('');
+    if (requirementFiles.length > 5 || requirementFiles.reduce((bytes, file) => bytes + file.size, 0) > 10 * 1024 * 1024) {
+      setError('Upload one to five files, up to 10 MB total.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const documents = await Promise.all(requirementFiles.map(async (file) => {
+        const type = requirementFileTypes[file.name.split('.').pop()?.toLowerCase() ?? ''];
+        if (!type || !file.size) throw new Error('Use PDF, Word, JPG, or PNG documents.');
+        return { name: file.name, type, data: await fileToDataUrl(new Blob([file], { type })) };
+      }));
+      const { error: uploadError } = await supabase.rpc('resubmit_application_requirements', { p_applicant_id: applicantId, p_files: documents });
+      if (uploadError) throw uploadError;
+      setApplications(current => current.map(app => app.applicant_id === applicantId ? { ...app, status: 'Under Review' } : app));
+      setUploadFor(null);
+      setRequirementFiles([]);
+      setNotice('Your additional documents were submitted for HR review.');
+    } catch (e: any) {
+      setError(e.message || 'Could not upload the documents.');
+    } finally {
+      setBusy(false);
+    }
+  };
   if (loading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
   if (user && user.role !== 'applicant') return <Navigate to="/dashboard" replace />;
   const backButton = (
@@ -103,7 +166,7 @@ export default function ApplicantPortal() {
                 <BrandLogo size={36} />
                 <Typography fontWeight={750}>Buenaventura HRIS</Typography>
               </Stack>
-              <Button color="inherit" onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setApplications([]); logout(); }}>Sign out</Button>
+              <Button color="inherit" disabled={busy} onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setApplications([]); setUploadFor(null); setRequirementFiles([]); logout(); }}>Sign out</Button>
             </Stack>
           </Container>
         </Box>
@@ -136,9 +199,31 @@ export default function ApplicantPortal() {
                 {applications.length === 0 && <Typography color="text.secondary">No applications submitted yet.</Typography>}
                 {profileReady && applications.map(app => (
                   <Paper key={app.applicant_id} variant="outlined" sx={{ p: 1.5, mt: 1.25, borderRadius: 2 }}>
-                    <Typography fontWeight={700}>{app.position_applied} - {app.status}</Typography>
+                    <Typography fontWeight={700}>{app.position_applied} - {app.is_archived ? 'Archived' : recruitmentStatusLabel(app.status)}</Typography>
                     <Typography variant="body2" color="text.secondary">{app.applicant_id}</Typography>
                     <Button component={Link} to={`/track?id=${encodeURIComponent(app.applicant_id)}`} sx={{ mt: 0.5 }}>View application status</Button>
+                    {app.status === 'Missing Requirements' && !app.is_archived && (
+                      <Stack spacing={1} alignItems="flex-start" sx={{ mt: 1 }}>
+                        <Typography variant="body2">{missingRequirements(app)}</Typography>
+                        {app.requirements_note && <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{app.requirements_note}</Typography>}
+                        {uploadFor === app.applicant_id ? (
+                          <>
+                            <Typography component="label" variant="body2">
+                              Supporting documents (up to 5 files, 10 MB total)
+                              <Box component="input" type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" disabled={busy}
+                                onChange={event => setRequirementFiles(Array.from(event.currentTarget.files ?? []))} sx={{ display: 'block', maxWidth: '100%', mt: 0.5 }} />
+                            </Typography>
+                            <Button variant="contained" disabled={busy || !requirementFiles.length} onClick={() => void submitRequirements(app.applicant_id)}>
+                              {busy ? 'Uploading…' : 'Submit documents'}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button variant="outlined" disabled={busy} onClick={() => { setUploadFor(app.applicant_id); setRequirementFiles([]); }}>
+                            Upload missing requirements
+                          </Button>
+                        )}
+                      </Stack>
+                    )}
                   </Paper>
                 ))}
               </Paper>

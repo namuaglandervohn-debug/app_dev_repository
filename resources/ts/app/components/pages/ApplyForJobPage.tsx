@@ -51,7 +51,7 @@ import { useAuth } from '../../context/AuthContext';
 import { APPLICANT_COUNTRIES as COUNTRIES, APPLICANT_NATIONALITIES as NATIONALITIES, reusableApplicantProfile } from '../../lib/applicantProfile';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, ZIP_BY_CITY, BARANGAYS_BY_CITY } from '../../lib/applicantAddress';
 import { copyToClipboard } from '../../lib/copyToClipboard';
-import { saveApplicationFiles } from '../../lib/applicationFiles';
+import { fileToDataUrl, saveApplicationFiles } from '../../lib/applicationFiles';
 import { supabase } from '../../lib/supabaseClient';
 import { submitApplicantWithConfirmation, sendApplicantConfirmation } from '../../lib/submitApplicantWithConfirmation';
 
@@ -137,15 +137,6 @@ const EMPTY = {
 type FormState = typeof EMPTY;
 type FormKey = keyof FormState;
 type FieldErrors = Partial<Record<FormKey | 'resumeFiles' | 'supportingFiles', string>>;
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 function calculateAge(birthdate: string) {
   if (!birthdate) return '';
@@ -760,8 +751,8 @@ export default function ApplyForJobPage() {
       if (profileResult.error) throw profileResult.error;
       setSavedProfile(profile);
 
-      const resumeFileData = resumeFiles[0] ? await fileToBase64(resumeFiles[0]) : null;
-      const supportingDocumentFiles = await Promise.all(supportingFiles.map(async (file) => ({ name: file.name, type: file.type, data: await fileToBase64(file) })));
+      const resumeFileData = resumeFiles[0] ? await fileToDataUrl(resumeFiles[0]) : null;
+      const supportingDocumentFiles = await Promise.all(supportingFiles.map(async (file) => ({ name: file.name, type: file.type, data: await fileToDataUrl(file) })));
       const birthplaceAddress = buildAddress(formData.birthplaceCountry, formData.birthplaceRegion, formData.birthplaceProvince, formData.birthplaceCity, formData.birthplaceBarangay, formData.birthplaceStreet, formData.birthplaceZipCode);
       const currentAddress = buildAddress(formData.currentCountry, formData.currentRegion, formData.currentProvince, formData.currentCity, formData.currentBarangay, formData.currentStreet, formData.currentZipCode);
       const permanentAddress = buildAddress(formData.permanentCountry, formData.permanentRegion, formData.permanentProvince, formData.permanentCity, formData.permanentBarangay, formData.permanentStreet, formData.permanentZipCode);
@@ -829,15 +820,6 @@ export default function ApplyForJobPage() {
       setEmailNotice(confirmationNotice);
       setEmailPending(false);
 
-      try {
-        const { error: notificationError } = await supabase.from('notifications').insert([
-          { recipient_role: 'hr', title: 'New Application Submitted', message: `${formData.firstName} ${formData.lastName} submitted a new application for ${formData.position}.`, type: 'application' },
-          { recipient_role: 'gm', title: 'New Application Submitted', message: `${formData.firstName} ${formData.lastName} submitted a new application for ${formData.position}.`, type: 'application' },
-        ]);
-        if (notificationError) console.warn('Notification insert failed:', notificationError.message);
-      } catch (notificationError) {
-        console.warn('Application saved; staff notification failed:', notificationError);
-      }
     } catch (err: any) {
       const message = err.message || 'Something went wrong while submitting the application.';
       if (message.toLowerCase().includes('email')) {

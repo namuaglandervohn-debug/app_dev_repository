@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { loadApplicationFiles } from '../../lib/applicationFiles';
 import { apiErrorMessage, readableErrorMessage } from '../../lib/apiError';
 import { sendApplicationStatusEmail } from '../../lib/sendApplicationStatusEmail';
+import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import {
   Sync,
   CalendarMonth,
@@ -46,7 +47,6 @@ import {
   IconButton,
   InputAdornment,
   LinearProgress,
-  MenuItem,
   Paper,
   Tab,
   Table,
@@ -79,6 +79,7 @@ type AppStatus =
   | 'For Interview'
   | 'Hired'
   | 'Not Qualified'
+  | 'Not Hired'
   | 'Archived';
 
 interface Application {
@@ -158,20 +159,14 @@ const STATUS_COLORS: Record<AppStatus, 'default' | 'primary' | 'warning' | 'info
   'For Interview': 'info',
   Hired: 'success',
   'Not Qualified': 'error',
+  'Not Hired': 'error',
   Archived: 'default',
 };
 
-const ALL_STATUSES: AppStatus[] = [
-  'Submitted',
-  'Under Review',
-  'Missing Requirements',
-  'For Interview',
-  'Hired',
-  'Not Qualified',
-  'Archived',
-];
-
-
+function requirementsComplete(app: Pick<Application, 'hasResume' | 'hasBirthCert' | 'hasTOR' | 'hasMedCert' | 'customRequirements'>) {
+  return Boolean(app.hasResume && app.hasBirthCert && app.hasTOR && app.hasMedCert
+    && (app.customRequirements ?? []).every(requirement => requirement.checked));
+}
 const GREEN_UI = {
   pageBg: 'radial-gradient(circle at top left, rgba(220, 246, 219, 0.95), rgba(248, 252, 245, 0.98) 34%, #f7fbf3 100%)',
   cardBg: 'rgba(255, 255, 255, 0.92)',
@@ -245,6 +240,7 @@ const statusChipSx = (status: AppStatus) => {
     'For Interview': { bg: '#e9f6ff', color: '#1d6f9c', border: '#b7dff7' },
     Hired: { bg: '#e5f8e9', color: '#217a43', border: '#a9dfb6' },
     'Not Qualified': { bg: '#fdeaea', color: '#9c2f2f', border: '#efb8b8' },
+    'Not Hired': { bg: '#fdeaea', color: '#9c2f2f', border: '#efb8b8' },
     Archived: { bg: '#f4f1e8', color: '#7a5b1f', border: '#dfcfa9' },
   };
 
@@ -628,12 +624,11 @@ const generateTemporaryPassword = (base: string) => {
 };
 
 const buildDocumentsForApplication = (app: Application | null, submittedDocuments: string[] = []): DocumentItem[] => {
-  const docs: DocumentItem[] = [];
-
-  if (!app) return docs;
+  if (!app) return [];
+  const docs = new Map<string, DocumentItem>();
 
   if (app.resumeFileName) {
-    docs.push({
+    docs.set(app.resumeFileName, {
       name: app.resumeFileName,
       data: app.resumeFileData,
       type: getFileTypeFromName(app.resumeFileName),
@@ -641,16 +636,14 @@ const buildDocumentsForApplication = (app: Application | null, submittedDocument
   }
 
   (app.supportingDocumentFiles ?? []).forEach(file => {
-    docs.push({ name: file.name, data: file.data, type: file.type });
+    docs.set(file.name, { name: file.name, data: file.data, type: file.type });
   });
 
   submittedDocuments.forEach(name => {
-    if (!docs.some(doc => doc.name === name)) {
-      docs.push({ name });
-    }
+    if (!docs.has(name)) docs.set(name, { name });
   });
 
-  return docs;
+  return [...docs.values()];
 };
 
 const getSubmittedDocumentsForApplication = (app: Application | null): string[] => {
@@ -659,15 +652,11 @@ const getSubmittedDocumentsForApplication = (app: Application | null): string[] 
   const raw = app.raw ?? {};
   const extra = safeJsonParse(app.coverLetter);
 
-  if (Array.isArray(raw.submitted_documents) && raw.submitted_documents.length) {
-    return raw.submitted_documents;
-  }
-
-  if (Array.isArray(extra.submittedDocuments) && extra.submittedDocuments.length) {
-    return extra.submittedDocuments;
-  }
-
-  return app.supportingDocuments ?? [];
+  return [...new Set([
+    ...ensureArray<string>(raw.submitted_documents),
+    ...ensureArray<string>(extra.submittedDocuments),
+    ...(app.supportingDocuments ?? []),
+  ])];
 };
 
 
@@ -728,10 +717,13 @@ export default function RecruitmentManagement() {
   const isHR = user?.role === 'hr';
   const isGM = user?.role === 'gm';
 
-  const isRequirementsLocked =
-    selectedApp?.status === 'Hired' || selectedApp?.status === 'For Interview' || selectedApp?.status === 'Not Qualified';
-
-  const canEditRequirements = Boolean(isHR && selectedApp && !isRequirementsLocked);
+  const canEditRequirements = Boolean(isHR && selectedApp && !profileLoading && !selectedApp.isArchived
+    && ['Submitted', 'Under Review', 'Missing Requirements'].includes(selectedApp.status));
+  const canScreen = Boolean(isHR && selectedApp && !profileLoading && !selectedApp.isArchived
+    && selectedApp.status === 'Under Review' && requirementsComplete(selectedApp));
+  const canSchedule = canScreen || Boolean(isHR && selectedApp?.status === 'For Interview' && !profileLoading && !selectedApp.isArchived);
+  const canDecide = Boolean(isGM && selectedApp?.status === 'For Interview' && !profileLoading && !selectedApp.isArchived
+    && selectedApp.interviewDate && selectedApp.interviewTime && selectedApp.interviewLocation?.trim());
   const hasLoadedApplicationsRef = useRef(false);
   const fetchRequestIdRef = useRef(0);
   const profileFetchRequestIdRef = useRef(0);
@@ -809,6 +801,8 @@ export default function RecruitmentManagement() {
 
   const sendApplicantStatusEmail = async (app: Application, status: AppStatus, overrides: Partial<Application> = {}) => {
     if (!app.email) return;
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session?.access_token) throw new Error('Sign in again to send an application status email.');
 
     await sendApplicationStatusEmail({
         applicant_id: app.id,
@@ -820,7 +814,7 @@ export default function RecruitmentManagement() {
         interview_date: overrides.interviewDate ?? app.interviewDate ?? '',
         interview_time: overrides.interviewTime ?? app.interviewTime ?? '',
         interview_location: overrides.interviewLocation ?? app.interviewLocation ?? '',
-    });
+    }, data.session.access_token);
   };
 
   const updateApplicantRecord = async (
@@ -833,10 +827,16 @@ export default function RecruitmentManagement() {
     setSaving(true);
 
     try {
-      const previousApp = applications.find(app => app.id === id) ?? selectedApp;
-      const { error: updateError } = await supabase.from('applicants').update(dbUpdate).eq('applicant_id', id);
+      const previousApp = selectedApp?.id === id ? selectedApp : applications.find(app => app.id === id);
+      let update = supabase.from('applicants').update(dbUpdate).eq('applicant_id', id);
+      if (dbUpdate.status && previousApp) update = update.eq('status', previousApp.status).eq('is_archived', false);
+      const { data: updatedRow, error: updateError } = await update.select('applicant_id').maybeSingle();
 
       if (updateError) throw updateError;
+      if (!updatedRow) {
+        void fetchApplications({ silent: true });
+        throw new Error('This application changed. Reopen it and try again.');
+      }
 
       setApplications(prev =>
         prev.map(app => {
@@ -848,7 +848,7 @@ export default function RecruitmentManagement() {
 
       if (selectedApp?.id === id) {
         setSelectedApp(prev => {
-          if (!prev) return prev;
+          if (prev?.id !== id) return prev;
           const updated = { ...prev, ...localUpdate };
           return { ...updated, name: buildApplicantFullName(updated) };
         });
@@ -876,24 +876,14 @@ export default function RecruitmentManagement() {
     }
   };
 
-  const handleUpdateStatus = async (id: string, status: AppStatus) => {
-    if (status === 'Hired') {
-      await handleHiringDecision(id, 'Hired');
-      return;
-    }
-
-    if (status === 'Not Qualified') {
-      await handleHiringDecision(id, 'Not Qualified');
-      return;
-    }
-
+  const handleScreeningStatus = async (id: string, status: 'Under Review' | 'Not Qualified') => {
     await updateApplicantRecord(
       id,
       { status },
       { status },
       `Status updated to "${status}"!`,
-      status === 'For Interview' ? undefined : { notifyStatus: status }
-    );
+      { notifyStatus: status }
+    ).catch(() => {});
   };
 
   const buildRequirementsStatusNote = (status: AppStatus) => {
@@ -917,9 +907,8 @@ export default function RecruitmentManagement() {
   };
 
   const handleSaveRequirements = async (id: string) => {
-    const hasMissingStandard = !reqForm.hasResume || !reqForm.hasBirthCert || !reqForm.hasTOR || !reqForm.hasMedCert;
-    const hasMissingCustom = (reqForm.customRequirements ?? []).some(item => !item.checked);
-    const newStatus: AppStatus = hasMissingStandard || hasMissingCustom ? 'Missing Requirements' : 'Under Review';
+    if (!canEditRequirements) return;
+    const newStatus: AppStatus = requirementsComplete(reqForm) ? 'Under Review' : 'Missing Requirements';
 
     const localUpdate: Partial<Application> = {
       hasResume: reqForm.hasResume,
@@ -937,11 +926,11 @@ export default function RecruitmentManagement() {
       localUpdate,
       'Requirements checklist saved!',
       { notifyStatus: newStatus, emailOverrides: { requirementsNote: buildRequirementsStatusNote(newStatus) } }
-    );
+    ).catch(() => {});
   };
 
   const handleScheduleInterview = async () => {
-    if (!selectedApp) return;
+    if (!selectedApp || !canSchedule || !iForm.interviewDate || !iForm.interviewTime || !iForm.interviewLocation.trim()) return;
 
     const localUpdate: Partial<Application> = {
       status: 'For Interview',
@@ -952,87 +941,62 @@ export default function RecruitmentManagement() {
       scheduledBy: user?.name ?? '',
     };
 
-    await updateApplicantRecord(
-      selectedApp.id,
-      applicationToApplicantUpdate(localUpdate),
-      localUpdate,
-      '✅ Interview scheduled! Status set to "For Interview".'
-    );
-
     try {
-      await sendApplicantStatusEmail(selectedApp, 'For Interview', localUpdate);
-      setSnackbar({ open: true, message: 'Interview scheduled and applicant was notified by email.', severity: 'success' });
-    } catch (emailError: any) {
-      setSnackbar({
-        open: true,
-        message: `Interview scheduled, but email notification failed: ${emailError.message ?? emailError}`,
-        severity: 'error',
-      });
+      await updateApplicantRecord(selectedApp.id, applicationToApplicantUpdate(localUpdate), localUpdate,
+        'Interview scheduled.', { notifyStatus: 'For Interview' });
+      setInterviewDialog(false);
+    } catch {
+      // updateApplicantRecord reports the error and leaves the schedule editable.
     }
-
-    setInterviewDialog(false);
   };
 
   const saveEditedApplication = async () => {
     if (!selectedApp) return;
 
-    const dbUpdate = applicationToApplicantUpdate(editAppForm);
+    const changes: Partial<Application> = {};
+    for (const key of Object.keys(editAppForm) as (keyof Application)[]) {
+      if (editAppForm[key] !== selectedApp[key]) Object.assign(changes, { [key]: editAppForm[key] });
+    }
+    const dbUpdate = applicationToApplicantUpdate(changes);
 
     if (Object.keys(dbUpdate).length === 0) {
       setViewEditMode(false);
       return;
     }
 
-    await updateApplicantRecord(selectedApp.id, dbUpdate, editAppForm, 'Application updated successfully.');
+    await updateApplicantRecord(selectedApp.id, dbUpdate, changes, 'Application updated successfully.');
     setViewEditMode(false);
   };
 
-  const handleHiringDecision = async (id: string, decision: 'Hired' | 'Not Qualified') => {
-    if (hiringInProgress.current) return;
+  const handleHiringDecision = async (id: string, decision: 'Hired' | 'Not Hired') => {
+    const app = selectedApp?.id === id ? selectedApp : applications.find(application => application.id === id);
+    if (!app || app.isArchived || hiringInProgress.current) return;
+    const retryHandoff = app.status === 'Hired' && decision === 'Hired' && (isHR || isGM);
+    if (!retryHandoff && !canDecide) return;
     hiringInProgress.current = true;
     setCreatingAccount(true);
-    const status: AppStatus = decision === 'Hired' ? 'Hired' : 'Not Qualified';
 
     try {
-      await updateApplicantRecord(
+      if (!retryHandoff) await updateApplicantRecord(
         id,
         {
           interview_feedback: gmForm.interviewFeedback,
           hiring_decision: decision,
-          status,
+          status: decision,
         },
         {
           interviewFeedback: gmForm.interviewFeedback,
           hiringDecision: decision,
-          status,
+          status: decision,
         },
-        `✅ Hiring decision: ${status}`
+        `Hiring decision: ${decision}.`,
+        decision === 'Not Hired' ? { notifyStatus: decision } : undefined
       );
 
       if (decision !== 'Hired') {
-        const app = applications.find(application => application.id === id) ?? selectedApp;
-        if (app) {
-          try {
-            await sendApplicantStatusEmail(app, status, {
-              interviewFeedback: gmForm.interviewFeedback,
-              hiringDecision: decision,
-              status,
-            });
-            setSnackbar({ open: true, message: `Hiring decision: ${status}. Applicant was notified by email.`, severity: 'success' });
-          } catch (emailError: any) {
-            setSnackbar({
-              open: true,
-              message: `Hiring decision saved, but email notification failed: ${emailError.message ?? emailError}`,
-              severity: 'error',
-            });
-          }
-        }
         setViewDialog(false);
         return;
       }
-
-      const app = applications.find(application => application.id === id) ?? selectedApp;
-      if (!app) return;
 
       const firstName = app.firstName ?? '';
       const middleName = app.middleName ?? '';
@@ -1225,14 +1189,15 @@ export default function RecruitmentManagement() {
     try {
       const archivePayload = archive
         ? {
-            status: 'Archived',
+            is_archived: true,
             requirements_note: [
               app.requirementsNote,
               `Archived ${new Date().toLocaleString()} by ${user?.email ?? user?.name ?? 'HR/Admin'} for applicant record retention.`,
             ].filter(Boolean).join('\n'),
           }
         : {
-            status: 'Submitted',
+            is_archived: false,
+            ...(app.status === 'Archived' ? { status: 'Submitted' } : {}),
             requirements_note: app.requirementsNote ?? null,
           };
 
@@ -1245,7 +1210,7 @@ export default function RecruitmentManagement() {
             ? {
                 ...item,
                 isArchived: archive,
-                status: archive ? 'Archived' : 'Submitted',
+                status: !archive && app.status === 'Archived' ? 'Submitted' : item.status,
                 requirementsNote: archivePayload.requirements_note ?? '',
               }
             : item
@@ -1358,13 +1323,14 @@ export default function RecruitmentManagement() {
   const tabData = useMemo(
     () => [
       { label: 'All', data: searchedApplications },
-      { label: 'Submitted', data: searchedApplications.filter(a => a.status === 'Submitted') },
+      { label: 'Application Received', data: searchedApplications.filter(a => a.status === 'Submitted') },
       { label: 'Under Review', data: searchedApplications.filter(a => a.status === 'Under Review') },
       { label: 'Missing Requirements', data: searchedApplications.filter(a => a.status === 'Missing Requirements') },
       { label: 'For Interview', data: searchedApplications.filter(a => a.status === 'For Interview') },
       { label: 'Hired', data: searchedApplications.filter(a => a.status === 'Hired') },
       { label: 'Not Qualified', data: searchedApplications.filter(a => a.status === 'Not Qualified') },
-      { label: 'Archived', data: searchedApplications.filter(a => a.status === 'Archived') },
+      { label: 'Not Hired', data: searchedApplications.filter(a => a.status === 'Not Hired') },
+      { label: 'Archived', data: searchedApplications.filter(a => a.isArchived) },
     ],
     [searchedApplications]
   );
@@ -1489,7 +1455,7 @@ export default function RecruitmentManagement() {
               variant="outlined"
               startIcon={<EditNote />}
               onClick={() => setEditReqDialog(true)}
-              disabled={saving || Boolean(isRequirementsLocked)}
+              disabled={saving || !canEditRequirements}
               sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
             >
               Edit Checklist
@@ -1611,7 +1577,12 @@ export default function RecruitmentManagement() {
       try {
         const fileData = loadApplicationFiles(app.id);
         if (fileData) {
-          mergedApp = { ...mergedApp, ...fileData } as Application;
+          mergedApp = {
+            ...mergedApp,
+            resumeFileData: mergedApp.resumeFileData || fileData.resumeFileData || undefined,
+            supportingDocumentFiles: mergedApp.supportingDocumentFiles?.length
+              ? mergedApp.supportingDocumentFiles : fileData.supportingDocumentFiles,
+          };
         }
       } catch (fileError) {
         console.warn('[RecruitmentManagement] Automatic local file load failed:', fileError);
@@ -1625,8 +1596,8 @@ export default function RecruitmentManagement() {
           docs.some(document => document.name === mergedApp.resumeFileName && !document.data)
       );
       const supportingNeedsData = Boolean(
-        (mergedApp.supportingDocuments?.length ?? 0) > 0 &&
-          (mergedApp.supportingDocumentFiles?.length ?? 0) === 0
+        (app.supportingDocuments?.length ?? 0) > 0 &&
+          (app.supportingDocumentFiles?.length ?? 0) === 0
       );
 
       let resumeFileData = mergedApp.resumeFileData;
@@ -1659,7 +1630,7 @@ export default function RecruitmentManagement() {
 
       setSelectedApp(prev => {
         if (!prev || prev.id !== app.id) return prev;
-        return { ...prev, ...mergedApp, resumeFileData, supportingDocumentFiles };
+        return { ...prev, resumeFileData, supportingDocumentFiles };
       });
     } finally {
       if (!isMountedRef.current) return;
@@ -1699,8 +1670,10 @@ export default function RecruitmentManagement() {
       try {
         const fileData = loadApplicationFiles(selectedApp.id);
         if (fileData) {
-          mergedApp = { ...selectedApp, ...fileData } as Application;
-          setSelectedApp(mergedApp);
+          mergedApp = {
+            ...selectedApp,
+            resumeFileData: selectedApp.resumeFileData || fileData.resumeFileData || undefined,
+          };
         }
       } catch (fileError) {
         console.warn('[RecruitmentManagement] Local file load failed:', fileError);
@@ -1733,7 +1706,7 @@ export default function RecruitmentManagement() {
           }
           if (!resumeFetchError && data?.supporting_document_files) {
             const supportingDocumentFiles = ensureArray<DocFile>(data.supporting_document_files);
-            const supportingDoc = supportingDocumentFiles.find(file => file.name === doc.name && file.data);
+            const supportingDoc = [...supportingDocumentFiles].reverse().find(file => file.name === doc.name && file.data);
             if (supportingDoc) {
               loadedDoc = { name: supportingDoc.name, data: supportingDoc.data, type: supportingDoc.type || doc.type || getFileTypeFromName(supportingDoc.name) };
               setSelectedApp(prev =>
@@ -1760,7 +1733,7 @@ export default function RecruitmentManagement() {
 
           if (!supportingFetchError && data?.supporting_document_files) {
             const supportingDocumentFiles = ensureArray<DocFile>(data.supporting_document_files);
-            const supportingDoc = supportingDocumentFiles.find(file => file.name === doc.name && file.data);
+            const supportingDoc = [...supportingDocumentFiles].reverse().find(file => file.name === doc.name && file.data);
             if (supportingDoc) {
               loadedDoc = { name: supportingDoc.name, data: supportingDoc.data, type: supportingDoc.type || doc.type || getFileTypeFromName(supportingDoc.name) };
               setSelectedApp(prev =>
@@ -2345,7 +2318,7 @@ export default function RecruitmentManagement() {
                     <TableCell>
                       <Chip
                         icon={<TaskAlt />}
-                        label={app.status}
+                        label={app.isArchived ? 'Archived' : recruitmentStatusLabel(app.status)}
                         size="small"
                         variant="outlined"
                         sx={{ ...chipIconSx, ...statusChipSx(app.status), whiteSpace: 'nowrap' }}
@@ -2371,7 +2344,7 @@ export default function RecruitmentManagement() {
                             '&:hover': { bgcolor: GREEN_UI.greenSoft },
                           }}
                         />
-                        {isGM && app.status === 'For Interview' && (
+                        {isGM && app.status === 'For Interview' && !app.isArchived && (
                           <Chip
                             icon={<HowToReg />}
                             label="Hiring Decision"
@@ -2468,7 +2441,7 @@ export default function RecruitmentManagement() {
             {selectedApp && (
               <Chip
                 icon={<TaskAlt />}
-                label={selectedApp.status}
+                label={selectedApp.isArchived ? 'Archived' : recruitmentStatusLabel(selectedApp.status)}
                 size="small"
                 variant="outlined"
                 sx={{ ...chipIconSx, ...statusChipSx(selectedApp.status) }}
@@ -2675,23 +2648,15 @@ export default function RecruitmentManagement() {
             borderTop: `1px solid ${GREEN_UI.border}`,
           }}
         >
-          {selectedApp && (isHR || isGM) && (
-            <TextField
-              select
-              size="small"
-              variant="outlined"
-              label="Status Update"
-              value={selectedApp.status}
-              onChange={event => handleUpdateStatus(selectedApp.id, event.target.value as AppStatus)}
-              disabled={saving}
-              sx={{ minWidth: 210, mr: 'auto', ...softTextFieldSx }}
-            >
-              {ALL_STATUSES.map(status => (
-                <MenuItem key={status} value={status}>
-                  {status}
-                </MenuItem>
-              ))}
-            </TextField>
+          {isHR && selectedApp?.status === 'Submitted' && !selectedApp.isArchived && (
+            <Button variant="outlined" onClick={() => void handleScreeningStatus(selectedApp.id, 'Under Review')} disabled={saving || profileLoading}>
+              Start Review
+            </Button>
+          )}
+          {canScreen && selectedApp && (
+            <Button variant="outlined" color="error" onClick={() => void handleScreeningStatus(selectedApp.id, 'Not Qualified')} disabled={saving}>
+              Not Qualified
+            </Button>
           )}
           {selectedApp && (isHR || isGM) && (
             <Button
@@ -2732,7 +2697,7 @@ export default function RecruitmentManagement() {
 
           <Button onClick={closeViewDialog} sx={{ ...pillButtonSx }}>Close</Button>
 
-          {isHR && selectedApp?.status === 'For Interview' && (
+          {canSchedule && selectedApp && (
               <Button
                 variant="outlined"
                 color="info"
@@ -2744,7 +2709,7 @@ export default function RecruitmentManagement() {
                   setIForm({
                     interviewDate: selectedApp.interviewDate ?? '',
                     interviewTime: selectedApp.interviewTime ?? '',
-                    interviewLocation: selectedApp.interviewLocation ?? 'HR Office, Buenaventura Estate',
+                    interviewLocation: selectedApp.interviewLocation || 'HR Office, Buenaventura Estate',
                     interviewNotes: selectedApp.interviewNotes ?? '',
                   });
                 }}
@@ -2753,17 +2718,17 @@ export default function RecruitmentManagement() {
               </Button>
             )}
 
-          {isGM && selectedApp?.status === 'For Interview' && (
+          {canDecide && selectedApp && (
             <>
               <Button
                 variant="outlined"
                 color="error"
                 startIcon={<CancelOutlined />}
-                onClick={() => handleHiringDecision(selectedApp.id, 'Not Qualified')}
+                onClick={() => handleHiringDecision(selectedApp.id, 'Not Hired')}
                 disabled={saving || creatingAccount}
                 sx={{ ...pillButtonSx }}
               >
-                Not Qualified
+                Not Hired
               </Button>
               <Button
                 variant="contained"
@@ -2778,7 +2743,7 @@ export default function RecruitmentManagement() {
             </>
           )}
 
-          {(isHR || isGM) && selectedApp?.status === 'Hired' && (
+          {(isHR || isGM) && selectedApp?.status === 'Hired' && !selectedApp.isArchived && (
             <Button
               variant="contained"
               color="success"
@@ -2958,6 +2923,7 @@ export default function RecruitmentManagement() {
                 fullWidth
                 label="Interview Time"
                 type="time"
+                required
                 value={iForm.interviewTime}
                 onChange={event => setIForm({ ...iForm, interviewTime: event.target.value })}
                 InputLabelProps={{ shrink: true }}
@@ -2968,6 +2934,7 @@ export default function RecruitmentManagement() {
               <TextField
                 fullWidth
                 label="Interview Location"
+                required
                 value={iForm.interviewLocation}
                 onChange={event => setIForm({ ...iForm, interviewLocation: event.target.value })}
                               sx={softTextFieldSx}
@@ -2994,7 +2961,7 @@ export default function RecruitmentManagement() {
             color="info"
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <CalendarMonth />}
             onClick={handleScheduleInterview}
-            disabled={saving || !iForm.interviewDate}
+            disabled={saving || !iForm.interviewDate || !iForm.interviewTime || !iForm.interviewLocation.trim()}
             sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, '&:hover': { bgcolor: GREEN_UI.greenDark } }}
           >
             {saving ? 'Saving…' : 'Confirm Interview Schedule'}

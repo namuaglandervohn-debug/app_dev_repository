@@ -5,10 +5,10 @@
     <title>{{ $appName }} Applicant ID</title>
 </head>
 @php
-    $flow = ['Submitted', 'Under Review', 'Missing Requirements', 'For Interview', 'Hired'];
+    $flow = ['Application Received', 'Under Review', 'For Interview', 'Hired'];
     $currentIndex = 0;
     $stepDescriptions = [
-        'Submitted' => 'Your application has been received by HR.',
+        'Application Received' => 'Your application has been received by HR.',
         'Under Review' => 'HR will review your submitted requirements.',
         'Missing Requirements' => 'If anything is missing, HR will notify you by email.',
         'For Interview' => 'Qualified applicants will be scheduled for interview.',
@@ -22,7 +22,7 @@
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #d6ebd8;border-radius:18px;overflow:hidden;">
                     <tr>
                         <td style="background:#21a957;color:#ffffff;padding:26px 28px 30px;">
-                            <h1 style="margin:0;font-size:24px;line-height:1.25;font-weight:800;">Application Submitted</h1>
+                            <h1 style="margin:0;font-size:24px;line-height:1.25;font-weight:800;">Application Received</h1>
                             <p style="margin:8px 0 0;font-size:14px;opacity:.95;">{{ $appName }}</p>
                         </td>
                     </tr>
@@ -37,7 +37,7 @@
                                 </tr>
                                 <tr>
                                     <td style="padding:0 16px 14px;color:#6b7d70;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.03em;">Status</td>
-                                    <td style="padding:0 16px 14px;color:#14532d;font-size:15px;font-weight:bold;text-align:right;">Submitted</td>
+                                    <td style="padding:0 16px 14px;color:#14532d;font-size:15px;font-weight:bold;text-align:right;">Application Received</td>
                                 </tr>
                             </table>
                         </td>

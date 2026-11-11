@@ -68,7 +68,7 @@ export async function handleApplicantEmail(request, response, { env = process.en
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #d8ead8;border-radius:18px;overflow:hidden;">
         <tr><td style="background:#1f7a46;color:#ffffff;padding:22px 26px;">
-          <h1 style="margin:0;font-size:22px;line-height:1.3;">Application Submitted</h1>
+          <h1 style="margin:0;font-size:22px;line-height:1.3;">Application Received</h1>
           <p style="margin:6px 0 0;font-size:14px;opacity:.9;">${safeAppName}</p>
         </td></tr>
         <tr><td style="padding:26px;">

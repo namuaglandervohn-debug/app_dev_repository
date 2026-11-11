@@ -551,18 +551,28 @@ Route::post('/applications/send-applicant-id-email', function (Request $request)
 });
 
 Route::post('/applications/send-status-email', function (Request $request) {
+    requireSupabaseAdmin($request);
     $data = $request->validate([
         'applicant_id' => ['required', 'string', 'max:40'],
         'email' => ['required', 'email', 'max:120'],
         'name' => ['nullable', 'string', 'max:160'],
         'position' => ['nullable', 'string', 'max:160'],
-        'status' => ['required', 'string', 'max:80'],
+        'status' => ['required', 'in:Submitted,Under Review,Missing Requirements,For Interview,Hired,Not Qualified,Not Hired,Archived'],
         'note' => ['nullable', 'string', 'max:10000'],
         'interview_date' => ['nullable', 'string', 'max:40'],
         'interview_time' => ['nullable', 'string', 'max:40'],
         'interview_location' => ['nullable', 'string', 'max:200'],
     ]);
     $data['email'] = validateRecipientEmailAddress($data['email']);
+    $records = supabaseRest('GET', '/rest/v1/applicants', null, [
+        'select' => 'email,status',
+        'applicant_id' => 'eq.'.$data['applicant_id'],
+        'limit' => 1,
+    ]);
+    $application = $records[0] ?? [];
+    if (strtolower($application['email'] ?? '') !== $data['email'] || ($application['status'] ?? '') !== $data['status']) {
+        return response()->json(['sent' => false, 'message' => 'This application changed. Refresh it before sending a status email.'], 409);
+    }
 
     $apiKey = trim((string) config('services.resend.key'));
     if (! $apiKey) {

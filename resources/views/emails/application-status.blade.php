@@ -5,10 +5,10 @@
     <title>{{ $appName }} Application Status Update</title>
 </head>
 @php
-    $flow = ['Submitted', 'Under Review', 'Missing Requirements', 'For Interview', 'Hired'];
-    $terminalStatuses = ['Not Qualified', 'Archived'];
+    $flow = ['Submitted', 'Under Review', ...($status === 'Missing Requirements' ? ['Missing Requirements'] : []), 'For Interview', 'Hired'];
+    $terminalStatuses = ['Not Qualified', 'Not Hired', 'Archived'];
     if (in_array($status, $terminalStatuses, true)) {
-        $flow = ['Submitted', 'Under Review', 'Missing Requirements', $status];
+        $flow = $status === 'Not Hired' ? ['Submitted', 'Under Review', 'For Interview', $status] : ['Submitted', 'Under Review', $status];
     }
     if (! in_array($status, $flow, true)) {
         $flow[] = $status;
@@ -22,9 +22,10 @@
         'For Interview' => 'You are scheduled or being prepared for interview.',
         'Hired' => '',
         'Not Qualified' => 'Sorry, your application did not qualify for the current opening.',
+        'Not Hired' => 'Thank you for attending the interview. We will not be moving forward with your application.',
         'Archived' => 'Your applicant requirements are currently on hold and archived for review.',
     ];
-    $terminalRedStatuses = ['Not Qualified'];
+    $terminalRedStatuses = ['Not Qualified', 'Not Hired'];
 @endphp
 <body style="margin:0;padding:0;background:#f2fbf4;font-family:Arial,Helvetica,sans-serif;color:#1f2d24;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f2fbf4;padding:24px 0;">
@@ -86,7 +87,7 @@
                                             </table>
                                         </td>
                                         <td valign="top" style="padding:0 0 {{ $loop->last ? '8px' : '0' }};">
-                                            <p style="margin:0;font-size:16px;font-weight:800;color:#111f17;">{{ $step }}</p>
+                                            <p style="margin:0;font-size:16px;font-weight:800;color:#111f17;">{{ $step === 'Submitted' ? 'Application Received' : $step }}</p>
                                             <p style="margin:7px 0 0;font-size:13px;line-height:1.55;color:#7b8780;">
                                                 {{ $stepDescriptions[$step] ?? 'Your application status has been updated.' }}
                                             </p>

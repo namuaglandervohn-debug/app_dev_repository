@@ -12,10 +12,10 @@ export interface StatusEmailPayload {
   interview_location: string;
 }
 
-export async function sendApplicationStatusEmail(payload: StatusEmailPayload, fetcher: typeof fetch = fetch): Promise<void> {
+export async function sendApplicationStatusEmail(payload: StatusEmailPayload, accessToken: string, fetcher: typeof fetch = fetch): Promise<void> {
   const response = await fetcher('/api/applications/send-status-email', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(15000),
   });
