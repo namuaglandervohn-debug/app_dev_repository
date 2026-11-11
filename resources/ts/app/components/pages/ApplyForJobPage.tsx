@@ -921,13 +921,10 @@ export default function ApplyForJobPage() {
     <AuthBackground>
       <Box sx={{ background: 'radial-gradient(circle at top left, rgba(187,247,208,0.75) 0%, rgba(246,251,244,0.98) 36%, #f6fbf4 100%)', borderRadius: { xs: 0, sm: '26px' }, py: { xs: 1.5, sm: 2.5, md: 5 }, px: { xs: 1, sm: 1.5, md: 3 }, minHeight: '100dvh' }}>
         <Container maxWidth="xl" disableGutters sx={{ px: { xs: 0, sm: 2, md: 3 } }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={2} sx={{ mb: { xs: 2, md: 3 } }}>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h3" fontWeight={700} sx={responsiveHeroTitleSx}>Buenaventura Estate</Typography>
-              <Typography color="text.secondary" sx={{ mt: 1, fontSize: { xs: '0.9rem', sm: '1rem' }, fontWeight: 600, overflowWrap: 'anywhere' }}>Human Resource Information System — Applicant Portal</Typography>
-            </Box>
-            <Button variant="contained" startIcon={<ArrowBackRounded />} onClick={() => navigate('/')} sx={{ ...softButtonSx, px: { xs: 2.5, sm: 4 }, py: 1.2, width: { xs: '100%', md: 'auto' }, background: 'linear-gradient(135deg, #166534 0%, #22c55e 100%)', '&:hover': { background: 'linear-gradient(135deg, #14532d 0%, #16a34a 100%)' } }}>Back to Careers</Button>
-          </Stack>
+          <Box sx={{ mb: { xs: 2, md: 3 } }}>
+            <Typography variant="h3" fontWeight={700} sx={responsiveHeroTitleSx}>Buenaventura Estate</Typography>
+            <Typography color="text.secondary" sx={{ mt: 1, fontSize: { xs: '0.9rem', sm: '1rem' }, fontWeight: 600, overflowWrap: 'anywhere' }}>Human Resource Information System — Applicant Portal</Typography>
+          </Box>
 
           <Paper elevation={0} sx={{ borderRadius: '26px', overflow: 'hidden', background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(22,101,52,0.10)', backdropFilter: 'blur(18px)', boxShadow: { xs: '0 18px 45px rgba(15,23,42,0.10)', md: '0 28px 80px rgba(15,23,42,0.12)' } }}>
             <Box sx={{ p: { xs: 2, sm: 2.5, md: 3.5 }, borderBottom: '1px solid rgba(22,101,52,0.08)' }}>
