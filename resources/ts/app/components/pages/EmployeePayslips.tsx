@@ -725,16 +725,6 @@ export default function EmployeePayslips() {
         ))}
       </Box>
 
-      {!loading && payslips.length === 0 && (
-        <Alert
-          severity="info"
-          icon={<ReceiptLong />}
-          sx={{ mb: 2, borderRadius: '18px', border: `1px solid ${GREEN_UI.border}` }}
-        >
-          No released payslips found for this employee account yet. Payslips will appear here after Accounting/Finance releases the payroll.
-        </Alert>
-      )}
-
       <Paper elevation={0} sx={{ ...softCardSx, overflow: 'hidden' }}>
         <Box
           sx={{
