@@ -2086,9 +2086,6 @@ export default function RecruitmentManagement() {
             <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
               Applicant Directory
             </Typography>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-              Search by application ID, applicant, position, contact, status, or source.
-            </Typography>
           </Box>
         </Box>
         <TextField

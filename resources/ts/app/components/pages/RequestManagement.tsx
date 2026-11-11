@@ -1675,9 +1675,6 @@ export default function RequestManagement() {
             <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
               Request Directory
             </Typography>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-              Search by request ID, employee, type, leave category, date, reason, or status.
-            </Typography>
           </Box>
         </Box>
         <TextField

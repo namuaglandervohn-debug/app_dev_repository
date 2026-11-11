@@ -899,9 +899,6 @@ export default function Reports() {
             <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.1 }}>
               Report Configuration
             </Typography>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-              Choose a report type and date range before printing or exporting.
-            </Typography>
           </Box>
         </Box>
 

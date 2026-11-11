@@ -766,9 +766,6 @@ export default function EmployeePayslips() {
               <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, letterSpacing: '-0.02em' }}>
                 Released Payslip Records
               </Typography>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                Open a payslip preview or print a released payroll receipt.
-              </Typography>
             </Box>
           </Box>
           <Chip

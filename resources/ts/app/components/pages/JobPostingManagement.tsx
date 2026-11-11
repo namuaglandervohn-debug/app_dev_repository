@@ -772,10 +772,6 @@ export default function JobPostingManagement() {
             >
               Available Career Posts
             </Typography>
-            <Typography sx={{ color: "#7F907F", fontSize: "0.92rem" }}>
-              Review each listing, then edit, delete, activate, or pause when
-              needed.
-            </Typography>
           </Box>
         </Stack>
 
@@ -1239,9 +1235,6 @@ export default function JobPostingManagement() {
                 sx={{ color: "#1E2B22", fontSize: "1.2rem" }}
               >
                 {editing ? "Edit Job Posting" : "Create Job Posting"}
-              </Typography>
-              <Typography sx={{ color: "#7F907F", fontSize: "0.86rem" }}>
-                Keep the listing clear, complete, and ready for applicants.
               </Typography>
             </Box>
           </Stack>

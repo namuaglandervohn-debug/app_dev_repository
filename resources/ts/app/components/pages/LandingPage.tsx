@@ -811,9 +811,6 @@ export default function LandingPage() {
               >
                 Open Positions
               </Typography>
-              <Typography color="text.secondary" sx={{ mt: 1 }}>
-                Review current opportunities and apply directly from the portal.
-              </Typography>
             </Box>
 
           </Box>
@@ -1131,10 +1128,6 @@ export default function LandingPage() {
                 }}
               >
                 Designed to make applicants feel welcome.
-              </Typography>
-              <Typography sx={{ color: "#5d6d63", lineHeight: 1.85, mb: 3 }}>
-                The landing page now presents the company like a destination: polished, warm,
-                professional, and easy to explore from any device.
               </Typography>
 
               <Stack spacing={1.3}>

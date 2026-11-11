@@ -1599,7 +1599,6 @@ export default function PayrollComputation() {
           </Box>
           <Box>
             <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>Payroll Filters</Typography>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>Narrow payroll records by period or processing status.</Typography>
           </Box>
         </Box>
 

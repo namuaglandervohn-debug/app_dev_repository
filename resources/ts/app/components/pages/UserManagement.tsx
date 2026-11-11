@@ -773,9 +773,6 @@ export default function UserManagement() {
             <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
               User Account Directory
             </Typography>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-              Search by account, email, role, employee ID, applicant ID, or outlet.
-            </Typography>
           </Box>
         </Box>
         <TextField
@@ -1050,9 +1047,6 @@ export default function UserManagement() {
         >
           <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
             Create New User Account
-          </Typography>
-          <Typography variant="body2" sx={{ color: GREEN_UI.muted, mt: 0.5, fontWeight: 500 }}>
-            Set the user’s login details, role access, and linked employee information.
           </Typography>
         </DialogTitle>
 

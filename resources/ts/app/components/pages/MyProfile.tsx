@@ -683,9 +683,6 @@ export default function MyProfile() {
                   <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, letterSpacing: '-0.02em' }}>
                     Personal & Employment Information
                   </Typography>
-                  <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
-                    Review HR-managed details and update your personal contact information.
-                  </Typography>
                 </Box>
               </Box>
               {editing && (
@@ -792,9 +789,6 @@ export default function MyProfile() {
                   <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, letterSpacing: '-0.02em' }}>
                     Account Information
                   </Typography>
-                  <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
-                    Login and access details connected to your system account.
-                  </Typography>
                 </Box>
               </Box>
             </Box>
@@ -840,9 +834,6 @@ export default function MyProfile() {
                 <Box>
                   <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, letterSpacing: '-0.02em' }}>
                     My Documents
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
-                    Upload and manage your personal files.
                   </Typography>
                 </Box>
               </Box>

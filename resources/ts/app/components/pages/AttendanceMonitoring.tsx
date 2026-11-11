@@ -2306,9 +2306,6 @@ export default function AttendanceMonitoring() {
             <Typography fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }}>
               Attendance Filters
             </Typography>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-              Narrow records by date, employee, and attendance status without changing saved data.
-            </Typography>
           </Box>
         </Box>
         <Grid container spacing={2} alignItems="center">

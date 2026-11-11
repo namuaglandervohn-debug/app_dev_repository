@@ -1618,9 +1618,6 @@ export default function ScheduleManagement() {
               <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
                 Schedule Directory
               </Typography>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                Search schedules, then narrow records by outlet or branch.
-              </Typography>
             </Box>
           </Box>
           <Chip

@@ -1649,9 +1649,6 @@ export default function PerformanceEvaluation() {
               <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
                 Employee Performance Evaluation
               </Typography>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                Input criteria scores and submit the evaluation record.
-              </Typography>
             </Box>
           </Box>
         </DialogTitle>
@@ -1840,9 +1837,6 @@ export default function PerformanceEvaluation() {
               <Box>
                 <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
                   Manage Criteria
-                </Typography>
-                <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                  Update criteria weights and active scoring factors.
                 </Typography>
               </Box>
             </Box>

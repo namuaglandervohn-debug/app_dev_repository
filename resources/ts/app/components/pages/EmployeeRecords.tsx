@@ -593,9 +593,6 @@ export default function EmployeeRecords() {
             <Typography fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }}>
               Employee Directory
             </Typography>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-              Choose a search field and combine independent column filters.
-            </Typography>
           </Box>
         </Box>
         <Grid container spacing={2} alignItems="center">
@@ -857,9 +854,6 @@ export default function EmployeeRecords() {
             <Box>
               <Typography fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }}>
                 Add New Employee
-              </Typography>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                Create a new employee record with profile and schedule details.
               </Typography>
             </Box>
           </Box>
