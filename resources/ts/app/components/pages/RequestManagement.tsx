@@ -45,7 +45,6 @@ import {
   Close,
   DoneAll,
   PlaylistAddCheck,
-  InfoOutlined,
   ManageSearch,
   EditOutlined,
 } from '@mui/icons-material';
@@ -1627,25 +1626,6 @@ export default function RequestManagement() {
           }
         >
           {error}
-        </Alert>
-      )}
-
-      {(isSupervisor || isHR) && (
-        <Alert
-          icon={<InfoOutlined />}
-          severity="info"
-          sx={{
-            mb: 2,
-            borderRadius: '20px',
-            border: `1px solid ${GREEN_UI.border}`,
-            bgcolor: 'rgba(239, 250, 235, 0.86)',
-            color: GREEN_UI.text,
-            '& .MuiAlert-icon': { color: GREEN_UI.greenDark },
-          }}
-        >
-          <strong>Two-Step Approval Flow:</strong> Employee submits → <strong>Supervisor</strong> reviews and approves → <strong>HR</strong> validates for final approval.
-          {isSupervisor && ' You can approve or disapprove Pending requests.'}
-          {isHR && ' You validate Supervisor Approved requests for final HR approval.'}
         </Alert>
       )}
 
