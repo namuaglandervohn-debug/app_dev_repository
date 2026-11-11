@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
-import { Alert, Box, Button, CircularProgress, Container, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
-import { ArrowBackRounded } from '@mui/icons-material';
+import { Alert, Avatar, Box, Button, CircularProgress, Container, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { ArrowBackRounded, Close, EditNote, Save } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
@@ -10,15 +10,22 @@ import { DashboardHeader } from '../layouts/DashboardOverview';
 import { fileToDataUrl } from '../../lib/applicationFiles';
 import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import { accountColors } from '../layouts/accountColors';
+import { profileCardSx, profileDetailsSx, profileFieldSx } from '../layouts/profileStyles';
 import { APPLICANT_COUNTRIES, APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, BARANGAYS_BY_CITY, ZIP_BY_CITY } from '../../lib/applicantAddress';
 
 const initial = { firstName: '', middleName: '', lastName: '', suffix: '', birthdate: '', contactNumber: '', gender: '', civilStatus: '', nationality: 'Filipino', currentCountry: 'Philippines', currentRegion: '', currentProvince: '', currentCity: '', currentBarangay: '', currentStreet: '', currentZipCode: '' };
-const fields: [keyof typeof initial, string, boolean][] = [
+type ProfileField = [keyof typeof initial, string, boolean];
+const personalDetails: ProfileField[] = [
   ['firstName', 'First name', true], ['middleName', 'Middle name', false], ['lastName', 'Last name', true], ['suffix', 'Suffix', false],
   ['birthdate', 'Date of birth', true], ['contactNumber', 'Mobile number', true], ['gender', 'Gender', false], ['civilStatus', 'Civil status', false],
-  ['nationality', 'Nationality', false], ['currentCountry', 'Country', true], ['currentRegion', 'Region', false], ['currentProvince', 'Province', false], ['currentCity', 'City / Municipality', true], ['currentBarangay', 'Barangay', false], ['currentStreet', 'Street / House No. / Purok', true], ['currentZipCode', 'ZIP Code', false],
+  ['nationality', 'Nationality', false],
 ];
+const addressDetails: ProfileField[] = [
+  ['currentCountry', 'Country', true], ['currentRegion', 'Region', false], ['currentProvince', 'Province', false],
+  ['currentCity', 'City / Municipality', true], ['currentBarangay', 'Barangay', false], ['currentStreet', 'Street / House No. / Purok', true], ['currentZipCode', 'ZIP Code', false],
+];
+const fields = [...personalDetails, ...addressDetails];
 const requirementFileTypes: Record<string, string> = {
   pdf: 'application/pdf',
   doc: 'application/msword',
@@ -55,6 +62,7 @@ export default function ApplicantPortal() {
   const [params] = useSearchParams();
   const [mode, setMode] = useState(0);
   const [profile, setProfile] = useState<Record<string, any>>({ ...initial });
+  const [profileBeforeEdit, setProfileBeforeEdit] = useState<Record<string, any> | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -85,9 +93,43 @@ export default function ApplicantPortal() {
     return () => { active = false; };
   }, [user?.id, user?.role]);
   const choices: Partial<Record<keyof typeof initial, string[]>> = { nationality: APPLICANT_NATIONALITIES, suffix: ['', 'Jr.', 'Sr.', 'II', 'III', 'IV'], gender: ['Male', 'Female', 'Prefer not to say'], civilStatus: ['Single', 'Married', 'Widowed', 'Separated'], currentCountry: APPLICANT_COUNTRIES, currentRegion: profile.currentCountry === 'Philippines' ? Object.keys(PH_PROVINCES_BY_REGION) : undefined, currentProvince: profile.currentCountry === 'Philippines' ? PH_PROVINCES_BY_REGION[profile.currentRegion] : undefined, currentCity: CITIES_BY_PROVINCE[profile.currentProvince], currentBarangay: BARANGAYS_BY_CITY[profile.currentCity] };
-  const personalFields = <Grid container spacing={2}>{fields.map(([key, label, required]) => <Grid key={key} size={{ xs: 12, sm: 6 }}>
-    <TextField select={Boolean(choices[key])} fullWidth required={required} label={label} value={profile[key] || ''} type={key === 'birthdate' ? 'date' : 'text'} InputLabelProps={key === 'birthdate' || choices[key] ? { shrink: true } : undefined} inputProps={key === 'birthdate' ? { max: new Date().toISOString().slice(0,10) } : { maxLength: 200 }} disabled={busy} onChange={e => { const value = e.target.value; setProfile(prev => ({ ...prev, [key]: value, ...(key === 'currentCountry' ? { currentRegion: '', currentProvince: '', currentCity: '', currentBarangay: '', currentZipCode: '' } : key === 'currentRegion' ? { currentProvince: '', currentCity: '', currentBarangay: '', currentZipCode: '' } : key === 'currentProvince' ? { currentCity: '', currentBarangay: '', currentZipCode: '' } : key === 'currentCity' ? { currentBarangay: '', currentZipCode: ZIP_BY_CITY[value] || '' } : {}) })); }}>{choices[key] ? [<MenuItem key="empty" value="">Select {label.toLowerCase()}</MenuItem>, ...choices[key]!.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)] : null}</TextField>
-  </Grid>)}</Grid>;
+  const setProfileField = (key: keyof typeof initial, value: string) => {
+    const addressChanges: Partial<Record<keyof typeof initial, Partial<typeof initial>>> = {
+      currentCountry: { currentRegion: '', currentProvince: '', currentCity: '', currentBarangay: '', currentZipCode: '' },
+      currentRegion: { currentProvince: '', currentCity: '', currentBarangay: '', currentZipCode: '' },
+      currentProvince: { currentCity: '', currentBarangay: '', currentZipCode: '' },
+      currentCity: { currentBarangay: '', currentZipCode: ZIP_BY_CITY[value] || '' },
+    };
+    setProfile(previous => ({ ...previous, [key]: value, ...addressChanges[key] }));
+  };
+  const renderFields = (items: ProfileField[], inProfile = false) => {
+    const readOnly = inProfile && !profileBeforeEdit;
+    return (
+      <Grid container spacing={inProfile ? 1.5 : 2}>
+        {items.map(([key, label, required]) => {
+          const options = readOnly ? undefined : choices[key];
+          const isDate = key === 'birthdate' && !readOnly;
+          return (
+            <Grid key={key} size={{ xs: 12, sm: 6 }}>
+              <TextField
+                select={Boolean(options)} fullWidth required={required && !readOnly} label={label}
+                value={profile[key] || (readOnly ? '—' : '')} type={isDate ? 'date' : 'text'}
+                size={inProfile ? 'small' : undefined} sx={inProfile ? profileFieldSx : undefined}
+                InputLabelProps={inProfile || isDate || options ? { shrink: true } : undefined}
+                inputProps={readOnly ? { readOnly: true } : isDate ? { max: new Date().toISOString().slice(0, 10) } : { maxLength: 200 }}
+                disabled={busy} onChange={readOnly ? undefined : event => setProfileField(key, event.target.value)}
+              >
+                {options && [
+                  <MenuItem key="empty" value="">Select {label.toLowerCase()}</MenuItem>,
+                  ...options.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>),
+                ]}
+              </TextField>
+            </Grid>
+          );
+        })}
+      </Grid>
+    );
+  };
   const validateProfile = () => {
     if (fields.some(([key,, required]) => required && !String(profile[key] || '').trim())) throw new Error('Complete all required personal information.');
     if (!profile.birthdate || profile.birthdate > new Date().toISOString().slice(0,10)) throw new Error('Enter a valid date of birth.');
@@ -97,9 +139,13 @@ export default function ApplicantPortal() {
     event.preventDefault(); if (busy) return; setBusy(true); setError(''); setNotice('');
     try {
       if (user?.role === 'applicant') {
+        if (!profileBeforeEdit) return;
         validateProfile();
-        const result = await supabase.from('applicant_profiles').update({ profile: completeApplicantAddress(profile), updated_at: new Date().toISOString() }).eq('auth_user_id', user.id).select('auth_user_id').single();
+        const updatedProfile = completeApplicantAddress(profile);
+        const result = await supabase.from('applicant_profiles').update({ profile: updatedProfile, updated_at: new Date().toISOString() }).eq('auth_user_id', user.id).select('auth_user_id').single();
         if (result.error) throw result.error;
+        setProfile(updatedProfile);
+        setProfileBeforeEdit(null);
         setNotice('Profile saved. Future applications will use these details.');
       } else if (mode === 1) {
         validateProfile();
@@ -179,6 +225,9 @@ export default function ApplicantPortal() {
     </Button>
   );
   if (user) {
+    const savedProfile = profileBeforeEdit ?? profile;
+    const name = [savedProfile.firstName, savedProfile.middleName, savedProfile.lastName, savedProfile.suffix].filter(Boolean).join(' ') || user.name;
+    const initials = [savedProfile.firstName, savedProfile.lastName].map(part => String(part ?? '').charAt(0)).join('').toUpperCase() || name.charAt(0).toUpperCase();
     return (
       <Box sx={{ minHeight: '100vh', background: accountColors.dashboard }}>
         <Box component="header" sx={{ background: accountColors.header, color: accountColors.onGreen, borderBottom: 1, borderColor: accountColors.onGreenBorder }}>
@@ -188,7 +237,7 @@ export default function ApplicantPortal() {
                 <BrandLogo size={36} />
                 <Typography fontWeight={750}>Buenaventura HRIS</Typography>
               </Stack>
-              <Button color="inherit" disabled={busy} onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setApplications([]); setUploadFor(null); setRequirementFiles([]); logout(); }}>Sign out</Button>
+              <Button color="inherit" disabled={busy} onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setProfileBeforeEdit(null); setApplications([]); setUploadFor(null); setRequirementFiles([]); logout(); }}>Sign out</Button>
             </Stack>
           </Container>
         </Box>
@@ -201,16 +250,49 @@ export default function ApplicantPortal() {
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
           <Grid container spacing={2} alignItems="flex-start">
             <Grid size={{ xs: 12, md: 7 }}>
-              <Paper component="section" variant="outlined" sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 2 }}>
-                <Typography component="h2" variant="h6" fontWeight={750} sx={{ mb: 2 }}>My profile</Typography>
-                {profileReady && (
-                  <Box component="form" onSubmit={submit}>
-                    {personalFields}
-                    <Button type="submit" variant="contained" disabled={busy} sx={{ mt: 2 }}>{busy ? 'Please wait...' : 'Save profile'}</Button>
-                  </Box>
-                )}
-                {!profileReady && !error && <CircularProgress size={24} aria-label="Loading applicant profile" />}
-              </Paper>
+              <Stack component="section" aria-labelledby="applicant-profile-title" spacing={2}>
+                <Paper elevation={0} sx={{ ...profileCardSx, p: { xs: 2, sm: 2.5 }, background: accountColors.dashboardHeading }}>
+                  <Stack direction="row" alignItems="center" spacing={1.5}>
+                    <Avatar aria-hidden="true" sx={{
+                      width: { xs: 56, sm: 68 }, height: { xs: 56, sm: 68 }, bgcolor: 'primary.main',
+                      color: 'primary.contrastText', fontSize: '1.45rem', fontWeight: 700, border: '4px solid rgba(255,255,255,0.84)',
+                      boxShadow: '0 12px 26px rgba(31, 122, 70, 0.20)', flexShrink: 0,
+                    }}>{initials}</Avatar>
+                    <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                      <Typography id="applicant-profile-title" component="h2" variant="body2" fontWeight={700} color="primary.dark">My profile</Typography>
+                      <Typography variant="h5" fontWeight={750} sx={{ lineHeight: 1.2 }}>{name}</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{user.email}</Typography>
+                    </Box>
+                  </Stack>
+                </Paper>
+                {profileReady ? (
+                  <Paper component="form" elevation={0} onSubmit={submit} sx={{ ...profileCardSx, p: { xs: 1.5, sm: 2 } }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" useFlexGap flexWrap="wrap" gap={1} sx={{ mb: 1.5 }}>
+                      <Typography component="h3" variant="h6" fontWeight={700}>Personal information</Typography>
+                      {!profileBeforeEdit && (
+                        <Button type="button" variant="contained" startIcon={<EditNote />} disabled={busy}
+                          onClick={() => { setProfileBeforeEdit(profile); setError(''); setNotice(''); }}>
+                          Edit profile
+                        </Button>
+                      )}
+                    </Stack>
+                    <Paper elevation={0} sx={{ ...profileDetailsSx, p: { xs: 1.5, sm: 2 } }}>
+                      {renderFields(personalDetails, true)}
+                    </Paper>
+                    <Paper elevation={0} sx={{ ...profileDetailsSx, p: { xs: 1.5, sm: 2 }, mt: 1.5 }}>
+                      <Typography component="h3" variant="subtitle2" fontWeight={700} color="primary.dark" sx={{ mb: 1.5 }}>Address</Typography>
+                      {renderFields(addressDetails, true)}
+                    </Paper>
+                    {profileBeforeEdit && (
+                      <Stack direction="row" flexWrap="wrap" gap={1} justifyContent="flex-end" sx={{ mt: 2 }}>
+                        <Button type="button" variant="outlined" startIcon={<Close />} disabled={busy}
+                          onClick={() => { setProfile(profileBeforeEdit); setProfileBeforeEdit(null); setError(''); }}>Cancel</Button>
+                        <Button type="submit" variant="contained" startIcon={<Save />} disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</Button>
+                      </Stack>
+                    )}
+                  </Paper>
+                ) : !error && <CircularProgress size={24} aria-label="Loading applicant profile" />}
+              </Stack>
             </Grid>
             <Grid size={{ xs: 12, md: 5 }}>
               <Paper component="section" variant="outlined" sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 2 }}>
@@ -264,7 +346,7 @@ export default function ApplicantPortal() {
     <Box component="form" onSubmit={submit}><Stack spacing={3}>
       <TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy} />
       <TextField label="Password" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode ? 'new-password' : 'current-password'} inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy} />
-      {mode === 1 && personalFields}
+      {mode === 1 && renderFields(fields)}
       <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : mode === 1 ? 'Create applicant account' : 'Sign in'}</Button>
     </Stack></Box>
     {mode === 0 && (

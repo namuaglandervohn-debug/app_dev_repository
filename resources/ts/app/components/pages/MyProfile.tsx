@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import ActionSnackbar from '../ActionSnackbar';
+import { profileCardSx as softCardSx, profileDetailsSx as innerCardSx, profileFieldSx as softTextFieldSx } from '../layouts/profileStyles';
 
 interface Employee {
   id: string; name: string; position: string; department?: string;
@@ -52,8 +53,6 @@ const DOCS_KEY = 'my_profile_docs';
 
 const GREEN_UI = {
   pageBg: 'radial-gradient(circle at top left, rgba(220, 246, 219, 0.95), rgba(248, 252, 245, 0.98) 34%, #f7fbf3 100%)',
-  cardBg: 'rgba(255, 255, 255, 0.92)',
-  cardBgSoft: 'rgba(245, 252, 241, 0.88)',
   border: 'rgba(139, 184, 144, 0.24)',
   borderStrong: 'rgba(73, 156, 92, 0.32)',
   green: '#3aa865',
@@ -61,22 +60,7 @@ const GREEN_UI = {
   greenSoft: '#e6f8e9',
   text: '#1e2d24',
   muted: '#6c7d70',
-  shadow: '0 20px 55px rgba(43, 91, 55, 0.10)',
   shadowSoft: '0 12px 28px rgba(43, 91, 55, 0.08)',
-};
-
-const softCardSx = {
-  borderRadius: '26px',
-  border: `1px solid ${GREEN_UI.border}`,
-  background: GREEN_UI.cardBg,
-  boxShadow: GREEN_UI.shadow,
-};
-
-const innerCardSx = {
-  borderRadius: '20px',
-  border: `1px solid ${GREEN_UI.border}`,
-  background: GREEN_UI.cardBgSoft,
-  boxShadow: GREEN_UI.shadowSoft,
 };
 
 const pillButtonSx = {
@@ -84,21 +68,6 @@ const pillButtonSx = {
   textTransform: 'none',
   fontWeight: 600,
   px: 2,
-};
-
-const softTextFieldSx = {
-  '& .MuiOutlinedInput-root': {
-    borderRadius: '16px',
-    backgroundColor: '#fbfef9',
-    transition: 'all 180ms ease',
-    '& fieldset': { borderColor: GREEN_UI.border },
-    '&:hover fieldset': { borderColor: GREEN_UI.borderStrong },
-    '&.Mui-focused fieldset': { borderColor: GREEN_UI.green, borderWidth: 1.5 },
-    '&.Mui-disabled': { backgroundColor: '#f6fbf4' },
-  },
-  '& .MuiInputLabel-root': { color: GREEN_UI.muted },
-  '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: GREEN_UI.text },
-  '& .MuiFormHelperText-root': { color: GREEN_UI.muted },
 };
 
 const sectionHeaderSx = {
