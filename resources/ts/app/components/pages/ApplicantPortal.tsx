@@ -59,8 +59,8 @@ function missingRequirements(app: ApplicantSubmission) {
 
 export default function ApplicantPortal() {
   const { user, loading, login, logout } = useAuth();
-  const [params] = useSearchParams();
-  const [mode, setMode] = useState(0);
+  const [params, setParams] = useSearchParams();
+  const mode = params.get('mode') === 'register' ? 1 : 0;
   const [profile, setProfile] = useState<Record<string, any>>({ ...initial });
   const [profileBeforeEdit, setProfileBeforeEdit] = useState<Record<string, any> | null>(null);
   const [email, setEmail] = useState('');
@@ -75,6 +75,12 @@ export default function ApplicantPortal() {
   const [requirementFiles, setRequirementFiles] = useState<File[]>([]);
   const profileReady = ready && profileOwner === user?.id;
   const next = params.get('next')?.startsWith('/apply') ? params.get('next')! : '/apply';
+  const setMode = (value: number, replace = false) => {
+    const updated = new URLSearchParams(params);
+    if (value === 1) updated.set('mode', 'register');
+    else updated.delete('mode');
+    setParams(updated, { replace });
+  };
   useEffect(() => {
     if (user?.role !== 'applicant') return;
     let active = true;
@@ -153,7 +159,7 @@ export default function ApplicantPortal() {
         if (result.error) throw result.error;
         setPassword('');
         setNotice('Check your inbox or spam folder for the confirmation link. After verifying your email, sign in with your email and password.');
-        setMode(0);
+        setMode(0, true);
       } else { await login(email.trim().toLowerCase(), password); setPassword(''); }
     } catch (e: any) {
       setError(e.code === 'invalid_credentials' ? 'Email or password is incorrect. Use Forgot password to set a new one.' : e.message || 'Could not complete this action.');

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../../context/AuthContext";
 import {
   Container,
@@ -15,6 +15,7 @@ import {
   Stack,
   Chip,
   CircularProgress,
+  Link,
 } from "@mui/material";
 import {
   Search,
@@ -342,6 +343,7 @@ export default function LoginPage() {
                 label="Email"
                 disabled={loading || signingIn}
                 type="email"
+                autoComplete="username"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setSelectedDemo(''); }}
                 margin="normal"
@@ -361,6 +363,7 @@ export default function LoginPage() {
                 label="Password"
                 disabled={loading || signingIn}
                 type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 margin="normal"
@@ -429,6 +432,15 @@ export default function LoginPage() {
                 {signingIn ? 'Signing in…' : loading ? 'Checking session…' : 'Sign In to HRIS'}
               </Button>
             </form>
+            <Link
+              component={RouterLink}
+              to="/applicant?mode=register"
+              underline="always"
+              variant="body2"
+              sx={{ display: "block", width: "fit-content", mx: "auto", color: "#087443", fontWeight: 700 }}
+            >
+              Create an applicant account here
+            </Link>
           </Box>
         </Paper>
 
