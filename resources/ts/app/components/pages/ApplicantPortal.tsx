@@ -280,7 +280,7 @@ export default function ApplicantPortal() {
                 </Box>
               </Stack>
               <Stack direction="row" flexWrap="wrap" gap={1}>
-                <Button component={Link} to={next} variant="outlined" disabled={!profileReady || busy}>Apply for a job</Button>
+                <Button component={Link} to={next} variant="contained" disabled={!profileReady || busy}>Apply for a job</Button>
                 {profileReady && (profileBeforeEdit ? (
                   <>
                     <Button type="button" variant="outlined" startIcon={<Close />} disabled={busy}
@@ -293,7 +293,7 @@ export default function ApplicantPortal() {
                   <Button type="button" variant="contained" startIcon={<EditNote />} disabled={busy}
                     onClick={() => { setProfileBeforeEdit(profile); setError(''); setNotice(''); }}>Edit Profile</Button>
                 ))}
-                <Button variant="outlined" disabled={!profileReady || busy || refreshing}
+                <Button variant="contained" disabled={!profileReady || busy || refreshing}
                   onClick={() => void refreshApplications()}>{refreshing ? 'Refreshing…' : 'Refresh Status'}</Button>
               </Stack>
             </Stack>
@@ -331,7 +331,7 @@ export default function ApplicantPortal() {
                     <Box aria-hidden="true" sx={profileIconSx}><Assignment /></Box>
                     <Typography component="h2" variant="h6" fontWeight={700}>Your applications</Typography>
                   </Stack>
-                  <Button onClick={() => setTrackingId('')} variant="outlined" startIcon={<TrackChanges />}>Track Application</Button>
+                  <Button onClick={() => setTrackingId('')} variant="contained" startIcon={<TrackChanges />}>Track Application</Button>
                 </Stack>
                 <Divider sx={{ mb: 2 }} />
                 {profileReady && applications.length === 0 && (
