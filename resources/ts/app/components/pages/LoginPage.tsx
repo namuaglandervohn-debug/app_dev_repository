@@ -22,6 +22,7 @@ import {
   Link,
 } from "@mui/material";
 import {
+  ArrowBackRounded,
   Search,
   Visibility,
   VisibilityOff,
@@ -204,7 +205,16 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthBackground>
+    <AuthBackground topLeftAction={(
+      <Button
+        component={RouterLink}
+        to="/"
+        startIcon={<ArrowBackRounded />}
+        sx={{ minHeight: 44, px: 2, bgcolor: '#fff', color: '#087443', '&:hover': { bgcolor: '#e8f5ed' } }}
+      >
+        Back
+      </Button>
+    )}>
       <Container maxWidth="sm" sx={{ position: "relative", zIndex: 1 }}>
         <Paper
           elevation={0}

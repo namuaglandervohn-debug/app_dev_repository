@@ -13,9 +13,10 @@ const OVERLAY =
 interface AuthBackgroundProps {
   children: ReactNode;
   intervalMs?: number;
+  topLeftAction?: ReactNode;
 }
 
-export default function AuthBackground({ children, intervalMs = 5000 }: AuthBackgroundProps) {
+export default function AuthBackground({ children, intervalMs = 5000, topLeftAction }: AuthBackgroundProps) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function AuthBackground({ children, intervalMs = 5000 }: AuthBack
         justifyContent: 'center',
         overflow: 'hidden',
         px: { xs: 2, sm: 3, md: 4 },
-        py: { xs: 3, md: 4 },
+        py: topLeftAction ? { xs: 9, md: 10 } : { xs: 3, md: 4 },
       }}
     >
       {/* Crossfading background images */}
@@ -116,6 +117,12 @@ export default function AuthBackground({ children, intervalMs = 5000 }: AuthBack
           />
         ))}
       </Box>
+
+      {topLeftAction && (
+        <Box sx={{ position: 'absolute', top: { xs: '16px', sm: '24px' }, left: { xs: '16px', sm: '24px' }, zIndex: 3 }}>
+          {topLeftAction}
+        </Box>
+      )}
 
       <Box sx={{ position: 'relative', zIndex: 2, width: '100%', display: 'flex', justifyContent: 'center' }}>
         {children}
