@@ -8,12 +8,13 @@ import {
 } from '@mui/material';
 import {
   SpaceDashboard, PersonAddAlt1, Groups, CalendarMonth, Schedule, Assignment,
-  Payments, Insights, Analytics, Logout, Menu as MenuIcon, CorporateFare,
+  Payments, Insights, Analytics, Logout, Menu as MenuIcon,
   NotificationsNone, ManageAccounts, ReceiptLong, AccountCircle, BadgeOutlined, Work,
   KeyboardArrowDown,
 } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import BrandLogo from '../BrandLogo';
 
 const drawerWidth = 268;
 
@@ -187,8 +188,8 @@ export default function RootLayout() {
           '&:hover': { background: 'rgba(255,255,255,0.06)', transform: 'translateY(-1px)' },
         }}
       >
-        <Box sx={{ width: 48, height: 48, minWidth: 48, borderRadius: '16px', background: 'linear-gradient(135deg, #f0a93f 0%, #ffd276 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 14px 28px rgba(244,189,79,0.28)' }}>
-          <CorporateFare sx={{ color: 'white' }} />
+        <Box sx={{ width: 48, height: 48, minWidth: 48, borderRadius: '16px', bgcolor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <BrandLogo size="100%" />
         </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ color: 'white', fontWeight: 700, lineHeight: 1.1, fontSize: '0.95rem' }} noWrap>Buenaventura</Typography>

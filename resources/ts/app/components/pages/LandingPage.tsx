@@ -28,7 +28,6 @@ import {
   LocationOn,
   Edit,
   Campaign,
-  Business,
   Login,
   Search,
   AssignmentTurnedIn,
@@ -40,11 +39,11 @@ import {
   ArrowForward,
   CheckCircle,
   MenuBook,
-  Spa,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import ActionSnackbar from "../ActionSnackbar";
+import BrandLogo from "../BrandLogo";
 
 interface JobPosting {
   id: string;
@@ -351,8 +350,7 @@ export default function LandingPage() {
                   width: { xs: 44, sm: 50 },
                   height: { xs: 44, sm: 50 },
                   borderRadius: "18px",
-                  background:
-                    "linear-gradient(145deg, #1F7A47 0%, #58b97a 52%, #d8b86f 100%)",
+                  bgcolor: "#fff",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -360,7 +358,7 @@ export default function LandingPage() {
                   flexShrink: 0,
                 }}
               >
-                <Business sx={{ color: "#fff" }} />
+                <BrandLogo size="100%" />
               </Box>
 
               <Box sx={{ minWidth: 0 }}>
@@ -1288,7 +1286,7 @@ export default function LandingPage() {
             justifyContent="space-between"
           >
             <Stack direction="row" spacing={1.2} alignItems="center">
-              <Spa sx={{ color: "#1F7A47" }} />
+              <BrandLogo size={32} />
               <Typography fontWeight={950} sx={{ color: "#174f32" }}>
                 Buenaventura Estate Careers
               </Typography>

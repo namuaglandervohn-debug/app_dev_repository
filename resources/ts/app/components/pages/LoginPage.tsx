@@ -20,13 +20,13 @@ import {
 import {
   Lock,
   Search,
-  Business,
   Visibility,
   VisibilityOff,
   Email,
   VpnKey,
 } from "@mui/icons-material";
 import AuthBackground from "../AuthBackground";
+import BrandLogo from "../BrandLogo";
 import { COMPANY } from "../../lib/constants";
 
 export default function LoginPage() {
@@ -197,8 +197,7 @@ export default function LoginPage() {
                   width: { xs: 66, sm: 76 },
                   height: { xs: 66, sm: 76 },
                   borderRadius: "24px",
-                  background:
-                    "linear-gradient(145deg, #0A7A43 0%, #36B96E 64%, #8BD98F 100%)",
+                  bgcolor: "#fff",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -207,7 +206,7 @@ export default function LoginPage() {
                   border: "1px solid rgba(255,255,255,0.58)",
                 }}
               >
-                <Business sx={{ fontSize: { xs: 33, sm: 38 }, color: "white" }} />
+                <BrandLogo size="100%" />
               </Box>
 
               <Chip
