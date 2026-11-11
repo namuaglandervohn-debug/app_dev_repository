@@ -109,7 +109,9 @@ export default function ApplicantPortal() {
         setNotice('If your email still needs confirmation, check your inbox or spam folder for a link. If you already confirmed it, sign in.');
         setMode(0);
       } else { await login(email.trim().toLowerCase(), password); setPassword(''); }
-    } catch (e: any) { setError(e.message || 'Could not complete this action.'); }
+    } catch (e: any) {
+      setError(e.code === 'invalid_credentials' ? 'Email or password is incorrect. Use Forgot password to set a new one.' : e.message || 'Could not complete this action.');
+    }
     finally { setBusy(false); }
   };
   const resendConfirmation = async () => {
@@ -121,6 +123,26 @@ export default function ApplicantPortal() {
       setNotice('Confirmation requested. If your email still needs confirmation, check your inbox or spam folder. If you already confirmed it, sign in.');
     } catch (e: any) { setError(e.message || 'Could not resend the confirmation email.'); }
     finally { setBusy(false); }
+  };
+  const sendPasswordReset = async () => {
+    const address = email.trim().toLowerCase();
+    if (busy) return;
+    setError('');
+    setNotice('');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setError('Enter your applicant email address first.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(address, { redirectTo: `${window.location.origin}/applicant` });
+      if (error) throw error;
+      setNotice('If an account exists for that address, check your inbox or spam folder for a password reset link.');
+    } catch (e: any) {
+      setError(e.message || 'Could not request a password reset link.');
+    } finally {
+      setBusy(false);
+    }
   };
   const submitRequirements = async (applicantId: string) => {
     if (busy || requirementFiles.length === 0) return;
@@ -245,6 +267,11 @@ export default function ApplicantPortal() {
       {mode === 1 && personalFields}
       <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : mode === 1 ? 'Create applicant account' : 'Sign in'}</Button>
     </Stack></Box>
-    {mode === 0 && <Button disabled={busy} onClick={() => void resendConfirmation()} sx={{ mt: 1 }}>Resend confirmation email</Button>}
+    {mode === 0 && (
+      <Stack direction="row" flexWrap="wrap" sx={{ mt: 1 }}>
+        <Button disabled={busy} onClick={() => void sendPasswordReset()}>Forgot password?</Button>
+        <Button disabled={busy} onClick={() => void resendConfirmation()}>Resend confirmation email</Button>
+      </Stack>
+    )}
   </Paper></Container></AuthBackground>;
 }

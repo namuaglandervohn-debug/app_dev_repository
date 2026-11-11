@@ -2,6 +2,8 @@ import { RouterProvider } from 'react-router';
 import { router } from './routes';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import ApplicantPasswordReset from './components/pages/ApplicantPasswordReset';
+import { passwordRecoveryClient } from './lib/supabaseClient';
 // ── Suppress Figma Make preview-environment prop warnings ─────────────────────
 // FGCmp (Figma's inspector wrapper) injects data-fg-* / data-fgid-* props onto
 // every component — MUI rejects them. We scan ALL console.error arguments
@@ -276,9 +278,13 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AuthProvider>
-        <RouterProvider router={router} />
-      </AuthProvider>
+      {passwordRecoveryClient ? (
+        <ApplicantPasswordReset client={passwordRecoveryClient} />
+      ) : (
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      )}
     </ThemeProvider>
   );
 }
