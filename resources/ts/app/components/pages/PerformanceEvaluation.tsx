@@ -1239,10 +1239,9 @@ export default function PerformanceEvaluation() {
         </Alert>
       )}
 
-      {criteriaReady && (
+      {criteriaReady && !criteriaReady.is_ready && (
         <Alert
-          severity={criteriaReady.is_ready ? "success" : "error"}
-          icon={criteriaReady.is_ready ? <TaskAlt /> : undefined}
+          severity="error"
           sx={{ mb: 2, borderRadius: "18px", border: `1px solid ${GREEN_UI.border}` }}
         >
           Criteria Weight Check: <strong>{money(criteriaReady.total_weight)}%</strong> — {criteriaReady.message}
