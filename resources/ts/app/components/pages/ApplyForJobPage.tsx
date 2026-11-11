@@ -69,6 +69,11 @@ const EDUCATIONAL_ATTAINMENT = [
 const HEAR_ABOUT_OPTIONS = ['Facebook', 'Referral', 'Walk-in', 'Job Posting', 'Other'];
 const ACCEPTED_APPLICATION_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
 const ACCEPTED_APPLICATION_FILE_LABEL = 'PDF, DOC, DOCX, JPG, JPEG, and PNG';
+const CERTIFICATE_FILE_TYPES = new Map(Object.entries({
+  pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+}));
+const certificateFileType = (file: File) => CERTIFICATE_FILE_TYPES.get(file.name.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? '');
 const SUPPORTING_DOCUMENT_EXAMPLES = 'Transcript of Records, Birth Certificate, Medical Certificate, valid ID, training certificates, or other required documents';
 
 
@@ -127,7 +132,7 @@ const EMPTY = {
   emergencyContactName: '', emergencyContactRelation: '', emergencyContactRelationOther: '', emergencyContactPhone: '', emergencyContactAddress: '',
   education: '', schoolName: '', courseProgram: '', yearGraduated: '', honorsAwards: '',
   companyOrganization: '', positionHeld: '', employmentStartDate: '', employmentEndDate: '', employmentPeriod: '', dutiesResponsibilities: '', totalYearsExperience: '',
-  skills: [] as string[], otherSkills: '', certification1: '', certification2: '', certification3: '',
+  skills: [] as string[], otherSkills: '',
   referenceName: '', referencePosition: '', referenceCompany: '', referenceContact: '',
   submittedDocuments: [] as string[], otherDocument: '', applicantSignature: '', declarationDate: '',
   birthplace: '', height: '', weight: '', address: '', experience: '', tin: '', sss: '', philhealth: '', pagibig: '',
@@ -213,6 +218,10 @@ export default function ApplyForJobPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [resumeFiles, setResumeFiles] = useState<File[]>([]);
   const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
+  const [otherSkillsEnabled, setOtherSkillsEnabled] = useState(false);
+  const [certificateFiles, setCertificateFiles] = useState<File[]>([]);
+  const [certificateError, setCertificateError] = useState('');
+  const certificateInput = useRef<HTMLInputElement>(null);
   const [successDialog, setSuccessDialog] = useState(false);
   const [applicantId, setApplicantId] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -239,6 +248,7 @@ export default function ApplyForJobPage() {
         if (!active) return;
         const profile = completeApplicantAddress(result.data.profile || {});
         setSavedProfile(profile);
+        setOtherSkillsEnabled(typeof profile.otherSkills === 'string' && Boolean(profile.otherSkills.trim()));
         setProfileLoaded(true);
         setFormData(prev => ({ ...prev, ...reusableApplicantProfile(profile, Object.keys(EMPTY)), email: user.email, age: calculateAge(profile.birthdate || ''), contactNumber: sanitizePhoneNumber(profile.contactNumber || ''), position: requestedPosition || prev.position }));
         if (Array.isArray(profile.workExperiences) && profile.workExperiences.length) setWorkExperiences(profile.workExperiences);
@@ -553,6 +563,18 @@ export default function ApplyForJobPage() {
     clearFieldError(key);
   };
 
+  const addCertificates = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = '';
+    if (!files.length) return;
+    const valid = files.filter(file => file.size > 0 && certificateFileType(file));
+    setCertificateError(valid.length === files.length ? '' : `Select nonempty certificate files in ${ACCEPTED_APPLICATION_FILE_LABEL} format.`);
+    if (valid.length) {
+      setCertificateFiles(current => [...current, ...valid]);
+      clearFieldError('supportingFiles');
+    }
+  };
+
   const updateCharacterReference = (index: number, key: keyof CharacterReference, value: string) => {
     setCharacterReferences((prev) => prev.map((reference, currentIndex) => currentIndex === index ? { ...reference, [key]: value } : reference));
   };
@@ -656,7 +678,10 @@ export default function ApplyForJobPage() {
         }
       });
     }
-    if (stepIndex === 3 && formData.skills.length === 0 && !formData.otherSkills.trim()) errors.skills = 'Please select at least one skill or enter other skills.';
+    if (stepIndex === 3) {
+      if (otherSkillsEnabled && !formData.otherSkills.trim()) errors.otherSkills = 'Enter your other skills.';
+      if (!otherSkillsEnabled && formData.skills.length === 0) errors.skills = 'Select at least one skill or check Others.';
+    }
     if (stepIndex === 4) {
       characterReferences.forEach((reference, index) => {
         const hasAnyValue = reference.name.trim() || reference.position.trim() || reference.company.trim() || reference.contact.trim();
@@ -689,7 +714,7 @@ export default function ApplyForJobPage() {
     }
     if (stepIndex === 5) {
       if (resumeFiles.length === 0) errors.resumeFiles = 'Resume/Biodata file is required.';
-      if (supportingFiles.length === 0) errors.supportingFiles = 'At least one supporting document is required.';
+      if (supportingFiles.length === 0 && certificateFiles.length === 0) errors.supportingFiles = 'At least one supporting document is required.';
       if (!formData.applicantSignature.trim()) errors.applicantSignature = 'Applicant signature/full name is required.';
       if (!formData.declarationDate) errors.declarationDate = 'Declaration date is required.';
     }
@@ -738,7 +763,22 @@ export default function ApplyForJobPage() {
       setSavedProfile(profile);
 
       const resumeFileData = resumeFiles[0] ? await fileToDataUrl(resumeFiles[0]) : null;
-      const supportingDocumentFiles = await Promise.all(supportingFiles.map(async (file) => ({ name: file.name, type: file.type, data: await fileToDataUrl(file) })));
+      const usedNames = new Set([...resumeFiles, ...supportingFiles].map(file => file.name));
+      const certificates = await Promise.all(certificateFiles.map(async file => {
+        const dot = file.name.lastIndexOf('.');
+        let name = file.name;
+        for (let copy = 2; usedNames.has(name); copy++) {
+          name = `${file.name.slice(0, dot)} (${copy})${file.name.slice(dot)}`;
+        }
+        usedNames.add(name);
+        const type = certificateFileType(file);
+        return { name, type, data: await fileToDataUrl(new Blob([file], { type })) };
+      }));
+      const supportingDocumentFiles = [
+        ...await Promise.all(supportingFiles.map(async (file) => ({ name: file.name, type: file.type, data: await fileToDataUrl(file) }))),
+        ...certificates,
+      ];
+      const supportingDocumentNames = supportingDocumentFiles.map(file => file.name);
       const birthplaceAddress = buildAddress(formData.birthplaceCountry, formData.birthplaceRegion, formData.birthplaceProvince, formData.birthplaceCity);
       const currentAddress = buildAddress(formData.currentCountry, formData.currentRegion, formData.currentProvince, formData.currentCity, formData.currentBarangay, formData.currentStreet, formData.currentZipCode);
       const permanentAddress = buildAddress(formData.permanentCountry, formData.permanentRegion, formData.permanentProvince, formData.permanentCity, formData.permanentBarangay, formData.permanentStreet, formData.permanentZipCode);
@@ -775,7 +815,7 @@ export default function ApplyForJobPage() {
         educationBackground: { level: formData.education, schoolName: formData.schoolName, courseProgram: formData.courseProgram, yearGraduated: formData.yearGraduated, honorsAwards: formData.honorsAwards },
         workExperience: normalizedWorkExperiences[0] ?? null,
         workExperiences: normalizedWorkExperiences,
-        skills: formData.skills, otherSkills: formData.otherSkills, certifications: [formData.certification1, formData.certification2, formData.certification3].filter(Boolean),
+        skills: formData.skills, otherSkills: formData.otherSkills.trim(), certifications: certificates.map(file => file.name),
         characterReferences: normalizedCharacterReferences,
         emergencyContact: primaryEmergencyContact,
         emergencyContacts: normalizedEmergencyContacts,
@@ -788,10 +828,10 @@ export default function ApplyForJobPage() {
         email: applicantEmail, phone_number: formatPhoneWithCountryCode(formData.contactNumber), address: currentAddress, position_applied: formData.position, education: formData.education, experience: applicantExperience, cover_letter: JSON.stringify(coverLetterData),
         tin: formData.tin, sss: formData.sss, philhealth: formData.philhealth, pagibig: formData.pagibig,
         emergency_contact: primaryEmergencyContact ? `${primaryEmergencyContact.name} - ${primaryEmergencyContact.relation} - ${primaryEmergencyContact.phone}` : null,
-        resume_file_name: resumeFiles[0]?.name ?? null, resume_file_data: resumeFileData, supporting_documents: supportingFiles.map((file) => file.name), supporting_document_files: supportingDocumentFiles, status: 'Submitted',
+        resume_file_name: resumeFiles[0]?.name ?? null, resume_file_data: resumeFileData, supporting_documents: supportingDocumentNames, supporting_document_files: supportingDocumentFiles, status: 'Submitted',
       }, {
         onSaved: (id) => {
-          saveApplicationFiles(id, { resumeFileName: resumeFiles[0]?.name ?? null, resumeFileData, supportingDocuments: supportingFiles.map((file) => file.name), supportingDocumentFiles });
+          saveApplicationFiles(id, { resumeFileName: resumeFiles[0]?.name ?? null, resumeFileData, supportingDocuments: supportingDocumentNames, supportingDocumentFiles });
           setApplicantId(id);
           setEmailPending(true);
           setSuccessDialog(true);
@@ -837,6 +877,9 @@ export default function ApplyForJobPage() {
     setEmailPending(false);
     setResumeFiles([]);
     setSupportingFiles([]);
+    setOtherSkillsEnabled(typeof savedProfile.otherSkills === 'string' && Boolean(savedProfile.otherSkills.trim()));
+    setCertificateFiles([]);
+    setCertificateError('');
     setCharacterReferences(savedProfile.characterReferences?.length ? savedProfile.characterReferences : [{ ...EMPTY_CHARACTER_REFERENCE }]);
     setWorkExperiences(savedProfile.workExperiences?.length ? savedProfile.workExperiences : [{ ...EMPTY_WORK_EXPERIENCE }]);
     setEmergencyContacts(savedProfile.emergencyContacts?.length ? savedProfile.emergencyContacts : [{ ...EMPTY_EMERGENCY_CONTACT }]);
@@ -1197,13 +1240,36 @@ export default function ApplyForJobPage() {
                 <Paper elevation={0} sx={stepPaperSx}>
                   <SectionTitle icon={<AutoAwesomeOutlined />} title="V. Skills and Qualifications" />
                   {fieldErrors.skills && <Alert severity="warning" sx={{ mb: 2 }}>{fieldErrors.skills}</Alert>}
-                  <FormGroup row>{SKILLS.map((skill) => <FormControlLabel key={skill} control={<Checkbox checked={formData.skills.includes(skill)} onChange={() => toggleListItem('skills', skill)} />} label={skill} sx={compactChoiceSx} />)}</FormGroup>
-                  <Grid container spacing={2.5} sx={{ mt: 1 }}>
-                    <Grid size={{ xs: 12 }}><TextField fullWidth label="Other Skills" value={formData.otherSkills} onChange={set('otherSkills')} inputProps={{ maxLength: 200 }} sx={textFieldSx} /></Grid>
-                    <Grid size={fieldGrid}><TextField fullWidth label="Certification / Training 1" value={formData.certification1} onChange={set('certification1')} inputProps={{ maxLength: 160 }} sx={textFieldSx} /></Grid>
-                    <Grid size={fieldGrid}><TextField fullWidth label="Certification / Training 2" value={formData.certification2} onChange={set('certification2')} inputProps={{ maxLength: 160 }} sx={textFieldSx} /></Grid>
-                    <Grid size={fieldGrid}><TextField fullWidth label="Certification / Training 3" value={formData.certification3} onChange={set('certification3')} inputProps={{ maxLength: 160 }} sx={textFieldSx} /></Grid>
-                  </Grid>
+                  <FormGroup row>
+                    {SKILLS.map((skill) => <FormControlLabel key={skill} control={<Checkbox checked={formData.skills.includes(skill)} onChange={() => toggleListItem('skills', skill)} />} label={skill} sx={compactChoiceSx} />)}
+                    <FormControlLabel label="Others" sx={compactChoiceSx} control={<Checkbox checked={otherSkillsEnabled} onChange={(_, checked) => {
+                      setOtherSkillsEnabled(checked);
+                      if (!checked) setFormData(previous => ({ ...previous, otherSkills: '' }));
+                      clearFieldError('skills');
+                      clearFieldError('otherSkills');
+                    }} />} />
+                  </FormGroup>
+                  <Stack spacing={2} sx={{ mt: 2 }}>
+                    {otherSkillsEnabled && <TextField fullWidth required label="Other Skills" value={formData.otherSkills} onChange={event => {
+                      set('otherSkills')(event);
+                      clearFieldError('otherSkills');
+                    }} error={Boolean(fieldErrors.otherSkills)} helperText={fieldErrors.otherSkills} inputProps={{ maxLength: 200 }} sx={textFieldSx} />}
+                    <Box>
+                      <Typography fontWeight={700} sx={{ color: '#14532d' }}>Certifications / Training (Optional)</Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>{ACCEPTED_APPLICATION_FILE_LABEL}</Typography>
+                      <input ref={certificateInput} hidden multiple type="file" accept={ACCEPTED_APPLICATION_FILE_TYPES} onChange={addCertificates} />
+                      <Button type="button" variant="outlined" startIcon={<UploadFile />} onClick={() => certificateInput.current?.click()}>
+                        {certificateFiles.length ? 'Add certificates' : 'Upload certificates'}
+                      </Button>
+                    </Box>
+                    {certificateError && <Alert severity="error">{certificateError}</Alert>}
+                    {certificateFiles.map((file, index) => (
+                      <Stack key={`${file.name}-${index}`} direction="row" alignItems="center" justifyContent="space-between" gap={1} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
+                        <Typography variant="body2" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{file.name}</Typography>
+                        <Button type="button" size="small" color="error" aria-label={`Remove ${file.name}`} onClick={() => setCertificateFiles(current => current.filter((_, fileIndex) => fileIndex !== index))}>Remove</Button>
+                      </Stack>
+                    ))}
+                  </Stack>
                 </Paper>
               )}
 
@@ -1323,7 +1389,7 @@ export default function ApplyForJobPage() {
                               ))}
                             </Stack>
                           ) : (
-                            <Typography variant="caption" color="text.secondary">Required before submitting the application. Accepted: {ACCEPTED_APPLICATION_FILE_LABEL}.</Typography>
+                            <Typography variant="caption" color="text.secondary">{certificateFiles.length > 0 ? 'Your uploaded certificates count as supporting documents.' : `Required before submitting the application. Accepted: ${ACCEPTED_APPLICATION_FILE_LABEL}.`}</Typography>
                           )}
                           {fieldErrors.supportingFiles && <Typography color="error" variant="caption" fontWeight={700}>{fieldErrors.supportingFiles}</Typography>}
                         </Stack>
