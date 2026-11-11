@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
-import { Alert, Avatar, Box, Button, CircularProgress, Container, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
-import { ArrowBackRounded, Close, EditNote, Save } from '@mui/icons-material';
+import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Divider, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, LocationOn, Phone, Public, Save } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
-import BrandLogo from '../BrandLogo';
-import { DashboardHeader } from '../layouts/DashboardOverview';
+import RootLayout from '../layouts/RootLayout';
+import ProfileSummary from '../layouts/ProfileSummary';
 import { fileToDataUrl } from '../../lib/applicationFiles';
 import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import { accountColors } from '../layouts/accountColors';
-import { profileCardSx, profileDetailsSx, profileFieldSx } from '../layouts/profileStyles';
+import { profileAvatarSx, profileCardSx, profileDetailsSx, profileFieldSx, profileHeroSx, profileIconSx } from '../layouts/profileStyles';
 import { APPLICANT_COUNTRIES, APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, BARANGAYS_BY_CITY, ZIP_BY_CITY } from '../../lib/applicantAddress';
 
@@ -228,81 +228,100 @@ export default function ApplicantPortal() {
     const savedProfile = profileBeforeEdit ?? profile;
     const name = [savedProfile.firstName, savedProfile.middleName, savedProfile.lastName, savedProfile.suffix].filter(Boolean).join(' ') || user.name;
     const initials = [savedProfile.firstName, savedProfile.lastName].map(part => String(part ?? '').charAt(0)).join('').toUpperCase() || name.charAt(0).toUpperCase();
+    const signOut = () => {
+      setReady(false);
+      setProfileOwner(null);
+      setProfile({ ...initial });
+      setProfileBeforeEdit(null);
+      setApplications([]);
+      setUploadFor(null);
+      setRequirementFiles([]);
+      logout();
+    };
     return (
-      <Box sx={{ minHeight: '100vh', background: accountColors.dashboard }}>
-        <Box component="header" sx={{ background: accountColors.header, color: accountColors.onGreen, borderBottom: 1, borderColor: accountColors.onGreenBorder }}>
-          <Container maxWidth="lg">
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ minHeight: 60 }}>
-              <Stack direction="row" alignItems="center" gap={1}>
-                <BrandLogo size={36} />
-                <Typography fontWeight={750}>Buenaventura HRIS</Typography>
-              </Stack>
-              <Button color="inherit" disabled={busy} onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setProfileBeforeEdit(null); setApplications([]); setUploadFor(null); setRequirementFiles([]); logout(); }}>Sign out</Button>
-            </Stack>
-          </Container>
-        </Box>
-        <Container component="main" maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
+      <RootLayout applicant={{ onSignOut: signOut, busy }}>
+        <Box sx={{ p: { xs: 0, sm: 1.5, md: 3 }, background: accountColors.dashboard, borderRadius: { md: '32px' } }}>
           {backButton}
-          <DashboardHeader title="Applicant account">
-            <Button component={Link} to={next} variant="contained" disabled={!profileReady}>Apply for a job</Button>
-          </DashboardHeader>
+          <Paper elevation={0} sx={profileHeroSx}>
+            <Stack direction="row" alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" flexWrap="wrap" gap={2} sx={{ position: 'relative', zIndex: 1 }}>
+              <Stack direction="row" alignItems="center" gap={2} sx={{ minWidth: 0 }}>
+                <Avatar aria-hidden="true" sx={profileAvatarSx}>{initials}</Avatar>
+                <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                  <Chip label="My Profile" size="small" icon={<AccountCircle sx={{ fontSize: '16px !important' }} />}
+                    sx={{ mb: 1.2, bgcolor: '#e6f8e9', color: '#1f7a46', fontWeight: 700 }} />
+                  <Typography component="h1" variant="h4" fontWeight={700}
+                    sx={{ fontSize: { xs: '1.55rem', sm: '2rem', md: '2.35rem' }, color: '#1e2d24', letterSpacing: '-0.04em', lineHeight: 1.08 }}>
+                    {name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{user.email}</Typography>
+                </Box>
+              </Stack>
+              <Stack direction="row" flexWrap="wrap" gap={1}>
+                <Button component={Link} to={next} variant="outlined" disabled={!profileReady || busy}>Apply for a job</Button>
+                {profileReady && (profileBeforeEdit ? (
+                  <>
+                    <Button type="button" variant="outlined" startIcon={<Close />} disabled={busy}
+                      onClick={() => { setProfile(profileBeforeEdit); setProfileBeforeEdit(null); setError(''); }}>Cancel</Button>
+                    <Button type="submit" form="applicant-profile-form" variant="contained" startIcon={<Save />} disabled={busy}>
+                      {busy ? 'Saving…' : 'Save profile'}
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" variant="contained" startIcon={<EditNote />} disabled={busy}
+                    onClick={() => { setProfileBeforeEdit(profile); setError(''); setNotice(''); }}>Edit Profile</Button>
+                ))}
+              </Stack>
+            </Stack>
+          </Paper>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
-          <Grid container spacing={2} alignItems="flex-start">
-            <Grid size={{ xs: 12, md: 7 }}>
-              <Stack component="section" aria-labelledby="applicant-profile-title" spacing={2}>
-                <Paper elevation={0} sx={{ ...profileCardSx, p: { xs: 2, sm: 2.5 }, background: accountColors.dashboardHeading }}>
-                  <Stack direction="row" alignItems="center" spacing={1.5}>
-                    <Avatar aria-hidden="true" sx={{
-                      width: { xs: 56, sm: 68 }, height: { xs: 56, sm: 68 }, bgcolor: 'primary.main',
-                      color: 'primary.contrastText', fontSize: '1.45rem', fontWeight: 700, border: '4px solid rgba(255,255,255,0.84)',
-                      boxShadow: '0 12px 26px rgba(31, 122, 70, 0.20)', flexShrink: 0,
-                    }}>{initials}</Avatar>
-                    <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                      <Typography id="applicant-profile-title" component="h2" variant="body2" fontWeight={700} color="primary.dark">My profile</Typography>
-                      <Typography variant="h5" fontWeight={750} sx={{ lineHeight: 1.2 }}>{name}</Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{user.email}</Typography>
-                    </Box>
-                  </Stack>
-                </Paper>
+          {profileReady && <ProfileSummary items={[
+            { label: 'Applications', value: applications.length, icon: <Assignment /> },
+            { label: 'City / Municipality', value: savedProfile.currentCity || '—', icon: <LocationOn /> },
+            { label: 'Nationality', value: savedProfile.nationality || '—', icon: <Public /> },
+            { label: 'Contact', value: savedProfile.contactNumber || '—', icon: <Phone /> },
+          ]} />}
+          <Grid container spacing={2.5} alignItems="flex-start">
+            <Grid size={{ xs: 12, md: 8 }}>
+              <Paper component="section" aria-labelledby="applicant-profile-title" elevation={0} sx={{ ...profileCardSx, p: { xs: 2, sm: 2.5 } }}>
+                <Stack direction="row" alignItems="center" gap={1.5} sx={{ mb: 2 }}>
+                  <Box aria-hidden="true" sx={profileIconSx}><AccountCircle /></Box>
+                  <Typography id="applicant-profile-title" component="h2" variant="h6" fontWeight={700}>Personal information</Typography>
+                </Stack>
+                <Divider sx={{ mb: 2.5 }} />
                 {profileReady ? (
-                  <Paper component="form" elevation={0} onSubmit={submit} sx={{ ...profileCardSx, p: { xs: 1.5, sm: 2 } }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" useFlexGap flexWrap="wrap" gap={1} sx={{ mb: 1.5 }}>
-                      <Typography component="h3" variant="h6" fontWeight={700}>Personal information</Typography>
-                      {!profileBeforeEdit && (
-                        <Button type="button" variant="contained" startIcon={<EditNote />} disabled={busy}
-                          onClick={() => { setProfileBeforeEdit(profile); setError(''); setNotice(''); }}>
-                          Edit profile
-                        </Button>
-                      )}
-                    </Stack>
+                  <Box component="form" id="applicant-profile-form" onSubmit={submit}>
                     <Paper elevation={0} sx={{ ...profileDetailsSx, p: { xs: 1.5, sm: 2 } }}>
+                      <Typography component="h3" variant="caption" fontWeight={700} color="primary.dark"
+                        sx={{ display: 'block', mb: 1.5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Your information</Typography>
                       {renderFields(personalDetails, true)}
                     </Paper>
-                    <Paper elevation={0} sx={{ ...profileDetailsSx, p: { xs: 1.5, sm: 2 }, mt: 1.5 }}>
-                      <Typography component="h3" variant="subtitle2" fontWeight={700} color="primary.dark" sx={{ mb: 1.5 }}>Address</Typography>
+                    <Paper elevation={0} sx={{ ...profileDetailsSx, p: { xs: 1.5, sm: 2 }, mt: 2.25 }}>
+                      <Typography component="h3" variant="caption" fontWeight={700} color="primary.dark"
+                        sx={{ display: 'block', mb: 1.5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Address</Typography>
                       {renderFields(addressDetails, true)}
                     </Paper>
-                    {profileBeforeEdit && (
-                      <Stack direction="row" flexWrap="wrap" gap={1} justifyContent="flex-end" sx={{ mt: 2 }}>
-                        <Button type="button" variant="outlined" startIcon={<Close />} disabled={busy}
-                          onClick={() => { setProfile(profileBeforeEdit); setProfileBeforeEdit(null); setError(''); }}>Cancel</Button>
-                        <Button type="submit" variant="contained" startIcon={<Save />} disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</Button>
-                      </Stack>
-                    )}
-                  </Paper>
+                  </Box>
                 ) : !error && <CircularProgress size={24} aria-label="Loading applicant profile" />}
-              </Stack>
+              </Paper>
             </Grid>
-            <Grid size={{ xs: 12, md: 5 }}>
-              <Paper component="section" variant="outlined" sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 2 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1.5 }}>
-                  <Typography component="h2" variant="h6" fontWeight={750}>Your applications</Typography>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Paper component="section" elevation={0} sx={{ ...profileCardSx, p: { xs: 2, sm: 2.5 } }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+                  <Stack direction="row" alignItems="center" gap={1.5}>
+                    <Box aria-hidden="true" sx={profileIconSx}><Assignment /></Box>
+                    <Typography component="h2" variant="h6" fontWeight={700}>Your applications</Typography>
+                  </Stack>
                   <Button onClick={() => window.location.reload()}>Refresh status</Button>
                 </Stack>
-                {applications.length === 0 && <Typography color="text.secondary">No applications submitted yet.</Typography>}
+                <Divider sx={{ mb: 2 }} />
+                {profileReady && applications.length === 0 && (
+                  <Paper elevation={0} sx={{ ...profileDetailsSx, p: 2 }}>
+                    <Typography variant="body2" color="text.secondary">No applications submitted yet.</Typography>
+                  </Paper>
+                )}
                 {profileReady && applications.map(app => (
-                  <Paper key={app.applicant_id} variant="outlined" sx={{ p: 1.5, mt: 1.25, borderRadius: 2 }}>
+                  <Paper key={app.applicant_id} elevation={0} sx={{ ...profileDetailsSx, p: 1.5, mt: 1.25 }}>
                     <Typography fontWeight={700}>{app.position_applied} - {app.is_archived ? 'Archived' : recruitmentStatusLabel(app.status)}</Typography>
                     <Typography variant="body2" color="text.secondary">{app.applicant_id}</Typography>
                     <Button component={Link} to={`/track?id=${encodeURIComponent(app.applicant_id)}`} sx={{ mt: 0.5 }}>View application status</Button>
@@ -333,8 +352,8 @@ export default function ApplicantPortal() {
               </Paper>
             </Grid>
           </Grid>
-        </Container>
-      </Box>
+        </Box>
+      </RootLayout>
     );
   }
   return <AuthBackground><Container maxWidth="md" sx={{ py: 4 }}><Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 5 }}>

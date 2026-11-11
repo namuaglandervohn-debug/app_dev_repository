@@ -12,7 +12,7 @@ import {
   NotificationsNone, ManageAccounts, ReceiptLong, AccountCircle, BadgeOutlined, Work,
   KeyboardArrowDown,
 } from '@mui/icons-material';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import BrandLogo from '../BrandLogo';
 import { accountColors } from './accountColors';
@@ -36,9 +36,13 @@ const ALL_MENU_ITEMS = [
   { text: 'Evaluation',        icon: <Insights />,           path: '/dashboard/evaluation',       roles: ['hr','supervisor','gm','employee'] },
   { text: 'Reports',           icon: <Analytics />,          path: '/dashboard/reports',          roles: ['hr','gm','accounting'] },
   { text: 'My Profile',        icon: <AccountCircle />,      path: '/dashboard/profile',          roles: ['employee'] },
+  { text: 'My Profile',        icon: <AccountCircle />,      path: '/applicant',                  roles: ['applicant'] },
 ];
 
-export default function RootLayout() {
+export default function RootLayout({ children, applicant }: {
+  children?: ReactNode;
+  applicant?: { onSignOut: () => void; busy: boolean };
+} = {}) {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,7 +57,7 @@ export default function RootLayout() {
 
   // Fetch notifications based on role — must be before any early return
   useEffect(() => {
-  if (!user) return;
+  if (!user || user.role === 'applicant') return;
 
   const fetchNotifications = async () => {
     try {
@@ -107,13 +111,24 @@ export default function RootLayout() {
   }
 
   // Early return AFTER all hooks
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to={applicant ? '/applicant' : '/login'} replace />;
 
-  if (user.role === 'applicant') return <Navigate to="/applicant" replace />;
+  if (user.role === 'applicant' && !applicant) return <Navigate to="/applicant" replace />;
+  if (user.role !== 'applicant' && applicant) return <Navigate to="/dashboard" replace />;
 
   const filteredMenuItems = ALL_MENU_ITEMS.filter(item => item.roles.includes(user.role));
-  const handleLogout = () => { logout(); navigate('/login'); };
-  const handleNavigate = (path: string) => { navigate(path); if (!isDesktop) setMobileOpen(false); };
+  const handleLogout = () => {
+    if (applicant) {
+      if (!applicant.busy) applicant.onSignOut();
+      return;
+    }
+    logout();
+    navigate('/login');
+  };
+  const handleNavigate = (path: string) => {
+    if (!applicant || location.pathname !== path) navigate(path);
+    if (!isDesktop) setMobileOpen(false);
+  };
 
   const unreadCount = notifications.filter(n => !readIds.has(n.id)).length;
 
@@ -141,14 +156,14 @@ export default function RootLayout() {
 
   const ROLE_LABELS: Record<string, string> = {
     hr: 'HR / Admin', employee: 'Employee', supervisor: 'Supervisor',
-    gm: 'General Manager', accounting: 'Accounting & Finance',
+    gm: 'General Manager', accounting: 'Accounting & Finance', applicant: 'Applicant',
   };
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', background: accountColors.sidebar, color: accountColors.onGreen }}>
       <ListItemButton
         component="button"
-        onClick={() => handleNavigate('/dashboard')}
+        onClick={() => handleNavigate(applicant ? '/applicant' : '/dashboard')}
         sx={{ m: 1.5, px: 1, py: 1.25, gap: 1, borderRadius: 2, flexGrow: 0, textAlign: 'left' }}
       >
         <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: '14px', bgcolor: 'background.paper' }}>
@@ -213,6 +228,7 @@ export default function RootLayout() {
           fullWidth
           startIcon={<Logout />}
           onClick={handleLogout}
+          disabled={applicant?.busy}
           sx={{
             minHeight: 44, px: 2, justifyContent: 'flex-start',
             color: theme => lighten(theme.palette.error.main, 0.86),
@@ -247,7 +263,7 @@ export default function RootLayout() {
           <Typography noWrap sx={{ flex: 1, minWidth: 0, fontWeight: 750, fontSize: '0.95rem' }}>
             Buenaventura HRIS
           </Typography>
-          <Tooltip title="Notifications">
+          {!applicant && <Tooltip title="Notifications">
             <IconButton
               aria-label="Notifications"
               onClick={e => setNotifAnchor(e.currentTarget)}
@@ -255,7 +271,7 @@ export default function RootLayout() {
             >
               <Badge badgeContent={unreadCount} color="error"><NotificationsNone fontSize="small" /></Badge>
             </IconButton>
-          </Tooltip>
+          </Tooltip>}
           <Button
             aria-label="Account menu"
             aria-haspopup="menu"
@@ -271,12 +287,12 @@ export default function RootLayout() {
             <MenuItem disabled><Typography fontWeight={700}>{user.name}</Typography></MenuItem>
             <MenuItem disabled><Typography variant="body2" color="text.secondary">{ROLE_LABELS[user.role]}</Typography></MenuItem>
             <Divider />
-            {user.role === 'employee' && (
-              <MenuItem onClick={() => { setAnchorEl(null); navigate('/dashboard/profile'); }}>
+            {(user.role === 'employee' || applicant) && (
+              <MenuItem onClick={() => { setAnchorEl(null); handleNavigate(applicant ? '/applicant' : '/dashboard/profile'); }}>
                 <ListItemIcon><AccountCircle fontSize="small" /></ListItemIcon>My Profile
               </MenuItem>
             )}
-            <MenuItem onClick={() => { setAnchorEl(null); handleLogout(); }}>
+            <MenuItem disabled={applicant?.busy} onClick={() => { setAnchorEl(null); handleLogout(); }}>
               <ListItemIcon><Logout fontSize="small" /></ListItemIcon>Sign Out
             </MenuItem>
           </Menu>
@@ -386,7 +402,7 @@ export default function RootLayout() {
 
       <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: '100vh', pt: `${toolbarHeight}px`, background: accountColors.dashboard }}>
         <Box sx={{ maxWidth: 1760, mx: 'auto', p: { xs: 1.5, sm: 2, md: 3 } }}>
-          <Outlet />
+          {applicant ? children : <Outlet />}
         </Box>
       </Box>
     </Box>

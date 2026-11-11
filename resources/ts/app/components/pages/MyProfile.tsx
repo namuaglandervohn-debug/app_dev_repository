@@ -14,7 +14,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import ActionSnackbar from '../ActionSnackbar';
-import { profileCardSx as softCardSx, profileDetailsSx as innerCardSx, profileFieldSx as softTextFieldSx } from '../layouts/profileStyles';
+import { profileCardSx as softCardSx, profileDetailsSx as innerCardSx, profileFieldSx as softTextFieldSx, profileAvatarSx, profileHeroSx, profileIconSx as sectionIconSx } from '../layouts/profileStyles';
+import ProfileSummary from '../layouts/ProfileSummary';
 
 interface Employee {
   id: string; name: string; position: string; department?: string;
@@ -79,16 +80,6 @@ const sectionHeaderSx = {
   flexWrap: 'wrap',
 };
 
-const sectionIconSx = {
-  width: 42,
-  height: 42,
-  borderRadius: '16px',
-  display: 'grid',
-  placeItems: 'center',
-  bgcolor: GREEN_UI.greenSoft,
-  color: GREEN_UI.greenDark,
-  flexShrink: 0,
-};
 
 const rowCardSx = {
   borderRadius: '18px',
@@ -435,38 +426,7 @@ export default function MyProfile() {
         borderRadius: { xs: 0, md: '32px' },
       }}
     >
-      <Paper
-        elevation={0}
-        sx={{
-          ...softCardSx,
-          p: { xs: 2, sm: 2.75, md: 3.25 },
-          mb: 2.5,
-          position: 'relative',
-          overflow: 'hidden',
-          background:
-            'linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(239,250,235,0.96) 60%, rgba(225,248,224,0.94) 100%)',
-          '&:before': {
-            content: '""',
-            position: 'absolute',
-            width: 260,
-            height: 260,
-            borderRadius: '50%',
-            right: -90,
-            top: -110,
-            background: 'rgba(76, 175, 80, 0.12)',
-          },
-          '&:after': {
-            content: '""',
-            position: 'absolute',
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            left: { xs: '70%', md: '44%' },
-            bottom: -95,
-            background: 'rgba(174, 222, 144, 0.18)',
-          },
-        }}
-      >
+      <Paper elevation={0} sx={profileHeroSx}>
         <Box
           sx={{
             position: 'relative',
@@ -479,19 +439,7 @@ export default function MyProfile() {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-            <Avatar
-              sx={{
-                width: { xs: 68, sm: 82 },
-                height: { xs: 68, sm: 82 },
-                bgcolor: GREEN_UI.green,
-                color: '#fff',
-                fontSize: { xs: '1.45rem', sm: '1.85rem' },
-                fontWeight: 700,
-                border: '4px solid rgba(255,255,255,0.84)',
-                boxShadow: '0 18px 34px rgba(31, 122, 70, 0.20)',
-                flexShrink: 0,
-              }}
-            >
+            <Avatar sx={profileAvatarSx}>
               {initials}
             </Avatar>
             <Box sx={{ minWidth: 0 }}>
@@ -593,54 +541,12 @@ export default function MyProfile() {
         </Box>
       </Paper>
 
-      <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
-        {[
-          { label: 'Employee ID', value: employee?.id ?? 'Not linked', icon: <Badge /> },
-          { label: 'Outlet / Branch', value: employee?.outlet || 'Not set', icon: <LocationOn /> },
-          { label: 'Documents', value: totalDocumentCount, icon: <InsertDriveFile /> },
-          { label: 'Contact', value: employee?.contact ?? 'Not set', icon: <Phone /> },
-        ].map(stat => (
-          <Grid key={stat.label} size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              elevation={0}
-              sx={{
-                ...softCardSx,
-                p: 2,
-                minHeight: 126,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                transition: 'transform 180ms ease, box-shadow 180ms ease',
-                '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 22px 48px rgba(43, 91, 55, 0.13)' },
-              }}
-            >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body2" sx={{ color: GREEN_UI.muted, fontWeight: 600 }}>
-                    {stat.label}
-                  </Typography>
-                  <Typography
-                    variant="h5"
-                    fontWeight={700}
-                    sx={{
-                      color: GREEN_UI.text,
-                      mt: 0.5,
-                      letterSpacing: '-0.04em',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: 210,
-                    }}
-                  >
-                    {stat.value}
-                  </Typography>
-                </Box>
-                <Box sx={sectionIconSx}>{stat.icon}</Box>
-              </Box>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
+      <ProfileSummary items={[
+        { label: 'Employee ID', value: employee?.id ?? 'Not linked', icon: <Badge /> },
+        { label: 'Outlet / Branch', value: employee?.outlet || 'Not set', icon: <LocationOn /> },
+        { label: 'Documents', value: totalDocumentCount, icon: <InsertDriveFile /> },
+        { label: 'Contact', value: employee?.contact ?? 'Not set', icon: <Phone /> },
+      ]} />
 
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, md: 8 }}>
