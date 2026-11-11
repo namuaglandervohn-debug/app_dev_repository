@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
-import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Divider, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
 import RootLayout from '../layouts/RootLayout';
+import { ApplicationTracker } from './TrackApplicationPage';
 import { fileToDataUrl } from '../../lib/applicationFiles';
 import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import { accountColors } from '../layouts/accountColors';
@@ -56,6 +57,14 @@ function missingRequirements(app: ApplicantSubmission) {
   ].filter(Boolean).join(', ');
 }
 
+async function loadApplicantApplications(userId: string): Promise<ApplicantSubmission[]> {
+  const { data, error } = await supabase.from('applicants')
+    .select('applicant_id,position_applied,status,requirements_note,is_archived,has_resume,has_birth_cert,has_tor,has_med_cert,custom_requirements')
+    .eq('auth_user_id', userId).order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
 export default function ApplicantPortal() {
   const { user, loading, login, logout } = useAuth();
   const [params, setParams] = useSearchParams();
@@ -70,6 +79,8 @@ export default function ApplicantPortal() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(signupEmailConfirmed ? 'Email verified. Sign in with your email and password.' : '');
   const [applications, setApplications] = useState<ApplicantSubmission[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
   const [uploadFor, setUploadFor] = useState<string | null>(null);
   const [requirementFiles, setRequirementFiles] = useState<File[]>([]);
   const profileReady = ready && profileOwner === user?.id;
@@ -88,15 +99,24 @@ export default function ApplicantPortal() {
       try {
         const result = await supabase.from('applicant_profiles').select('profile').eq('auth_user_id', user.id).single();
         if (result.error) throw result.error;
-        const list = await supabase.from('applicants')
-          .select('applicant_id,position_applied,status,requirements_note,is_archived,has_resume,has_birth_cert,has_tor,has_med_cert,custom_requirements')
-          .eq('auth_user_id', user.id).order('created_at', { ascending: false });
-        if (list.error) throw list.error;
-        if (active) { setProfile({ ...initial, ...completeApplicantAddress(result.data.profile) }); setApplications(list.data || []); setProfileOwner(user.id); setReady(true); }
+        const list = await loadApplicantApplications(user.id);
+        if (active) { setProfile({ ...initial, ...completeApplicantAddress(result.data.profile) }); setApplications(list); setProfileOwner(user.id); setReady(true); }
       } catch (e: any) { if (active) setError(e.message || 'Could not load your profile.'); }
     })();
     return () => { active = false; };
   }, [user?.id, user?.role]);
+  const refreshApplications = async () => {
+    if (!user || refreshing || busy) return;
+    setRefreshing(true);
+    setError('');
+    try {
+      setApplications(await loadApplicantApplications(user.id));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not refresh application status.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const choices: Partial<Record<keyof typeof initial, string[]>> = { nationality: APPLICANT_NATIONALITIES, suffix: ['', 'Jr.', 'Sr.', 'II', 'III', 'IV'], gender: ['Male', 'Female', 'Prefer not to say'], civilStatus: ['Single', 'Married', 'Widowed', 'Separated'], currentCountry: APPLICANT_COUNTRIES, currentRegion: profile.currentCountry === 'Philippines' ? Object.keys(PH_PROVINCES_BY_REGION) : undefined, currentProvince: profile.currentCountry === 'Philippines' ? PH_PROVINCES_BY_REGION[profile.currentRegion] : undefined, currentCity: CITIES_BY_PROVINCE[profile.currentProvince], currentBarangay: BARANGAYS_BY_CITY[profile.currentCity] };
   const setProfileField = (key: keyof typeof initial, value: string) => {
     const addressChanges: Partial<Record<keyof typeof initial, Partial<typeof initial>>> = {
@@ -196,7 +216,7 @@ export default function ApplicantPortal() {
     }
   };
   const submitRequirements = async (applicantId: string) => {
-    if (busy || requirementFiles.length === 0) return;
+    if (busy || refreshing || requirementFiles.length === 0) return;
     setError('');
     setNotice('');
     if (requirementFiles.length > 5 || requirementFiles.reduce((bytes, file) => bytes + file.size, 0) > 10 * 1024 * 1024) {
@@ -239,14 +259,14 @@ export default function ApplicantPortal() {
       setProfile({ ...initial });
       setProfileBeforeEdit(null);
       setApplications([]);
+      setTrackingId(null);
       setUploadFor(null);
       setRequirementFiles([]);
       logout();
     };
     return (
-      <RootLayout applicant={{ onSignOut: signOut, busy }}>
+      <RootLayout applicant={{ onSignOut: signOut, busy: busy || refreshing }}>
         <Box sx={{ p: { xs: 0, sm: 1.5, md: 3 }, background: accountColors.dashboard, borderRadius: { md: '32px' } }}>
-          {backButton}
           <Paper elevation={0} sx={profileHeroSx}>
             <Stack direction="row" alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" flexWrap="wrap" gap={2} sx={{ position: 'relative', zIndex: 1 }}>
               <Stack direction="row" alignItems="center" gap={2} sx={{ minWidth: 0 }}>
@@ -275,6 +295,8 @@ export default function ApplicantPortal() {
                   <Button type="button" variant="contained" startIcon={<EditNote />} disabled={busy}
                     onClick={() => { setProfileBeforeEdit(profile); setError(''); setNotice(''); }}>Edit Profile</Button>
                 ))}
+                <Button variant="outlined" disabled={!profileReady || busy || refreshing}
+                  onClick={() => void refreshApplications()}>{refreshing ? 'Refreshing…' : 'Refresh Status'}</Button>
               </Stack>
             </Stack>
           </Paper>
@@ -311,10 +333,7 @@ export default function ApplicantPortal() {
                     <Box aria-hidden="true" sx={profileIconSx}><Assignment /></Box>
                     <Typography component="h2" variant="h6" fontWeight={700}>Your applications</Typography>
                   </Stack>
-                  <Stack direction="row" flexWrap="wrap" gap={1}>
-                    <Button component={Link} to="/track" variant="outlined" startIcon={<TrackChanges />}>Track Application</Button>
-                    <Button onClick={() => window.location.reload()}>Refresh status</Button>
-                  </Stack>
+                  <Button onClick={() => setTrackingId('')} variant="outlined" startIcon={<TrackChanges />}>Track Application</Button>
                 </Stack>
                 <Divider sx={{ mb: 2 }} />
                 {profileReady && applications.length === 0 && (
@@ -326,7 +345,7 @@ export default function ApplicantPortal() {
                   <Paper key={app.applicant_id} elevation={0} sx={{ ...profileDetailsSx, p: 1.5, mt: 1.25 }}>
                     <Typography fontWeight={700}>{app.position_applied} - {app.is_archived ? 'Archived' : recruitmentStatusLabel(app.status)}</Typography>
                     <Typography variant="body2" color="text.secondary">{app.applicant_id}</Typography>
-                    <Button component={Link} to={`/track?id=${encodeURIComponent(app.applicant_id)}`} sx={{ mt: 0.5 }}>View application status</Button>
+                    <Button onClick={() => setTrackingId(app.applicant_id)} sx={{ mt: 0.5 }}>View application status</Button>
                     {app.status === 'Missing Requirements' && !app.is_archived && (
                       <Stack spacing={1} alignItems="flex-start" sx={{ mt: 1 }}>
                         <Typography variant="body2">{missingRequirements(app)}</Typography>
@@ -338,7 +357,7 @@ export default function ApplicantPortal() {
                               <Box component="input" type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" disabled={busy}
                                 onChange={event => setRequirementFiles(Array.from(event.currentTarget.files ?? []))} sx={{ display: 'block', maxWidth: '100%', mt: 0.5 }} />
                             </Typography>
-                            <Button variant="contained" disabled={busy || !requirementFiles.length} onClick={() => void submitRequirements(app.applicant_id)}>
+                            <Button variant="contained" disabled={busy || refreshing || !requirementFiles.length} onClick={() => void submitRequirements(app.applicant_id)}>
                               {busy ? 'Uploading…' : 'Submit documents'}
                             </Button>
                           </>
@@ -355,6 +374,16 @@ export default function ApplicantPortal() {
             </Grid>
           </Grid>
         </Box>
+        <Dialog open={trackingId !== null} onClose={() => setTrackingId(null)} aria-labelledby="track-application-dialog-title"
+          fullWidth maxWidth="md" scroll="paper">
+          <DialogTitle id="track-application-dialog-title">Track Application</DialogTitle>
+          <DialogContent dividers sx={{ p: 0 }}>
+            {trackingId !== null && <ApplicationTracker key={trackingId} initialApplicantId={trackingId} inDialog />}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setTrackingId(null)}>Close</Button>
+          </DialogActions>
+        </Dialog>
       </RootLayout>
     );
   }
