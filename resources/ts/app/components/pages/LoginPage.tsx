@@ -139,12 +139,6 @@ export default function LoginPage() {
       color: "#11221A",
       fontSize: "0.94rem",
     },
-    "& .MuiFormHelperText-root": {
-      color: "#7C8D80",
-      fontSize: "0.76rem",
-      fontWeight: 600,
-      ml: 1.2,
-    },
   };
 
   return (
@@ -325,7 +319,6 @@ export default function LoginPage() {
                 }}
                 margin="normal"
                 size="medium"
-                helperText="Choose a role to auto-fill credentials"
                 InputLabelProps={{ shrink: true }}
                 InputProps={{
                   startAdornment: (
@@ -399,7 +392,6 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 margin="normal"
                 required
-                helperText="Enter your account password"
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -464,69 +456,6 @@ export default function LoginPage() {
                 {signingIn ? 'Signing in…' : loading ? 'Checking session…' : 'Sign In to HRIS'}
               </Button>
             </form>
-
-            <Box
-              sx={{
-                mt: 3,
-                p: { xs: 1.7, sm: 2 },
-                borderRadius: "20px",
-                background:
-                  "linear-gradient(135deg, rgba(221,245,229,0.72) 0%, rgba(255,255,255,0.86) 58%, rgba(255,247,226,0.64) 100%)",
-                border: "1px solid rgba(45,168,97,0.16)",
-                boxShadow: "0 14px 32px rgba(26,83,55,0.07)",
-              }}
-            >
-              <Typography
-                variant="caption"
-                display="block"
-                gutterBottom
-                sx={{
-                  fontSize: "0.72rem",
-                  fontWeight: 700,
-                  letterSpacing: 0.5,
-                  color: "#006B3C",
-                  textTransform: "uppercase",
-                  mb: 1.15,
-                }}
-              >
-                Quick Access — Demo Roles
-              </Typography>
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                {demoAccounts.map((a) => (
-                  <Chip
-                    key={a.email}
-                    label={a.role}
-                    size="small"
-                    variant="outlined"
-                    disabled={loading || signingIn}
-                    onClick={() => {
-                      setSelectedDemo(a.email);
-                      setEmail(a.email);
-                      setPassword(a.password);
-                    }}
-                    sx={{
-                      mb: 0.5,
-                      height: 29,
-                      cursor: "pointer",
-                      borderRadius: "999px",
-                      borderColor: "rgba(8,116,67,0.18)",
-                      bgcolor: "rgba(255,255,255,0.74)",
-                      color: "#1D5D3A",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      boxShadow: "0 8px 16px rgba(26,83,55,0.05)",
-                      "&:hover": {
-                        borderColor: "rgba(8,116,67,0.36)",
-                        bgcolor: "#DDF5E5",
-                        color: "#006B3C",
-                        transform: "translateY(-1px)",
-                      },
-                      transition: "all 160ms ease",
-                    }}
-                  />
-                ))}
-              </Stack>
-            </Box>
           </Box>
         </Paper>
 
