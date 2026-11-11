@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
-import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
 import RootLayout from '../layouts/RootLayout';
 import { ApplicationTracker } from './TrackApplicationPage';
@@ -66,31 +66,30 @@ async function loadApplicantApplications(userId: string): Promise<ApplicantSubmi
 }
 
 export default function ApplicantPortal() {
-  const { user, loading, login, logout } = useAuth();
-  const [params, setParams] = useSearchParams();
-  const mode = params.get('mode') === 'register' ? 1 : 0;
+  const { user, loading, logout } = useAuth();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const registering = params.get('mode') === 'register';
   const [profile, setProfile] = useState<Record<string, any>>({ ...initial });
   const [profileBeforeEdit, setProfileBeforeEdit] = useState<Record<string, any> | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [ready, setReady] = useState(false);
   const [profileOwner, setProfileOwner] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState(signupEmailConfirmed ? 'Email verified. Sign in with your email and password.' : '');
+  const [notice, setNotice] = useState('');
   const [applications, setApplications] = useState<ApplicantSubmission[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [uploadFor, setUploadFor] = useState<string | null>(null);
   const [requirementFiles, setRequirementFiles] = useState<File[]>([]);
   const profileReady = ready && profileOwner === user?.id;
-  const next = params.get('next')?.startsWith('/apply') ? params.get('next')! : '/apply';
-  const setMode = (value: number, replace = false) => {
-    const updated = new URLSearchParams(params);
-    if (value === 1) updated.set('mode', 'register');
-    else updated.delete('mode');
-    setParams(updated, { replace });
-  };
+  const requestedNext = params.get('next') ?? '';
+  const hasApplicationDestination = /^\/apply(?:\?|$)/.test(requestedNext);
+  const next = hasApplicationDestination ? requestedNext : '/apply';
+  const loginPath = hasApplicationDestination ? `/login?next=${encodeURIComponent(next)}` : '/login';
   useEffect(() => {
     if (user?.role !== 'applicant') return;
     let active = true;
@@ -172,48 +171,17 @@ export default function ApplicantPortal() {
         setProfile(updatedProfile);
         setProfileBeforeEdit(null);
         setNotice('Profile saved. Future applications will use these details.');
-      } else if (mode === 1) {
+      } else if (registering) {
         validateProfile();
-        const result = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password, options: { emailRedirectTo: `${window.location.origin}/applicant`, data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
+        const registrationEmail = email.trim().toLowerCase();
+        const result = await supabase.auth.signUp({ email: registrationEmail, password, options: { emailRedirectTo: `${window.location.origin}/applicant`, data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
         if (result.error) throw result.error;
-        setPassword('');
-        setNotice('Check your inbox or spam folder for the confirmation link. After verifying your email, sign in with your email and password.');
-        setMode(0, true);
-      } else { await login(email.trim().toLowerCase(), password); setPassword(''); }
+        navigate(loginPath, { replace: true, state: { registrationEmail } });
+      }
     } catch (e: any) {
-      setError(e.code === 'invalid_credentials' ? 'Email or password is incorrect. Use Forgot password to set a new one.' : e.message || 'Could not complete this action.');
+      setError(e.message || 'Could not complete this action.');
     }
     finally { setBusy(false); }
-  };
-  const resendConfirmation = async () => {
-    if (busy || !email.trim()) { setError('Enter your registration email first.'); return; }
-    setBusy(true); setError(''); setNotice('');
-    try {
-      const result = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase(), options: { emailRedirectTo: `${window.location.origin}/applicant` } });
-      if (result.error) throw result.error;
-      setNotice('Confirmation requested. If your email still needs confirmation, check your inbox or spam folder. If you already confirmed it, sign in.');
-    } catch (e: any) { setError(e.message || 'Could not resend the confirmation email.'); }
-    finally { setBusy(false); }
-  };
-  const sendPasswordReset = async () => {
-    const address = email.trim().toLowerCase();
-    if (busy) return;
-    setError('');
-    setNotice('');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      setError('Enter your applicant email address first.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(address, { redirectTo: `${window.location.origin}/applicant` });
-      if (error) throw error;
-      setNotice('If an account exists for that address, check your inbox or spam folder for a password reset link.');
-    } catch (e: any) {
-      setError(e.message || 'Could not request a password reset link.');
-    } finally {
-      setBusy(false);
-    }
   };
   const submitRequirements = async (applicantId: string) => {
     if (busy || refreshing || requirementFiles.length === 0) return;
@@ -244,8 +212,9 @@ export default function ApplicantPortal() {
   };
   if (loading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
   if (user && user.role !== 'applicant') return <Navigate to="/dashboard" replace />;
+  if (signingOut || (!user && !registering)) return <Navigate to={signingOut ? '/login' : loginPath} replace />;
   const backButton = (
-    <Button component={Link} to="/login" startIcon={<ArrowBackRounded />} sx={{ mb: 1 }}>
+    <Button component={Link} to={loginPath} startIcon={<ArrowBackRounded />} sx={{ mb: 1 }}>
       Back
     </Button>
   );
@@ -254,14 +223,7 @@ export default function ApplicantPortal() {
     const name = [savedProfile.firstName, savedProfile.middleName, savedProfile.lastName, savedProfile.suffix].filter(Boolean).join(' ') || user.name;
     const initials = [savedProfile.firstName, savedProfile.lastName].map(part => String(part ?? '').charAt(0)).join('').toUpperCase() || name.charAt(0).toUpperCase();
     const signOut = () => {
-      setReady(false);
-      setProfileOwner(null);
-      setProfile({ ...initial });
-      setProfileBeforeEdit(null);
-      setApplications([]);
-      setTrackingId(null);
-      setUploadFor(null);
-      setRequirementFiles([]);
+      setSigningOut(true);
       logout();
     };
     return (
@@ -387,21 +349,14 @@ export default function ApplicantPortal() {
   }
   return <AuthBackground><Container maxWidth="md" sx={{ py: 4 }}><Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 5 }}>
     {backButton}
-    <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>Applicant account</Typography>
+    <Typography component="h1" variant="h5" fontWeight={700} sx={{ mb: 2 }}>Create an applicant account</Typography>
     <Typography sx={{ mb: 3 }}>Create your profile once. Review and reuse it whenever you apply for another position.</Typography>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}{notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
     <Box component="form" onSubmit={submit}><Stack spacing={3}>
       <TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy} />
-      <TextField label="Password" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode ? 'new-password' : 'current-password'} inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy} />
-      {mode === 1 && renderFields(fields)}
-      <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : mode === 1 ? 'Create applicant account' : 'Sign in'}</Button>
+      <TextField label="Password" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy} />
+      {renderFields(fields)}
+      <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : 'Create applicant account'}</Button>
     </Stack></Box>
-    {mode === 0 && (
-      <Stack direction="row" flexWrap="wrap" sx={{ mt: 1 }}>
-        <Button disabled={busy} onClick={() => void sendPasswordReset()}>Forgot password?</Button>
-        <Button disabled={busy} onClick={() => void resendConfirmation()}>Resend confirmation email</Button>
-        <Button disabled={busy} onClick={() => { setMode(1); setError(''); setNotice(''); }}>Create account</Button>
-      </Stack>
-    )}
   </Paper></Container></AuthBackground>;
 }

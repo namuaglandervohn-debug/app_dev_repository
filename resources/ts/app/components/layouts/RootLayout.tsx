@@ -111,7 +111,7 @@ export default function RootLayout({ children, applicant }: {
   }
 
   // Early return AFTER all hooks
-  if (!user) return <Navigate to={applicant ? '/applicant' : '/login'} replace />;
+  if (!user) return <Navigate to="/login" replace />;
 
   if (user.role === 'applicant' && !applicant) return <Navigate to="/applicant" replace />;
   if (user.role !== 'applicant' && applicant) return <Navigate to="/dashboard" replace />;

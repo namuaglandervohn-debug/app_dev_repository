@@ -913,7 +913,7 @@ export default function ApplyForJobPage() {
   };
 
   if (authLoading || profileLoading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
-  if (!user) return <Navigate to={`/applicant?next=${encodeURIComponent('/apply' + window.location.search)}`} replace />;
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent('/apply' + window.location.search)}`} replace />;
   if (user.role !== 'applicant') return <Navigate to="/dashboard" replace />;
   if (!profileLoaded) return <Container sx={{ py: 4 }}><Alert severity="error">{error || 'Your profile could not be loaded.'}</Alert><Button onClick={() => window.location.reload()}>Retry</Button></Container>;
 

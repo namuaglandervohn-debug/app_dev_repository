@@ -695,7 +695,7 @@ export default function TrackApplicationPage() {
   const applicantId = searchParams.get('id') ?? '';
 
   if (authLoading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
-  if (!user) return <Navigate to="/applicant" replace />;
+  if (!user) return <Navigate to="/login" replace />;
 
   return (
     <AuthBackground>

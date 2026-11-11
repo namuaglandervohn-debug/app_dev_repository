@@ -8,7 +8,13 @@ const inBrowser = typeof window !== 'undefined';
 const callback = new URLSearchParams(inBrowser ? window.location.hash.slice(1) : '');
 const recoveryCallback = callback.get('type') === 'recovery';
 const signupCallback = callback.get('type') === 'signup';
-export const signupEmailConfirmed = signupCallback && Boolean(callback.get('access_token') && callback.get('refresh_token')) && !callback.has('error');
+let signupEmailConfirmed = signupCallback && Boolean(callback.get('access_token') && callback.get('refresh_token')) && !callback.has('error');
+
+export function consumeSignupEmailConfirmation() {
+  const confirmed = signupEmailConfirmed;
+  signupEmailConfirmed = false;
+  return confirmed;
+}
 
 if (inBrowser && signupCallback) {
   // Supabase has already verified the email. Discard the callback session

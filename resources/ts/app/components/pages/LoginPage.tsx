@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
+import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../../context/AuthContext";
 import {
   Container,
@@ -27,12 +27,18 @@ import {
 import AuthBackground from "../AuthBackground";
 import BrandLogo from "../BrandLogo";
 import { COMPANY } from "../../lib/constants";
+import { consumeSignupEmailConfirmation, supabase } from "../../lib/supabaseClient";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const { state } = useLocation();
+  const registrationEmail = typeof state?.registrationEmail === 'string' ? state.registrationEmail : '';
+  const [email, setEmail] = useState(registrationEmail);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState(registrationEmail
+    ? 'Check your inbox or spam folder for the confirmation link. After verifying your email, sign in here.' : '');
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [selectedDemo, setSelectedDemo] = useState("");
   const submitting = useRef(false);
   const [signingIn, setSigningIn] = useState(false);
@@ -40,6 +46,16 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const freshLogin = searchParams.get("fresh") === "1";
+  const next = searchParams.get('next') ?? '';
+  const nextQuery = /^\/apply(?:\?|$)/.test(next) ? `next=${encodeURIComponent(next)}` : '';
+  const applicantPath = nextQuery ? `/applicant?${nextQuery}` : '/applicant';
+  const registrationPath = `/applicant?mode=register${nextQuery ? `&${nextQuery}` : ''}`;
+
+  useEffect(() => {
+    if (consumeSignupEmailConfirmation()) {
+      setNotice('Email verified. Sign in with your email and password.');
+    }
+  }, []);
 
   useEffect(() => {
     if (freshLogin) {
@@ -49,16 +65,17 @@ export default function LoginPage() {
     }
 
     if (!loading && user) {
-      navigate(user.role === 'applicant' ? '/applicant' : '/dashboard', { replace: true });
+      navigate(user.role === 'applicant' ? applicantPath : '/dashboard', { replace: true });
     }
-  }, [freshLogin, loading, logout, navigate, setSearchParams, user]);
+  }, [applicantPath, freshLogin, loading, logout, navigate, setSearchParams, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading || submitting.current) return;
+    if (loading || sendingEmail || submitting.current) return;
     submitting.current = true;
     setSigningIn(true);
     setError("");
+    setNotice('');
     try {
       await login(email, password);
     } catch (err) {
@@ -66,6 +83,33 @@ export default function LoginPage() {
     } finally {
       submitting.current = false;
       setSigningIn(false);
+    }
+  };
+
+  const requestAccountEmail = async (kind: 'reset' | 'confirm') => {
+    if (loading || sendingEmail || submitting.current) return;
+    const address = email.trim().toLowerCase();
+    setError('');
+    setNotice('');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setError('Enter your email address first.');
+      return;
+    }
+
+    setSendingEmail(true);
+    try {
+      const redirectTo = `${window.location.origin}/applicant`;
+      const { error } = kind === 'reset'
+        ? await supabase.auth.resetPasswordForEmail(address, { redirectTo })
+        : await supabase.auth.resend({ type: 'signup', email: address, options: { emailRedirectTo: redirectTo } });
+      if (error) throw error;
+      setNotice(kind === 'reset'
+        ? 'If an account exists for that address, check your inbox or spam folder for a password reset link.'
+        : 'Confirmation requested. If your email still needs confirmation, check your inbox or spam folder.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not request the email.');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -233,6 +277,7 @@ export default function LoginPage() {
               </Typography>
             </Stack>
 
+            {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
             {error && (
               <Alert
                 severity="error"
@@ -374,7 +419,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                disabled={loading || signingIn}
+                disabled={loading || signingIn || sendingEmail}
                 aria-busy={loading || signingIn}
                 startIcon={loading || signingIn ? <CircularProgress size={18} color="inherit" /> : undefined}
                 fullWidth
@@ -405,9 +450,13 @@ export default function LoginPage() {
                 {signingIn ? 'Signing in…' : loading ? 'Checking session…' : 'Sign In to HRIS'}
               </Button>
             </form>
+            <Stack direction="row" flexWrap="wrap" justifyContent="center" gap={1} sx={{ mb: 1 }}>
+              <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('reset')}>Forgot password?</Button>
+              <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('confirm')}>Resend confirmation email</Button>
+            </Stack>
             <Link
               component={RouterLink}
-              to="/applicant?mode=register"
+              to={registrationPath}
               underline="always"
               variant="body2"
               sx={{ display: "block", width: "fit-content", mx: "auto", color: "#087443", fontWeight: 700 }}

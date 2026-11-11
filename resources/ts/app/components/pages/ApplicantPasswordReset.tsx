@@ -54,7 +54,7 @@ export default function ApplicantPasswordReset({ client }: { client: SupabaseCli
             {session === undefined && <CircularProgress size={24} aria-label="Checking password reset link" />}
             {session === null && <Alert severity="error">This reset link is invalid or expired. Request a new one from the sign-in page.</Alert>}
             {saved && <Alert severity="success">Password updated. Sign in with your new password.</Alert>}
-            {(saved || session === null) && <Button href="/applicant" sx={{ alignSelf: 'flex-start' }}>Back to sign in</Button>}
+            {(saved || session === null) && <Button href="/login" sx={{ alignSelf: 'flex-start' }}>Back to sign in</Button>}
             {session && !saved && (
               <Stack component="form" onSubmit={submit} spacing={2}>
                 <Typography variant="body2" color="text.secondary">{session.user.email}</Typography>
