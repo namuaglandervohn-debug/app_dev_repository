@@ -151,7 +151,7 @@ export default function RootLayout() {
         onClick={() => handleNavigate('/dashboard')}
         sx={{ m: 1.5, px: 1, py: 1.25, gap: 1, borderRadius: 2, flexGrow: 0, textAlign: 'left' }}
       >
-        <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: '14px', background: 'linear-gradient(135deg, #f0a93f, #ffd276)' }}>
+        <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: '14px', bgcolor: 'background.paper' }}>
           <BrandLogo size="100%" />
         </Box>
         <Box sx={{ minWidth: 0 }}>
