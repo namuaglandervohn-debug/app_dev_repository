@@ -69,7 +69,9 @@ export default function ApplicantPortal() {
         validateProfile();
         const result = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password, options: { emailRedirectTo: `${window.location.origin}/applicant`, data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
         if (result.error) throw result.error;
-        setPassword(''); setNotice('Registration received. Check your email to confirm your account, then sign in.'); setMode(0);
+        setPassword('');
+        setNotice('If your email still needs confirmation, check your inbox or spam folder for a link. If you already confirmed it, sign in.');
+        setMode(0);
       } else { await login(email.trim().toLowerCase(), password); setPassword(''); }
     } catch (e: any) { setError(e.message || 'Could not complete this action.'); }
     finally { setBusy(false); }
@@ -80,7 +82,7 @@ export default function ApplicantPortal() {
     try {
       const result = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase(), options: { emailRedirectTo: `${window.location.origin}/applicant` } });
       if (result.error) throw result.error;
-      setNotice('If this account needs confirmation, a new confirmation email has been sent.');
+      setNotice('Confirmation requested. If your email still needs confirmation, check your inbox or spam folder. If you already confirmed it, sign in.');
     } catch (e: any) { setError(e.message || 'Could not resend the confirmation email.'); }
     finally { setBusy(false); }
   };

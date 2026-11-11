@@ -196,6 +196,41 @@ test('failed profile lookup clears authentication without displaying an old role
   h.session.stop();
 });
 
+test('restoring a login with a missing profile signs out once and ignores later focus events', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const h = harness({ restored: hr, rows: [] });
+  h.session.start();
+  await tick();
+  assert.deepEqual(h.latest(), { user: null, loading: false });
+  assert.deepEqual(h.authCalls, [['logout', { scope: 'local' }]]);
+  const stateCount = h.states.length;
+  h.emit('SIGNED_IN', hr);
+  h.emit('TOKEN_REFRESHED', hr);
+  await tick();
+  assert.equal(h.states.length, stateCount);
+  h.session.stop();
+});
+
+test('a failed background profile lookup leaves the form usable on focus and allows explicit sign-in', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  let queryError = new Error('Connection lost');
+  const h = harness({ queryResult: () => ({ data: queryError ? null : hrProfile, error: queryError }) });
+  h.session.start();
+  await tick();
+  h.emit('SIGNED_IN', hr);
+  await tick();
+  assert.deepEqual(h.latest(), { user: null, loading: false });
+  const stateCount = h.states.length;
+  h.emit('SIGNED_IN', hr);
+  await tick();
+  assert.equal(h.states.length, stateCount);
+  assert.deepEqual(h.authCalls, []);
+  queryError = null;
+  await h.session.login(hr.email, 'password');
+  assert.equal(h.latest().user.role, 'hr');
+  h.session.stop();
+});
+
 test('profile resolution prioritizes auth ID and never falls back to another linked identity', async () => {
   const h = harness({ rows: [{ ...hrProfile, auth_user_id: gm.id }] });
   await assert.rejects(loadAuthProfile(h.client, hr), /active matching HRIS account/);

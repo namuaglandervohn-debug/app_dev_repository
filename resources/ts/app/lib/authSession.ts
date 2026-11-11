@@ -22,6 +22,9 @@ export function normalizeAppRole(role: unknown): UserRole {
 
 type Client = Pick<SupabaseClient, 'auth' | 'from'>;
 const PROFILE_COLUMNS = 'user_id, auth_user_id, full_name, email, role, employee_id, outlet';
+const missingProfileMessage = 'This login is not linked to an active matching HRIS account. Please contact HR.';
+
+class MissingAuthProfileError extends Error {}
 
 export async function loadAuthProfile(client: Client, authUser: Pick<User, 'id' | 'email'>): Promise<AuthUser> {
   const email = String(authUser.email ?? '').trim().toLowerCase();
@@ -40,7 +43,7 @@ export async function loadAuthProfile(client: Client, authUser: Pick<User, 'id' 
   if (!account) {
     const inactive = await client.from('user_accounts').select('user_id').eq('auth_user_id', authUser.id).maybeSingle();
     if (inactive.error) throw inactive.error;
-    if (inactive.data) throw new Error('This login is not linked to an active matching HRIS account. Please contact HR.');
+    if (inactive.data) throw new MissingAuthProfileError(missingProfileMessage);
     const applicant = await client.from('applicant_profiles').select('auth_user_id,profile').eq('auth_user_id', authUser.id).maybeSingle();
     if (applicant.error) throw applicant.error;
     if (applicant.data) {
@@ -49,7 +52,7 @@ export async function loadAuthProfile(client: Client, authUser: Pick<User, 'id' 
     }
   }
   if (!account || String(account.email).trim().toLowerCase() !== email) {
-    throw new Error('This login is not linked to an active matching HRIS account. Please contact HR.');
+    throw new MissingAuthProfileError(missingProfileMessage);
   }
   return {
     id: account.user_id,
@@ -71,6 +74,7 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
   let acceptSessionEvents = true;
   let identity: string | null = null;
   let resolvingIdentity: string | null = null;
+  let failedIdentity: string | null = null;
   let authQueue: Promise<unknown> = Promise.resolve();
   let unsubscribe = () => {};
   const enqueue = <T,>(operation: () => Promise<T>): Promise<T> => {
@@ -82,6 +86,7 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
   const clear = (loading = false) => {
     identity = null;
     resolvingIdentity = null;
+    failedIdentity = null;
     publish({ user: null, loading });
   };
   const resolveProfile = async (authUser: Pick<User, 'id' | 'email'>, ticket: number) => {
@@ -99,6 +104,18 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
     // Order sign-out before a following sign-in. Local scope preserves other tabs.
     void enqueue(() => client.auth.signOut({ scope: 'local' })).catch((error) => console.warn('Sign-out failed:', error));
   };
+  const handleRestoreFailure = (ticket: number, error: unknown) => {
+    if (!current(ticket)) return;
+    if (error instanceof MissingAuthProfileError) {
+      logout();
+    } else {
+      const attemptedIdentity = resolvingIdentity;
+      clear();
+      // Supabase can emit SIGNED_IN again when the tab becomes visible.
+      failedIdentity = attemptedIdentity;
+    }
+    console.warn('Could not restore login:', error);
+  };
   return {
     start() {
       active = true;
@@ -112,7 +129,7 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
           clear();
           return;
         }
-        if (session.user.id === identity || session.user.id === resolvingIdentity) return;
+        if ([identity, resolvingIdentity, failedIdentity].includes(session.user.id)) return;
         if (identity && session.user.id !== identity) {
           logout();
           return;
@@ -123,9 +140,7 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
         // Leave the Supabase auth callback before making another Supabase call.
         setTimeout(() => {
           if (!current(eventTicket)) return;
-          void resolveProfile(session.user, eventTicket).catch((error) => {
-            if (current(eventTicket)) { clear(); console.warn('Could not load login profile:', error); }
-          });
+          void resolveProfile(session.user, eventTicket).catch((error) => handleRestoreFailure(eventTicket, error));
         }, 0);
       });
       unsubscribe = () => data.subscription.unsubscribe();
@@ -135,9 +150,7 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
         if (!data.session?.user) { clear(); return; }
         resolvingIdentity = data.session.user.id;
         await resolveProfile(data.session.user, ticket);
-      }).catch((error) => {
-        if (current(ticket)) { clear(); console.warn('Could not restore login:', error); }
-      });
+      }).catch((error) => handleRestoreFailure(ticket, error));
     },
     stop() { active = false; revision++; unsubscribe(); },
     async login(email: string, password: string, role?: UserRole) {
@@ -158,9 +171,9 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
         publish({ user: profile, loading: false });
       } catch (error) {
         if (current(ticket)) {
-          clear(true);
+          acceptSessionEvents = false;
+          clear();
           await enqueue(() => client.auth.signOut({ scope: 'local' })).catch(() => {});
-          if (current(ticket)) clear();
         }
         throw error;
       } finally {
