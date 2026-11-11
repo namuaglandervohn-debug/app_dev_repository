@@ -53,6 +53,7 @@ import { copyToClipboard } from '../../lib/copyToClipboard';
 import { fileToDataUrl, saveApplicationFiles } from '../../lib/applicationFiles';
 import { supabase } from '../../lib/supabaseClient';
 import { submitApplicantWithConfirmation, sendApplicantConfirmation } from '../../lib/submitApplicantWithConfirmation';
+import { currentLeaveDate as currentManilaDate } from '../../lib/leaveRequestDates';
 
 const CIVIL_STATUS = ['Single', 'Married', 'Widowed', 'Separated'];
 const GENDER = ['Male', 'Female', 'Prefer not to say'];
@@ -130,11 +131,11 @@ const EMPTY = {
   currentCountry: 'Philippines', currentRegion: '', currentProvince: '', currentCity: '', currentBarangay: '', currentStreet: '', currentZipCode: '', currentAddress: '',
   permanentCountry: 'Philippines', permanentRegion: '', permanentProvince: '', permanentCity: '', permanentBarangay: '', permanentStreet: '', permanentZipCode: '', permanentAddress: '',
   emergencyContactName: '', emergencyContactRelation: '', emergencyContactRelationOther: '', emergencyContactPhone: '', emergencyContactAddress: '',
-  education: '', schoolName: '', courseProgram: '', yearGraduated: '', honorsAwards: '',
+  education: '', schoolName: '', courseProgram: '', yearGraduated: '',
   companyOrganization: '', positionHeld: '', employmentStartDate: '', employmentEndDate: '', employmentPeriod: '', dutiesResponsibilities: '', totalYearsExperience: '',
   skills: [] as string[], otherSkills: '',
   referenceName: '', referencePosition: '', referenceCompany: '', referenceContact: '',
-  submittedDocuments: [] as string[], otherDocument: '', applicantSignature: '', declarationDate: '',
+  submittedDocuments: [] as string[], otherDocument: '', applicantSignature: '', declarationDate: null as string | null,
   birthplace: '', height: '', weight: '', address: '', experience: '', tin: '', sss: '', philhealth: '', pagibig: '',
 };
 
@@ -330,7 +331,6 @@ export default function ApplyForJobPage() {
   const nameGrid = { xs: 12, sm: 6, lg: 3 };
   const halfGrid = { xs: 12, md: 6 };
   const addressGrid = { xs: 12, sm: 6, lg: 3 };
-  const fullOnMobileGrid = { xs: 12, md: 6, lg: 8 };
   const responsiveHeroTitleSx = {
     color: '#14532d',
     lineHeight: 1.05,
@@ -716,7 +716,7 @@ export default function ApplyForJobPage() {
       if (resumeFiles.length === 0) errors.resumeFiles = 'Resume/Biodata file is required.';
       if (supportingFiles.length === 0 && certificateFiles.length === 0) errors.supportingFiles = 'At least one supporting document is required.';
       if (!formData.applicantSignature.trim()) errors.applicantSignature = 'Applicant signature/full name is required.';
-      if (!formData.declarationDate) errors.declarationDate = 'Declaration date is required.';
+      if (formData.declarationDate === '') errors.declarationDate = 'Declaration date is required.';
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) { setError('Please complete all required fields before submitting.'); return false; }
@@ -812,14 +812,14 @@ export default function ApplyForJobPage() {
         birthplaceParts: { country: formData.birthplaceCountry, region: formData.birthplaceRegion, province: formData.birthplaceProvince, city: formData.birthplaceCity },
         currentAddressParts: { country: formData.currentCountry, region: formData.currentRegion, province: formData.currentProvince, city: formData.currentCity, barangay: formData.currentBarangay, street: formData.currentStreet, zipCode: formData.currentZipCode },
         permanentAddressParts: { country: formData.permanentCountry, region: formData.permanentRegion, province: formData.permanentProvince, city: formData.permanentCity, barangay: formData.permanentBarangay, street: formData.permanentStreet, zipCode: formData.permanentZipCode },
-        educationBackground: { level: formData.education, schoolName: formData.schoolName, courseProgram: formData.courseProgram, yearGraduated: formData.yearGraduated, honorsAwards: formData.honorsAwards },
+        educationBackground: { level: formData.education, schoolName: formData.schoolName, courseProgram: formData.courseProgram, yearGraduated: formData.yearGraduated },
         workExperience: normalizedWorkExperiences[0] ?? null,
         workExperiences: normalizedWorkExperiences,
         skills: formData.skills, otherSkills: formData.otherSkills.trim(), certifications: certificates.map(file => file.name),
         characterReferences: normalizedCharacterReferences,
         emergencyContact: primaryEmergencyContact,
         emergencyContacts: normalizedEmergencyContacts,
-        submittedDocuments: formData.submittedDocuments, otherDocument: formData.otherDocument, applicantSignature: formData.applicantSignature, declarationDate: formData.declarationDate,
+        submittedDocuments: formData.submittedDocuments, otherDocument: formData.otherDocument, applicantSignature: formData.applicantSignature, declarationDate: formData.declarationDate ?? currentManilaDate(),
       };
       const fullName = `${formData.firstName} ${formData.middleName} ${formData.lastName} ${formData.suffix}`.replace(/\s+/g, ' ').trim();
       const { emailNotice: confirmationNotice } = await submitApplicantWithConfirmation(supabase, {
@@ -1205,7 +1205,6 @@ export default function ApplyForJobPage() {
                         <Grid size={fieldGrid}><TextField fullWidth required label="Name of School" value={formData.schoolName} onChange={set('schoolName')} error={!!fieldErrors.schoolName} helperText={fieldErrors.schoolName} inputProps={{ maxLength: 120 }} sx={textFieldSx} /></Grid>
                         <Grid size={fieldGrid}><TextField fullWidth label="Course / Program" value={formData.courseProgram} onChange={set('courseProgram')} inputProps={{ maxLength: 120 }} sx={textFieldSx} /></Grid>
                         <Grid size={fieldGrid}><TextField fullWidth placeholder="e.g. 2005" label="Year Graduated" value={formData.yearGraduated} onChange={setNumeric('yearGraduated', 4)} error={!!fieldErrors.yearGraduated} helperText={fieldErrors.yearGraduated} inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 4 }} sx={textFieldSx} /></Grid>
-                        <Grid size={fullOnMobileGrid}><TextField fullWidth label="Honors / Awards" value={formData.honorsAwards} onChange={set('honorsAwards')} inputProps={{ maxLength: 160 }} sx={textFieldSx} /></Grid>
                       </Grid>
                     </Paper>
                     <SectionTitle icon={<WorkOutlined />} title="IV. Work Experience (Optional)" />
@@ -1397,7 +1396,7 @@ export default function ApplyForJobPage() {
                     </Grid>
                     <Grid size={{ xs: 12 }}><Typography variant="h6" fontWeight={700} sx={{ color: '#14532d', mt: 1 }}>VIII. Applicant Declaration</Typography></Grid>
                     <Grid size={halfGrid}><TextField fullWidth required label="Applicant's Signature / Full Name" value={formData.applicantSignature} onChange={(event) => { setUpperText('applicantSignature')(event); clearFieldError('applicantSignature'); }} error={!!fieldErrors.applicantSignature} helperText={fieldErrors.applicantSignature} inputProps={{ maxLength: 120 }} sx={textFieldSx} /></Grid>
-                    <Grid size={halfGrid}><TextField fullWidth required type="date" label="Date" value={formData.declarationDate} onChange={(event) => { set('declarationDate')(event); clearFieldError('declarationDate'); }} error={!!fieldErrors.declarationDate} helperText={fieldErrors.declarationDate} InputLabelProps={{ shrink: true }} sx={textFieldSx} /></Grid>
+                    <Grid size={halfGrid}><TextField fullWidth required type="date" label="Date" value={formData.declarationDate ?? currentManilaDate()} onChange={(event) => { set('declarationDate')(event); clearFieldError('declarationDate'); }} error={!!fieldErrors.declarationDate} helperText={fieldErrors.declarationDate} InputLabelProps={{ shrink: true }} sx={textFieldSx} /></Grid>
                   </Grid>
                 </Paper>
               )}
