@@ -922,7 +922,6 @@ export default function ApplyForJobPage() {
     <AuthBackground>
       <Box sx={{ background: 'radial-gradient(circle at top left, rgba(187,247,208,0.75) 0%, rgba(246,251,244,0.98) 36%, #f6fbf4 100%)', borderRadius: { xs: 0, sm: '26px' }, py: { xs: 1.5, sm: 2.5, md: 5 }, px: { xs: 1, sm: 1.5, md: 3 }, minHeight: '100dvh' }}>
         <Container maxWidth="xl" disableGutters sx={{ px: { xs: 0, sm: 2, md: 3 } }}>
-          <Alert severity="info" sx={{ mb: 2 }}>Your saved profile has been loaded. Review these details for this application. <Button onClick={() => navigate('/applicant')}>Manage profile</Button></Alert>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={2} sx={{ mb: { xs: 2, md: 3 } }}>
             <Box sx={{ minWidth: 0 }}>
               <Chip
