@@ -350,7 +350,6 @@ export default function ApplicantPortal() {
   return <AuthBackground><Container maxWidth="md" sx={{ py: 4 }}><Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 5 }}>
     {backButton}
     <Typography component="h1" variant="h5" fontWeight={700} sx={{ mb: 2 }}>Create an applicant account</Typography>
-    <Typography sx={{ mb: 3 }}>Create your profile once. Review and reuse it whenever you apply for another position.</Typography>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}{notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
     <Box component="form" onSubmit={submit}><Stack spacing={3}>
       <TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy} />
