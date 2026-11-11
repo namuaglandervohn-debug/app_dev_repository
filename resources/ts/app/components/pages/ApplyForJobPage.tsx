@@ -164,13 +164,11 @@ const fallbackBarangays = ['Poblacion', 'Barangay 1', 'Barangay 2', 'Barangay 3'
 const SectionTitle = ({
   icon,
   title,
-  description,
 }: {
   icon: ReactNode;
   title: string;
-  description?: string;
 }) => (
-  <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 3 }}>
+  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
     <Box
       sx={{
         width: 42,
@@ -196,11 +194,6 @@ const SectionTitle = ({
       >
         {title}
       </Typography>
-      {description && (
-        <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: { xs: '0.88rem', sm: '0.95rem' }, overflowWrap: 'anywhere' }}>
-          {description}
-        </Typography>
-      )}
     </Box>
   </Stack>
 );
@@ -902,7 +895,7 @@ export default function ApplyForJobPage() {
               <TextField fullWidth required={isRequired} label="Street / House No. / Purok" value={formData[`${prefix}Street`]} onChange={set(`${prefix}Street`)} error={isRequired && !!fieldErrors[`${prefix}Street`]} helperText={isRequired ? fieldErrors[`${prefix}Street`] : ''} inputProps={{ maxLength: 120 }} sx={textFieldSx} />
             </Grid>
             <Grid size={addressGrid}>
-              <TextField fullWidth label="ZIP Code" value={formData[`${prefix}ZipCode`]} InputProps={{ readOnly: true }} helperText={city ? 'Auto-generated from selected city.' : 'Select city to auto-fill.'}/>
+              <TextField fullWidth label="ZIP Code" value={formData[`${prefix}ZipCode`]} InputProps={{ readOnly: true }}/>
             </Grid>
           </>
         )}
@@ -946,7 +939,6 @@ export default function ApplyForJobPage() {
                   </Box>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="h4" fontWeight={700} sx={responsiveFormTitleSx}>Job Application Form</Typography>
-                    <Typography color="text.secondary" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' }, fontWeight: 600 }}>Complete your application details and upload your requirements.</Typography>
                   </Box>
                 </Stack>
                 <Box
@@ -1087,7 +1079,7 @@ export default function ApplyForJobPage() {
 
               {activeStep === 0 && (
                 <Paper elevation={0} sx={stepPaperSx}>
-                  <SectionTitle icon={<WorkOutline />} title="I. Position Applied For" description="Select the position you are applying for and how you found this job opening." />
+                  <SectionTitle icon={<WorkOutline />} title="I. Position Applied For" />
                   <Grid container spacing={2.5}>
                     <Grid size={halfGrid}>
                       <TextField
@@ -1135,19 +1127,19 @@ export default function ApplyForJobPage() {
 
               {activeStep === 1 && (
                 <Paper elevation={0} sx={stepPaperSx}>
-                  <SectionTitle icon={<PersonOutline />} title="II. Personal Details" description="Enter your personal details and complete address information accurately." />
+                  <SectionTitle icon={<PersonOutline />} title="II. Personal Details" />
                   <Grid container spacing={2.5}>
                     <Grid size={nameGrid}><TextField fullWidth placeholder="e.g. John" required label="First Name" value={formData.firstName} onChange={setUpperText('firstName')} error={!!fieldErrors.firstName} helperText={fieldErrors.firstName} inputProps={{ maxLength: 50 }} sx={textFieldSx} /></Grid>
                     <Grid size={nameGrid}><TextField fullWidth label="Middle Name (Optional)" value={formData.middleName} onChange={setUpperText('middleName')} inputProps={{ maxLength: 50 }} sx={textFieldSx} /></Grid>
                     <Grid size={nameGrid}><TextField fullWidth placeholder="e.g. Doe" required label="Last Name" value={formData.lastName} onChange={setUpperText('lastName')} error={!!fieldErrors.lastName} helperText={fieldErrors.lastName} inputProps={{ maxLength: 50 }} sx={textFieldSx} /></Grid>
                     <Grid size={nameGrid}><TextField fullWidth select label="Suffix" value={formData.suffix} onChange={set('suffix')} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{SUFFIXES.map((suffix) => <MenuItem key={suffix || 'none'} value={suffix}>{suffix || 'None'}</MenuItem>)}</TextField></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required type="date" label="Date of Birth" value={formData.birthdate} onChange={setBirthdate} error={!!fieldErrors.birthdate} helperText={fieldErrors.birthdate} InputLabelProps={{ shrink: true }} sx={textFieldSx} /></Grid>
-                    <Grid size={fieldGrid}><TextField fullWidth required label="Age" value={formData.age} onChange={setNumeric('age', 3)} error={!!fieldErrors.age || (!!formData.age && Number(formData.age) < 15)} helperText={fieldErrors.age || (formData.age && Number(formData.age) < 15 ? 'Age not qualified. Applicant must be at least 15 years old.' : 'Auto-computed from birthdate but editable.')} inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 3 }} sx={textFieldSx} /></Grid>
+                    <Grid size={fieldGrid}><TextField fullWidth required label="Age" value={formData.age} onChange={setNumeric('age', 3)} error={!!fieldErrors.age || (!!formData.age && Number(formData.age) < 15)} helperText={fieldErrors.age || (formData.age && Number(formData.age) < 15 ? 'Age not qualified. Applicant must be at least 15 years old.' : undefined)} inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 3 }} sx={textFieldSx} /></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required select label="Gender" value={formData.gender} onChange={set('gender')} error={!!fieldErrors.gender} helperText={fieldErrors.gender} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{GENDER.map((gender) => <MenuItem key={gender} value={gender}>{gender}</MenuItem>)}</TextField></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required select label="Civil Status" value={formData.civilStatus} onChange={set('civilStatus')} error={!!fieldErrors.civilStatus} helperText={fieldErrors.civilStatus} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{CIVIL_STATUS.map((status) => <MenuItem key={status} value={status}>{status}</MenuItem>)}</TextField></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required select label="Nationality" value={formData.nationality} onChange={set('nationality')} error={!!fieldErrors.nationality} helperText={fieldErrors.nationality} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{NATIONALITIES.map((nationality) => <MenuItem key={nationality} value={nationality}>{nationality}</MenuItem>)}</TextField></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth placeholder="9XXXXXXXXX" required label="Contact Number" value={formData.contactNumber} onChange={setPhone('contactNumber')} error={!!fieldErrors.contactNumber} inputProps={phoneInputFieldProps} InputProps={{ startAdornment: phoneAdornment }} sx={textFieldSx} /></Grid>
-                    <Grid size={fieldGrid}><TextField fullWidth placeholder="example@email.com" required type="email" label="Email Address" value={formData.email} InputProps={{ readOnly: true }} error={!!fieldErrors.email} helperText={fieldErrors.email || 'Uses your verified applicant account email.'} inputProps={{ maxLength: 120 }} sx={textFieldSx} /></Grid>
+                    <Grid size={fieldGrid}><TextField fullWidth placeholder="example@email.com" required type="email" label="Email Address" value={formData.email} InputProps={{ readOnly: true }} error={!!fieldErrors.email} helperText={fieldErrors.email} inputProps={{ maxLength: 120 }} sx={textFieldSx} /></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required label="Height (cm)" value={formData.height} onChange={setNumeric('height', 3)} error={!!fieldErrors.height} helperText={fieldErrors.height} inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 3 }} sx={textFieldSx} /></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required label="Weight (kg)" value={formData.weight} onChange={setNumeric('weight', 3)} error={!!fieldErrors.weight} helperText={fieldErrors.weight} inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 3 }} sx={textFieldSx} /></Grid>
                     <Grid size={{ xs: 12 }}><Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1, mb: 1 }}><LocationOnOutlined sx={{ color: '#166534' }} /><Typography fontWeight={700} sx={{ color: '#14532d' }}>Birthplace</Typography></Stack></Grid>
@@ -1162,7 +1154,7 @@ export default function ApplyForJobPage() {
 
               {activeStep === 2 && (
                 <Paper elevation={0} sx={stepPaperSx}>
-                  <SectionTitle icon={<SchoolOutlined />} title="III. Highest Educational Background" description="Provide your highest educational background." />
+                  <SectionTitle icon={<SchoolOutlined />} title="III. Highest Educational Background" />
                   <Stack spacing={3}>
                     <Paper elevation={0} sx={nestedPaperSx}>
                       <Grid container spacing={2.5}>
@@ -1173,7 +1165,7 @@ export default function ApplyForJobPage() {
                         <Grid size={fullOnMobileGrid}><TextField fullWidth label="Honors / Awards" value={formData.honorsAwards} onChange={set('honorsAwards')} inputProps={{ maxLength: 160 }} sx={textFieldSx} /></Grid>
                       </Grid>
                     </Paper>
-                    <SectionTitle icon={<WorkOutlined />} title="IV. Work Experience" description="Provide your previous work experience, if applicable." />
+                    <SectionTitle icon={<WorkOutlined />} title="IV. Work Experience (Optional)" />
                     <Paper elevation={0} sx={nestedPaperSx}>
                       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="flex-end" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }} >
                         <Button type="button" variant="outlined" startIcon={<Add />} onClick={addWorkExperience} sx={{ ...softButtonSx, borderColor: '#166534', color: '#166534', background: '#ffffff', minHeight: { xs: 44, sm: 46 } }}>Add Work Experience</Button>
@@ -1203,7 +1195,7 @@ export default function ApplyForJobPage() {
 
               {activeStep === 3 && (
                 <Paper elevation={0} sx={stepPaperSx}>
-                  <SectionTitle icon={<AutoAwesomeOutlined />} title="V. Skills and Qualifications" description="Select the skills that apply to you. You may also add other skills and trainings." />
+                  <SectionTitle icon={<AutoAwesomeOutlined />} title="V. Skills and Qualifications" />
                   {fieldErrors.skills && <Alert severity="warning" sx={{ mb: 2 }}>{fieldErrors.skills}</Alert>}
                   <FormGroup row>{SKILLS.map((skill) => <FormControlLabel key={skill} control={<Checkbox checked={formData.skills.includes(skill)} onChange={() => toggleListItem('skills', skill)} />} label={skill} sx={compactChoiceSx} />)}</FormGroup>
                   <Grid container spacing={2.5} sx={{ mt: 1 }}>
@@ -1218,7 +1210,7 @@ export default function ApplyForJobPage() {
               {activeStep === 4 && (
                 <Paper elevation={0} sx={stepPaperSx}>
                   <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 1 }}>
-                    <SectionTitle icon={<Groups2Outlined />} title="VI. Character References and Emergency Contact" description="Add character references and emergency contact information." />
+                    <SectionTitle icon={<Groups2Outlined />} title="VI. Character References and Emergency Contact" />
                     <Button type="button" variant="outlined" startIcon={<Add />} onClick={addCharacterReference} sx={{ ...softButtonSx, borderColor: '#166534', color: '#166534', background: '#ffffff', minHeight: { xs: 44, sm: 46 } }}>Add Character Reference</Button>
                   </Stack>
                   {fieldErrors.referenceName && <Alert severity="warning" sx={{ mb: 2 }}>{fieldErrors.referenceName}</Alert>}
@@ -1270,7 +1262,7 @@ export default function ApplyForJobPage() {
 
               {activeStep === 5 && (
                 <Paper elevation={0} sx={stepPaperSx}>
-                  <SectionTitle icon={<DescriptionOutlined />} title="VII. Required Documents" description="Upload your resume and supporting documents." />
+                  <SectionTitle icon={<DescriptionOutlined />} title="VII. Required Documents" />
                   <Grid container spacing={2.5} sx={{ mt: 1 }}>
                     <Grid size={{ xs: 12 }}>
                       <Alert severity="info" icon={<ArticleOutlined />} sx={{ borderRadius: 2, border: '1px solid rgba(22,101,52,0.12)', bgcolor: '#f0fdf4', color: '#14532d' }}>
