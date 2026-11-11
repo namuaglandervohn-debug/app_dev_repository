@@ -121,7 +121,7 @@ const EMPTY_EMERGENCY_CONTACT: EmergencyContact = {
 const EMPTY = {
   position: '', hearAbout: '', hearAboutOther: '',
   firstName: '', middleName: '', lastName: '', suffix: '', birthdate: '', age: '', gender: '', civilStatus: '', nationality: '', contactNumber: '', email: '',
-  birthplaceCountry: 'Philippines', birthplaceRegion: '', birthplaceProvince: '', birthplaceCity: '', birthplaceBarangay: '', birthplaceStreet: '', birthplaceZipCode: '',
+  birthplaceCountry: 'Philippines', birthplaceRegion: '', birthplaceProvince: '', birthplaceCity: '',
   currentCountry: 'Philippines', currentRegion: '', currentProvince: '', currentCity: '', currentBarangay: '', currentStreet: '', currentZipCode: '', currentAddress: '',
   permanentCountry: 'Philippines', permanentRegion: '', permanentProvince: '', permanentCity: '', permanentBarangay: '', permanentStreet: '', permanentZipCode: '', permanentAddress: '',
   emergencyContactName: '', emergencyContactRelation: '', emergencyContactRelationOther: '', emergencyContactPhone: '', emergencyContactAddress: '',
@@ -484,7 +484,7 @@ export default function ApplyForJobPage() {
     </InputAdornment>
   );
 
-  const buildAddress = (country: string, region: string, province: string, city: string, barangay: string, street: string, zipCode: string) =>
+  const buildAddress = (country: string, region: string, province: string, city: string, barangay = '', street = '', zipCode = '') =>
     [street, barangay, city, province, region, country, zipCode].map((part) => part.trim()).filter(Boolean).join(', ');
 
   const getProvinceOptions = (country: string, region: string) => country === 'Philippines' && region ? PH_PROVINCES_BY_REGION[region] ?? [] : [];
@@ -498,8 +498,7 @@ export default function ApplyForJobPage() {
       [`${prefix}Region`]: '',
       [`${prefix}Province`]: '',
       [`${prefix}City`]: '',
-      [`${prefix}Barangay`]: '',
-      [`${prefix}ZipCode`]: '',
+      ...(prefix !== 'birthplace' && { [`${prefix}Barangay`]: '', [`${prefix}ZipCode`]: '' }),
     } as FormState));
     clearFieldError(`${prefix}Country` as FormKey);
   };
@@ -510,8 +509,7 @@ export default function ApplyForJobPage() {
       [`${prefix}Region`]: value,
       [`${prefix}Province`]: '',
       [`${prefix}City`]: '',
-      [`${prefix}Barangay`]: '',
-      [`${prefix}ZipCode`]: '',
+      ...(prefix !== 'birthplace' && { [`${prefix}Barangay`]: '', [`${prefix}ZipCode`]: '' }),
     } as FormState));
     clearFieldError(`${prefix}Region` as FormKey);
   };
@@ -521,8 +519,7 @@ export default function ApplyForJobPage() {
       ...prev,
       [`${prefix}Province`]: value,
       [`${prefix}City`]: '',
-      [`${prefix}Barangay`]: '',
-      [`${prefix}ZipCode`]: '',
+      ...(prefix !== 'birthplace' && { [`${prefix}Barangay`]: '', [`${prefix}ZipCode`]: '' }),
     } as FormState));
     clearFieldError(`${prefix}Province` as FormKey);
   };
@@ -531,13 +528,12 @@ export default function ApplyForJobPage() {
     setFormData((prev) => ({
       ...prev,
       [`${prefix}City`]: value,
-      [`${prefix}Barangay`]: '',
-      [`${prefix}ZipCode`]: ZIP_BY_CITY[value] ?? '',
+      ...(prefix !== 'birthplace' && { [`${prefix}Barangay`]: '', [`${prefix}ZipCode`]: ZIP_BY_CITY[value] ?? '' }),
     } as FormState));
     clearFieldError(`${prefix}City` as FormKey);
   };
 
-  const handleAddressBarangayChange = (prefix: AddressPrefix, value: string) => {
+  const handleAddressBarangayChange = (prefix: Exclude<AddressPrefix, 'birthplace'>, value: string) => {
     setFormData((prev) => ({ ...prev, [`${prefix}Barangay`]: value } as FormState));
     clearFieldError(`${prefix}Barangay` as FormKey);
   };
@@ -632,9 +628,7 @@ export default function ApplyForJobPage() {
         if (!formData.birthplaceRegion) errors.birthplaceRegion = 'Birthplace region is required.';
         if (!formData.birthplaceProvince) errors.birthplaceProvince = 'Birthplace province is required.';
         if (!formData.birthplaceCity) errors.birthplaceCity = 'Birthplace city/municipality is required.';
-        if (!formData.birthplaceBarangay) errors.birthplaceBarangay = 'Birthplace barangay is required.';
       }
-      if (!formData.birthplaceStreet.trim()) errors.birthplaceStreet = 'Birthplace street/address line is required.';
       if (!formData.height) errors.height = 'Height is required.';
       if (!formData.weight) errors.weight = 'Weight is required.';
       if (!formData.currentCountry) errors.currentCountry = 'Current country is required.';
@@ -752,7 +746,7 @@ export default function ApplyForJobPage() {
 
       const resumeFileData = resumeFiles[0] ? await fileToDataUrl(resumeFiles[0]) : null;
       const supportingDocumentFiles = await Promise.all(supportingFiles.map(async (file) => ({ name: file.name, type: file.type, data: await fileToDataUrl(file) })));
-      const birthplaceAddress = buildAddress(formData.birthplaceCountry, formData.birthplaceRegion, formData.birthplaceProvince, formData.birthplaceCity, formData.birthplaceBarangay, formData.birthplaceStreet, formData.birthplaceZipCode);
+      const birthplaceAddress = buildAddress(formData.birthplaceCountry, formData.birthplaceRegion, formData.birthplaceProvince, formData.birthplaceCity);
       const currentAddress = buildAddress(formData.currentCountry, formData.currentRegion, formData.currentProvince, formData.currentCity, formData.currentBarangay, formData.currentStreet, formData.currentZipCode);
       const permanentAddress = buildAddress(formData.permanentCountry, formData.permanentRegion, formData.permanentProvince, formData.permanentCity, formData.permanentBarangay, formData.permanentStreet, formData.permanentZipCode);
       const normalizedWorkExperiences = workExperiences
@@ -782,7 +776,7 @@ export default function ApplyForJobPage() {
       const applicantExperience = normalizedWorkExperiences[0]?.totalYearsExperience ?? '';
       const coverLetterData = {
         hearAbout: formData.hearAbout, hearAboutOther: formData.hearAboutOther, age: formData.age, nationality: formData.nationality, birthplace: birthplaceAddress, height: formData.height, weight: formData.weight, currentAddress, permanentAddress,
-        birthplaceParts: { country: formData.birthplaceCountry, region: formData.birthplaceRegion, province: formData.birthplaceProvince, city: formData.birthplaceCity, barangay: formData.birthplaceBarangay, street: formData.birthplaceStreet, zipCode: formData.birthplaceZipCode },
+        birthplaceParts: { country: formData.birthplaceCountry, region: formData.birthplaceRegion, province: formData.birthplaceProvince, city: formData.birthplaceCity },
         currentAddressParts: { country: formData.currentCountry, region: formData.currentRegion, province: formData.currentProvince, city: formData.currentCity, barangay: formData.currentBarangay, street: formData.currentStreet, zipCode: formData.currentZipCode },
         permanentAddressParts: { country: formData.permanentCountry, region: formData.permanentRegion, province: formData.permanentProvince, city: formData.permanentCity, barangay: formData.permanentBarangay, street: formData.permanentStreet, zipCode: formData.permanentZipCode },
         educationBackground: { level: formData.education, schoolName: formData.schoolName, courseProgram: formData.courseProgram, yearGraduated: formData.yearGraduated, honorsAwards: formData.honorsAwards },
@@ -896,18 +890,22 @@ export default function ApplyForJobPage() {
             {cityOptions.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}
           </TextField>
         </Grid>
-        <Grid size={addressGrid}>
-          <TextField fullWidth required={isRequired} select label="Barangay" value={formData[`${prefix}Barangay` as FormKey] as string} onChange={(e) => handleAddressBarangayChange(prefix, e.target.value)} error={isRequired && !!fieldErrors[`${prefix}Barangay` as FormKey]} helperText={isRequired ? fieldErrors[`${prefix}Barangay` as FormKey] : ''} sx={textFieldSx} InputLabelProps={{ shrink: true }} disabled={country !== 'Philippines' || !city}>
-            {formData[`${prefix}Barangay` as FormKey] && !barangayOptions.includes(formData[`${prefix}Barangay` as FormKey] as string) && <MenuItem value={formData[`${prefix}Barangay` as FormKey] as string}>{formData[`${prefix}Barangay` as FormKey]}</MenuItem>}
-            {barangayOptions.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}
-          </TextField>
-        </Grid>
-        <Grid size={halfGrid}>
-          <TextField fullWidth required={isRequired} label="Street / House No. / Purok" value={formData[`${prefix}Street` as FormKey] as string} onChange={set(`${prefix}Street` as FormKey)} error={isRequired && !!fieldErrors[`${prefix}Street` as FormKey]} helperText={isRequired ? fieldErrors[`${prefix}Street` as FormKey] : ''} inputProps={{ maxLength: 120 }} sx={textFieldSx} />
-        </Grid>
-        <Grid size={addressGrid}>
-          <TextField fullWidth label="ZIP Code" value={formData[`${prefix}ZipCode` as FormKey] as string} InputProps={{ readOnly: true }} helperText={city ? 'Auto-generated from selected city.' : 'Select city to auto-fill.'}/>
-        </Grid>
+        {prefix !== 'birthplace' && (
+          <>
+            <Grid size={addressGrid}>
+              <TextField fullWidth required={isRequired} select label="Barangay" value={formData[`${prefix}Barangay`]} onChange={(e) => handleAddressBarangayChange(prefix, e.target.value)} error={isRequired && !!fieldErrors[`${prefix}Barangay`]} helperText={isRequired ? fieldErrors[`${prefix}Barangay`] : ''} sx={textFieldSx} InputLabelProps={{ shrink: true }} disabled={country !== 'Philippines' || !city}>
+                {formData[`${prefix}Barangay`] && !barangayOptions.includes(formData[`${prefix}Barangay`]) && <MenuItem value={formData[`${prefix}Barangay`]}>{formData[`${prefix}Barangay`]}</MenuItem>}
+                {barangayOptions.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}
+              </TextField>
+            </Grid>
+            <Grid size={halfGrid}>
+              <TextField fullWidth required={isRequired} label="Street / House No. / Purok" value={formData[`${prefix}Street`]} onChange={set(`${prefix}Street`)} error={isRequired && !!fieldErrors[`${prefix}Street`]} helperText={isRequired ? fieldErrors[`${prefix}Street`] : ''} inputProps={{ maxLength: 120 }} sx={textFieldSx} />
+            </Grid>
+            <Grid size={addressGrid}>
+              <TextField fullWidth label="ZIP Code" value={formData[`${prefix}ZipCode`]} InputProps={{ readOnly: true }} helperText={city ? 'Auto-generated from selected city.' : 'Select city to auto-fill.'}/>
+            </Grid>
+          </>
+        )}
       </>
     );
   };
@@ -1107,7 +1105,7 @@ export default function ApplyForJobPage() {
                             ? 'Loading current open positions...'
                             : openPositions.length === 0
                               ? 'No open positions are currently available.'
-                              : 'Only active job postings from the Landing Page are shown here.')
+                              : undefined)
                         }
                         InputLabelProps={{ shrink: true }}
                         sx={textFieldSx}
