@@ -450,19 +450,28 @@ export default function LoginPage() {
                 {signingIn ? 'Signing in…' : loading ? 'Checking session…' : 'Sign In to HRIS'}
               </Button>
             </form>
-            <Stack direction="row" flexWrap="wrap" justifyContent="center" gap={1} sx={{ mb: 1 }}>
-              <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('reset')}>Forgot password?</Button>
-              <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('confirm')}>Resend confirmation email</Button>
+            <Stack spacing={1.5} alignItems="center">
+              <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr)',
+                '@media (min-width: 480px)': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+                gap: 0.5,
+                width: '100%',
+                maxWidth: 420,
+              }}>
+                <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('reset')}>Forgot password?</Button>
+                <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('confirm')}>Resend confirmation email</Button>
+              </Box>
+              <Link
+                component={RouterLink}
+                to={registrationPath}
+                underline="always"
+                variant="body2"
+                sx={{ textAlign: 'center', color: '#087443', fontWeight: 700 }}
+              >
+                Create an applicant account here
+              </Link>
             </Stack>
-            <Link
-              component={RouterLink}
-              to={registrationPath}
-              underline="always"
-              variant="body2"
-              sx={{ display: "block", width: "fit-content", mx: "auto", color: "#087443", fontWeight: 700 }}
-            >
-              Create an applicant account here
-            </Link>
           </Box>
         </Paper>
 
