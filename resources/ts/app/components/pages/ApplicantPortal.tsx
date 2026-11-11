@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Divider, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
-import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, LocationOn, Phone, Public, Save, TrackChanges } from '@mui/icons-material';
+import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
 import RootLayout from '../layouts/RootLayout';
-import ProfileSummary from '../layouts/ProfileSummary';
 import { fileToDataUrl } from '../../lib/applicationFiles';
 import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import { accountColors } from '../layouts/accountColors';
@@ -281,12 +280,6 @@ export default function ApplicantPortal() {
           </Paper>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
-          {profileReady && <ProfileSummary items={[
-            { label: 'Applications', value: applications.length, icon: <Assignment /> },
-            { label: 'City / Municipality', value: savedProfile.currentCity || '—', icon: <LocationOn /> },
-            { label: 'Nationality', value: savedProfile.nationality || '—', icon: <Public /> },
-            { label: 'Contact', value: savedProfile.contactNumber || '—', icon: <Phone /> },
-          ]} />}
           <Grid container spacing={2.5} alignItems="flex-start">
             <Grid size={{ xs: 12, md: 8 }}>
               <Paper component="section" aria-labelledby="applicant-profile-title" elevation={0} sx={{ ...profileCardSx, p: { xs: 2, sm: 2.5 } }}>
