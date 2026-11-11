@@ -15,6 +15,10 @@ import {
   Stack,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Link,
 } from "@mui/material";
 import {
@@ -38,6 +42,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(registrationEmail
     ? 'Check your inbox or spam folder for the confirmation link. After verifying your email, sign in here.' : '');
+  const [emailDialog, setEmailDialog] = useState<{ open: boolean; action: 'reset' | 'confirm' }>({ open: false, action: 'reset' });
+  const [accountEmail, setAccountEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailNotice, setEmailNotice] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
   const [selectedDemo, setSelectedDemo] = useState("");
   const submitting = useRef(false);
@@ -86,28 +94,39 @@ export default function LoginPage() {
     }
   };
 
-  const requestAccountEmail = async (kind: 'reset' | 'confirm') => {
-    if (loading || sendingEmail || submitting.current) return;
-    const address = email.trim().toLowerCase();
-    setError('');
-    setNotice('');
+  const openEmailDialog = (action: 'reset' | 'confirm') => {
+    setAccountEmail('');
+    setEmailError('');
+    setEmailNotice('');
+    setEmailDialog({ open: true, action });
+  };
+
+  const closeEmailDialog = () => {
+    if (!sendingEmail) setEmailDialog(dialog => ({ ...dialog, open: false }));
+  };
+
+  const requestAccountEmail = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!emailDialog.open || loading || sendingEmail || emailNotice || submitting.current) return;
+    const address = accountEmail.trim().toLowerCase();
+    setEmailError('');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      setError('Enter your email address first.');
+      setEmailError('Enter a valid email address.');
       return;
     }
 
     setSendingEmail(true);
     try {
       const redirectTo = `${window.location.origin}/applicant`;
-      const { error } = kind === 'reset'
+      const { error } = emailDialog.action === 'reset'
         ? await supabase.auth.resetPasswordForEmail(address, { redirectTo })
         : await supabase.auth.resend({ type: 'signup', email: address, options: { emailRedirectTo: redirectTo } });
       if (error) throw error;
-      setNotice(kind === 'reset'
+      setEmailNotice(emailDialog.action === 'reset'
         ? 'If an account exists for that address, check your inbox or spam folder for a password reset link.'
         : 'Confirmation requested. If your email still needs confirmation, check your inbox or spam folder.');
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Could not request the email.');
+      setEmailError(error instanceof Error ? error.message : 'Could not request the email.');
     } finally {
       setSendingEmail(false);
     }
@@ -459,8 +478,8 @@ export default function LoginPage() {
                 width: '100%',
                 maxWidth: 420,
               }}>
-                <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('reset')}>Forgot password?</Button>
-                <Button size="small" disabled={loading || signingIn || sendingEmail} onClick={() => void requestAccountEmail('confirm')}>Resend confirmation email</Button>
+                <Button size="small" aria-haspopup="dialog" disabled={loading || signingIn || sendingEmail} onClick={() => openEmailDialog('reset')}>Forgot password?</Button>
+                <Button size="small" aria-haspopup="dialog" disabled={loading || signingIn || sendingEmail} onClick={() => openEmailDialog('confirm')}>Resend confirmation email</Button>
               </Box>
               <Link
                 component={RouterLink}
@@ -488,6 +507,44 @@ export default function LoginPage() {
           © {new Date().getFullYear()} {COMPANY.name} · Est. {COMPANY.established} · HRIS Capstone
         </Typography>
       </Container>
+      <Dialog open={emailDialog.open} onClose={closeEmailDialog} fullWidth maxWidth="xs" aria-labelledby="account-email-dialog-title">
+        <Box component="form" noValidate onSubmit={requestAccountEmail} aria-busy={sendingEmail}>
+          <DialogTitle id="account-email-dialog-title">
+            {emailDialog.action === 'reset' ? 'Forgot password?' : 'Resend confirmation email'}
+          </DialogTitle>
+          <DialogContent>
+            {emailNotice ? <Alert severity="success">{emailNotice}</Alert> : (
+              <TextField
+                autoFocus
+                fullWidth
+                required
+                margin="dense"
+                type="email"
+                label="Email address"
+                autoComplete="email"
+                value={accountEmail}
+                onChange={event => { setAccountEmail(event.target.value); setEmailError(''); }}
+                disabled={sendingEmail}
+                error={Boolean(emailError)}
+                helperText={emailError || undefined}
+                slotProps={{ htmlInput: { maxLength: 120 } }}
+              />
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            {emailNotice ? (
+              <Button type="button" autoFocus variant="contained" onClick={closeEmailDialog}>Done</Button>
+            ) : (
+              <>
+                <Button type="button" disabled={sendingEmail} onClick={closeEmailDialog}>Cancel</Button>
+                <Button type="submit" variant="contained" disabled={sendingEmail}>
+                  {sendingEmail ? 'Sending…' : 'Send email'}
+                </Button>
+              </>
+            )}
+          </DialogActions>
+        </Box>
+      </Dialog>
     </AuthBackground>
   );
 }
