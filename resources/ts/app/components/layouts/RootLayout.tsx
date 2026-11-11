@@ -15,17 +15,10 @@ import {
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import BrandLogo from '../BrandLogo';
+import { accountColors } from './accountColors';
 
 const drawerWidth = 244;
 const toolbarHeight = 60;
-
-const QUICK_ACTION_PATHS: Record<string, string[]> = {
-  hr: ['/dashboard/recruitment', '/dashboard/employees', '/dashboard/requests', '/dashboard/attendance'],
-  employee: ['/dashboard/schedule', '/dashboard/dtr', '/dashboard/requests', '/dashboard/payslips'],
-  supervisor: ['/dashboard/schedule', '/dashboard/requests', '/dashboard/evaluation', '/dashboard/attendance'],
-  gm: ['/dashboard/recruitment', '/dashboard/evaluation', '/dashboard/employees', '/dashboard/reports'],
-  accounting: ['/dashboard/payroll', '/dashboard/reports'],
-};
 
 // Role-specific nav items — each includes which roles can see it
 const ALL_MENU_ITEMS = [
@@ -119,10 +112,6 @@ export default function RootLayout() {
   if (user.role === 'applicant') return <Navigate to="/applicant" replace />;
 
   const filteredMenuItems = ALL_MENU_ITEMS.filter(item => item.roles.includes(user.role));
-  const quickActions = (QUICK_ACTION_PATHS[user.role] ?? []).flatMap(path => {
-    const item = filteredMenuItems.find(entry => entry.path === path);
-    return item ? [item] : [];
-  });
   const handleLogout = () => { logout(); navigate('/login'); };
   const handleNavigate = (path: string) => { navigate(path); if (!isDesktop) setMobileOpen(false); };
 
@@ -156,20 +145,22 @@ export default function RootLayout() {
   };
 
   const drawerContent = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.paper', color: 'text.primary' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', background: accountColors.sidebar, color: accountColors.onGreen }}>
       <ListItemButton
         component="button"
         onClick={() => handleNavigate('/dashboard')}
         sx={{ m: 1.5, px: 1, py: 1.25, gap: 1, borderRadius: 2, flexGrow: 0, textAlign: 'left' }}
       >
-        <BrandLogo size={44} />
+        <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: '14px', background: 'linear-gradient(135deg, #f0a93f, #ffd276)' }}>
+          <BrandLogo size="100%" />
+        </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography fontWeight={800} noWrap>Buenaventura</Typography>
-          <Typography variant="caption" color="text.secondary">HRIS</Typography>
+          <Typography variant="caption" color={accountColors.onGreenMuted}>HRIS</Typography>
         </Box>
       </ListItemButton>
 
-      <Divider sx={{ mx: 2 }} />
+      <Divider sx={{ mx: 2, borderColor: accountColors.onGreenBorder }} />
 
       <Box component="nav" aria-label="Account navigation" sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
         <List sx={{ px: 1.5, py: 1.5 }}>
@@ -184,18 +175,18 @@ export default function RootLayout() {
                 onClick={() => handleNavigate(item.path)}
                 sx={{
                   minHeight: 46, px: 1.25, gap: 1.25, m: 0, borderRadius: 1,
-                  borderLeft: '3px solid transparent', color: 'text.secondary',
-                  '&:hover': { bgcolor: 'background.default' },
-                  '& .MuiListItemIcon-root': { minWidth: 32, color: 'primary.dark' },
+                  borderLeft: '3px solid transparent', color: accountColors.onGreen,
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.09)' },
+                  '& .MuiListItemIcon-root': { minWidth: 32, color: accountColors.onGreenMuted },
                   '&.Mui-selected, &.Mui-selected:hover': {
-                    bgcolor: 'rgba(31,122,71,0.10)', color: 'primary.dark', borderLeftColor: 'secondary.main',
+                    background: accountColors.activeNav, color: accountColors.onGreen, borderLeftColor: accountColors.gold,
                   },
-                  '&.Mui-selected .MuiListItemIcon-root': { color: 'primary.main' },
+                  '&.Mui-selected .MuiListItemIcon-root': { color: accountColors.activeIcon },
                 }}
               >
                 <ListItemIcon sx={{
                   width: 32, height: 32, display: 'grid', placeItems: 'center',
-                  bgcolor: selected ? 'rgba(31,122,71,0.12)' : 'background.default',
+                  bgcolor: 'transparent',
                   borderRadius: 1,
                   '& svg': { fontSize: 18 },
                 }}>{item.icon}</ListItemIcon>
@@ -207,15 +198,15 @@ export default function RootLayout() {
         </List>
       </Box>
 
-      <Divider sx={{ mx: 2 }} />
+      <Divider sx={{ mx: 2, borderColor: accountColors.onGreenBorder }} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.75 }}>
-        <Avatar sx={{ bgcolor: 'primary.dark', color: 'primary.contrastText', width: 34, height: 34, fontSize: '0.9rem' }}>{user.name.charAt(0)}</Avatar>
+        <Avatar sx={{ bgcolor: accountColors.gold, color: 'primary.contrastText', width: 34, height: 34, fontSize: '0.9rem' }}>{user.name.charAt(0)}</Avatar>
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography variant="body2" fontWeight={750} noWrap>{user.name}</Typography>
-          <Typography variant="caption" color="text.secondary" noWrap display="block">{ROLE_LABELS[user.role] ?? user.role}</Typography>
+          <Typography variant="caption" color={accountColors.onGreenMuted} noWrap display="block">{ROLE_LABELS[user.role] ?? user.role}</Typography>
         </Box>
         <Tooltip title="Logout">
-          <IconButton aria-label="Logout" size="small" onClick={handleLogout}><Logout fontSize="small" /></IconButton>
+          <IconButton aria-label="Logout" size="small" onClick={handleLogout} sx={{ color: accountColors.onGreenMuted }}><Logout fontSize="small" /></IconButton>
         </Tooltip>
       </Box>
     </Box>
@@ -228,16 +219,15 @@ export default function RootLayout() {
         elevation={0}
         sx={{
           width: { md: `calc(100% - ${drawerWidth}px)` },
-          bgcolor: 'background.paper',
-          color: 'text.primary',
-          backgroundImage: 'none',
+          background: accountColors.header,
+          color: accountColors.onGreen,
           borderBottom: 1,
-          borderColor: 'divider',
+          borderColor: accountColors.onGreenBorder,
           boxShadow: 'none',
         }}
       >
         <Toolbar sx={{ gap: 1, minHeight: { xs: toolbarHeight, sm: toolbarHeight } }}>
-          <IconButton aria-label="Open account navigation" edge="start" onClick={() => setMobileOpen(true)} sx={{ display: { md: 'none' } }}>
+          <IconButton aria-label="Open account navigation" color="inherit" edge="start" onClick={() => setMobileOpen(true)} sx={{ display: { md: 'none' } }}>
             <MenuIcon />
           </IconButton>
           <Typography noWrap sx={{ flex: 1, minWidth: 0, fontWeight: 750, fontSize: '0.95rem' }}>
@@ -247,7 +237,7 @@ export default function RootLayout() {
             <IconButton
               aria-label="Notifications"
               onClick={e => setNotifAnchor(e.currentTarget)}
-              sx={{ width: 38, height: 38, color: 'primary.dark', bgcolor: 'background.default', '&:hover': { bgcolor: 'action.selected' } }}
+              sx={{ width: 38, height: 38, color: 'inherit', bgcolor: 'rgba(255,255,255,0.12)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' } }}
             >
               <Badge badgeContent={unreadCount} color="error"><NotificationsNone fontSize="small" /></Badge>
             </IconButton>
@@ -257,11 +247,11 @@ export default function RootLayout() {
             aria-haspopup="menu"
             aria-expanded={Boolean(anchorEl)}
             onClick={e => setAnchorEl(e.currentTarget)}
-            sx={{ px: 0.75, minWidth: 0, minHeight: 38, gap: 0.75, color: 'text.primary', border: 1, borderColor: 'divider' }}
+            sx={{ px: 0.75, minWidth: 0, minHeight: 38, gap: 0.75, color: 'inherit', border: 1, borderColor: accountColors.onGreenBorder, bgcolor: 'rgba(255,255,255,0.12)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' } }}
           >
-            <Avatar sx={{ width: 27, height: 27, bgcolor: 'primary.dark', color: 'primary.contrastText', fontSize: '0.8rem' }}>{user.name.charAt(0)}</Avatar>
+            <Avatar sx={{ width: 27, height: 27, bgcolor: accountColors.gold, color: 'primary.contrastText', fontSize: '0.8rem' }}>{user.name.charAt(0)}</Avatar>
             <Typography noWrap sx={{ display: { xs: 'none', sm: 'block' }, maxWidth: 150, fontSize: '0.84rem', fontWeight: 750 }}>{user.name}</Typography>
-            <KeyboardArrowDown sx={{ display: { xs: 'none', sm: 'block' }, color: 'text.secondary', fontSize: 17 }} />
+            <KeyboardArrowDown sx={{ display: { xs: 'none', sm: 'block' }, color: accountColors.onGreenMuted, fontSize: 17 }} />
           </Button>
           <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)} PaperProps={{ sx: { mt: 1, minWidth: 220, borderRadius: 2 } }}>
             <MenuItem disabled><Typography fontWeight={700}>{user.name}</Typography></MenuItem>
@@ -380,9 +370,9 @@ export default function RootLayout() {
         {drawerContent}
       </Drawer>
 
-      <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: '100vh', pt: `${toolbarHeight}px` }}>
+      <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: '100vh', pt: `${toolbarHeight}px`, background: accountColors.dashboard }}>
         <Box sx={{ maxWidth: 1760, mx: 'auto', p: { xs: 1.5, sm: 2, md: 3 } }}>
-          <Outlet context={quickActions} />
+          <Outlet />
         </Box>
       </Box>
     </Box>

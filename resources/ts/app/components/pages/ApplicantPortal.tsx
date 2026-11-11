@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
 import BrandLogo from '../BrandLogo';
 import { DashboardHeader } from '../layouts/DashboardOverview';
+import { accountColors } from '../layouts/accountColors';
 import { APPLICANT_COUNTRIES, APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, BARANGAYS_BY_CITY, ZIP_BY_CITY } from '../../lib/applicantAddress';
 
@@ -86,15 +87,15 @@ export default function ApplicantPortal() {
   if (user && user.role !== 'applicant') return <Navigate to="/dashboard" replace />;
   if (user) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-        <Box component="header" sx={{ bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+      <Box sx={{ minHeight: '100vh', background: accountColors.dashboard }}>
+        <Box component="header" sx={{ background: accountColors.header, color: accountColors.onGreen, borderBottom: 1, borderColor: accountColors.onGreenBorder }}>
           <Container maxWidth="lg">
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ minHeight: 60 }}>
               <Stack direction="row" alignItems="center" gap={1}>
                 <BrandLogo size={36} />
                 <Typography fontWeight={750}>Buenaventura HRIS</Typography>
               </Stack>
-              <Button onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setApplications([]); logout(); }}>Sign out</Button>
+              <Button color="inherit" onClick={() => { setReady(false); setProfileOwner(null); setProfile({ ...initial }); setApplications([]); logout(); }}>Sign out</Button>
             </Stack>
           </Container>
         </Box>
