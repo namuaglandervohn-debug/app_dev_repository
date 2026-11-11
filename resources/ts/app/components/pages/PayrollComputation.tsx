@@ -1967,7 +1967,20 @@ export default function PayrollComputation() {
       </Dialog>
 
       {/* Payslip Dialog */}
-      <Dialog open={viewDialog} onClose={() => { setViewDialog(false); setEditingPayslip(false); }} maxWidth="sm" fullWidth PaperProps={{ sx: dialogPaperSx }}>
+      <Dialog
+        open={viewDialog}
+        onClose={() => { setViewDialog(false); setEditingPayslip(false); }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            ...dialogPaperSx,
+            maxWidth: 768,
+            mx: { xs: 1.5, sm: 4 },
+            width: { xs: 'calc(100% - 24px)', sm: 'calc(100% - 64px)' },
+          },
+        }}
+      >
         <DialogTitle sx={{ ...dialogTitleSx, pb: 1.5 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             Payslip
@@ -2237,7 +2250,27 @@ export default function PayrollComputation() {
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2, borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfff9', gap: 1, flexWrap: 'wrap' }}>
+        <DialogActions
+          disableSpacing
+          sx={{
+            display: { xs: 'grid', sm: 'flex' },
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gridAutoRows: '1fr',
+            alignItems: 'stretch',
+            flexWrap: 'wrap',
+            gap: 1,
+            px: { xs: 1.5, sm: 2 },
+            py: 2,
+            borderTop: `1px solid ${GREEN_UI.border}`,
+            bgcolor: '#fbfff9',
+            '& > .MuiButton-root': {
+              minHeight: 38,
+              px: { xs: 1, sm: 1.5 },
+              lineHeight: 1.4,
+              textAlign: 'center',
+            },
+          }}
+        >
           <input
             ref={payslipUploadRef}
             type="file"
