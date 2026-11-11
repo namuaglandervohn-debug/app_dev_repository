@@ -16,13 +16,19 @@ const deferred = () => {
 };
 const tick = () => new Promise((done) => setTimeout(done, 5));
 
-function harness({ restored = null, rows = [hrProfile, gmProfile], applicantRows = [], getSession, queryResult, signIn, signOut } = {}) {
+function harness({ restored = null, rows = [hrProfile, gmProfile], applicantRows = [], getSession, queryResult, restoreApplicant, signIn, signOut } = {}) {
   let listener = () => {};
   const states = [];
   const queries = [];
   const authCalls = [];
   const emit = (event, user) => listener(event, user ? { user } : null);
   const client = {
+    async rpc(name, ...args) {
+      assert.equal(name, 'ensure_my_applicant_profile');
+      assert.deepEqual(args, []);
+      assert.ok(restoreApplicant, 'Unexpected applicant profile recovery');
+      return restoreApplicant();
+    },
     auth: {
       onAuthStateChange(callback) {
         listener = callback;
@@ -75,6 +81,30 @@ test('applicant identity comes from its own saved profile, and an employee conve
   assert.equal((await loadAuthProfile(converted.client, hr)).role, 'employee');
   const disabled = harness({ rows: [{ ...profile(hr, 'employee'), is_active: false }], applicantRows: [{ auth_user_id: hr.id, profile: { firstName: 'Jane', lastName: 'Applicant' } }] });
   await assert.rejects(loadAuthProfile(disabled.client, hr), /active matching HRIS account/);
+});
+
+test('a verified applicant session can open the dashboard after the server restores its profile', async () => {
+  const user = { id: 'auth-applicant', email: 'applicant@example.test', user_metadata: { registration_kind: 'applicant' } };
+  let recoveries = 0;
+  const h = harness({
+    restored: user,
+    rows: [],
+    restoreApplicant: () => {
+      recoveries++;
+      return { data: { firstName: 'Jane', lastName: 'Applicant' }, error: null };
+    },
+  });
+  h.session.start();
+  await tick();
+  h.emit('SIGNED_IN', user);
+  assert.deepEqual(h.latest(), { user: { id: user.id, email: user.email, name: 'Jane Applicant', role: 'applicant' }, loading: false });
+  assert.equal(recoveries, 1);
+  h.session.stop();
+});
+
+test('applicant metadata alone grants no access when the server declines recovery', async () => {
+  const h = harness({ rows: [], restoreApplicant: () => ({ data: null, error: null }) });
+  await assert.rejects(loadAuthProfile(h.client, { ...hr, user_metadata: { registration_kind: 'applicant' } }), /active matching HRIS account/);
 });
 
 test('login and its SIGNED_IN event perform one profile query; focus/refresh preserve the role', async () => {

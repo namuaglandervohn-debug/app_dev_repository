@@ -106,7 +106,7 @@ export default function ApplicantPortal() {
         const result = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password, options: { emailRedirectTo: `${window.location.origin}/applicant`, data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
         if (result.error) throw result.error;
         setPassword('');
-        setNotice('If your email still needs confirmation, check your inbox or spam folder for a link. If you already confirmed it, sign in.');
+        setNotice('Check your inbox or spam folder for the confirmation link. Open it to access your Applicant Dashboard. If you already confirmed your email, sign in.');
         setMode(0);
       } else { await login(email.trim().toLowerCase(), password); setPassword(''); }
     } catch (e: any) {

@@ -20,13 +20,14 @@ export function normalizeAppRole(role: unknown): UserRole {
   return result;
 }
 
-type Client = Pick<SupabaseClient, 'auth' | 'from'>;
+type Client = Pick<SupabaseClient, 'auth' | 'from' | 'rpc'>;
+type AuthIdentity = Pick<User, 'id' | 'email'> & Partial<Pick<User, 'user_metadata'>>;
 const PROFILE_COLUMNS = 'user_id, auth_user_id, full_name, email, role, employee_id, outlet';
 const missingProfileMessage = 'This login is not linked to an active matching HRIS account. Please contact HR.';
 
 class MissingAuthProfileError extends Error {}
 
-export async function loadAuthProfile(client: Client, authUser: Pick<User, 'id' | 'email'>): Promise<AuthUser> {
+export async function loadAuthProfile(client: Client, authUser: AuthIdentity): Promise<AuthUser> {
   const email = String(authUser.email ?? '').trim().toLowerCase();
   if (!authUser.id || !email) throw new Error('The login session has no valid account identity.');
   const query = () => client.from('user_accounts').select(PROFILE_COLUMNS).eq('is_active', true);
@@ -46,8 +47,14 @@ export async function loadAuthProfile(client: Client, authUser: Pick<User, 'id' 
     if (inactive.data) throw new MissingAuthProfileError(missingProfileMessage);
     const applicant = await client.from('applicant_profiles').select('auth_user_id,profile').eq('auth_user_id', authUser.id).maybeSingle();
     if (applicant.error) throw applicant.error;
-    if (applicant.data) {
-      const profile = applicant.data.profile ?? {};
+    let profile = applicant.data?.profile;
+    if (!applicant.data && authUser.user_metadata?.registration_kind === 'applicant') {
+      const restored = await client.rpc('ensure_my_applicant_profile');
+      if (restored.error) throw restored.error;
+      profile = restored.data;
+    }
+    if (applicant.data || profile) {
+      profile ??= {};
       return { id: authUser.id, name: [profile.firstName, profile.middleName, profile.lastName, profile.suffix].filter(Boolean).join(' '), email, role: 'applicant' };
     }
   }
@@ -89,7 +96,7 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
     failedIdentity = null;
     publish({ user: null, loading });
   };
-  const resolveProfile = async (authUser: Pick<User, 'id' | 'email'>, ticket: number) => {
+  const resolveProfile = async (authUser: AuthIdentity, ticket: number) => {
     const profile = await loadAuthProfile(client, authUser);
     if (current(ticket)) {
       identity = authUser.id;
