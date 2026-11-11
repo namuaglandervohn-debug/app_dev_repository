@@ -1426,9 +1426,6 @@ export default function RequestManagement() {
         </TableContainer>
         </>
       )}
-      <Alert severity="info" sx={{ mt: 1.5, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}` }}>
-        The 5 days are one shared annual company-paid allowance across all leave categories. Unused company leave is converted to cash at year end using Remaining Days x Daily Basic Salary Rate, then the allowance resets to 5 days for the new year. Legally required leave entitlements should be tracked separately.
-      </Alert>
     </Paper>
   );
 
