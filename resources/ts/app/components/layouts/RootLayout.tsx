@@ -4,7 +4,7 @@ import {
   AppBar, Toolbar, Typography, Drawer, List, ListItem, ListItemButton,
   ListItemIcon, ListItemText, Box, IconButton, Avatar, Menu, MenuItem,
   useMediaQuery, useTheme, Divider, Chip, Tooltip, Badge, Popover, Paper, Button,
-  CircularProgress,
+  CircularProgress, lighten,
 } from '@mui/material';
 import {
   SpaceDashboard, PersonAddAlt1, Groups, CalendarMonth, Schedule, Assignment,
@@ -198,16 +198,30 @@ export default function RootLayout() {
         </List>
       </Box>
 
-      <Divider sx={{ mx: 2, borderColor: accountColors.onGreenBorder }} />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.75 }}>
-        <Avatar sx={{ bgcolor: accountColors.gold, color: 'primary.contrastText', width: 34, height: 34, fontSize: '0.9rem' }}>{user.name.charAt(0)}</Avatar>
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="body2" fontWeight={750} noWrap>{user.name}</Typography>
-          <Typography variant="caption" color={accountColors.onGreenMuted} noWrap display="block">{ROLE_LABELS[user.role] ?? user.role}</Typography>
+      <Box component="footer" sx={{ flexShrink: 0, px: 2, pb: 1.5 }}>
+        <Divider sx={{ borderColor: accountColors.onGreenBorder }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, pt: 1.75, pb: 1 }}>
+          <Avatar sx={{ bgcolor: accountColors.gold, color: 'primary.contrastText', width: 40, height: 40, fontSize: '0.95rem' }}>{user.name.charAt(0)}</Avatar>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="body2" fontWeight={750} noWrap title={user.name}>{user.name}</Typography>
+            <Typography variant="caption" color={accountColors.onGreenMuted} noWrap display="block" title={user.email}>
+              {user.email || ROLE_LABELS[user.role] || user.role}
+            </Typography>
+          </Box>
         </Box>
-        <Tooltip title="Logout">
-          <IconButton aria-label="Logout" size="small" onClick={handleLogout} sx={{ color: accountColors.onGreenMuted }}><Logout fontSize="small" /></IconButton>
-        </Tooltip>
+        <Button
+          fullWidth
+          startIcon={<Logout />}
+          onClick={handleLogout}
+          sx={{
+            minHeight: 44, px: 2, justifyContent: 'flex-start',
+            color: theme => lighten(theme.palette.error.main, 0.86),
+            '&:hover, &.Mui-focusVisible': { bgcolor: 'rgba(255,255,255,0.10)' },
+            '&.Mui-focusVisible': { outline: '2px solid currentColor', outlineOffset: -2 },
+          }}
+        >
+          Sign Out
+        </Button>
       </Box>
     </Box>
   );
@@ -263,7 +277,7 @@ export default function RootLayout() {
               </MenuItem>
             )}
             <MenuItem onClick={() => { setAnchorEl(null); handleLogout(); }}>
-              <ListItemIcon><Logout fontSize="small" /></ListItemIcon>Logout
+              <ListItemIcon><Logout fontSize="small" /></ListItemIcon>Sign Out
             </MenuItem>
           </Menu>
 
