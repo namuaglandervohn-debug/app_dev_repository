@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { Alert, Box, Button, CircularProgress, Container, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { ArrowBackRounded } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
@@ -85,6 +86,11 @@ export default function ApplicantPortal() {
   };
   if (loading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
   if (user && user.role !== 'applicant') return <Navigate to="/dashboard" replace />;
+  const backButton = (
+    <Button component={Link} to="/careers" startIcon={<ArrowBackRounded />} sx={{ mb: 1 }}>
+      Back
+    </Button>
+  );
   if (user) {
     return (
       <Box sx={{ minHeight: '100vh', background: accountColors.dashboard }}>
@@ -100,11 +106,9 @@ export default function ApplicantPortal() {
           </Container>
         </Box>
         <Container component="main" maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
+          {backButton}
           <DashboardHeader title="Applicant account">
-            <Stack direction="row" flexWrap="wrap" gap={1}>
-              <Button component={Link} to="/careers">Careers</Button>
-              <Button component={Link} to={next} variant="contained" disabled={!profileReady}>Apply for a job</Button>
-            </Stack>
+            <Button component={Link} to={next} variant="contained" disabled={!profileReady}>Apply for a job</Button>
           </DashboardHeader>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
@@ -143,7 +147,8 @@ export default function ApplicantPortal() {
     );
   }
   return <AuthBackground><Container maxWidth="md" sx={{ py: 4 }}><Paper sx={{ p: { xs: 2, sm: 4 }, borderRadius: 5 }}>
-    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography variant="h5" fontWeight={700}>Applicant account</Typography><Button component={Link} to="/careers">Careers</Button></Stack>
+    {backButton}
+    <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>Applicant account</Typography>
     <Typography sx={{ mb: 3 }}>Create your profile once. Review and reuse it whenever you apply for another position.</Typography>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}{notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
     <Tabs value={mode} onChange={(_, value) => { setMode(value); setError(''); }} sx={{ mb: 3 }}><Tab label="Sign in" /><Tab label="Create account" /></Tabs>
