@@ -1355,25 +1355,21 @@ export default function ScheduleManagement() {
     {
       label: 'Total Schedules',
       value: schedules.length,
-      caption: 'All loaded weekly schedule records.',
       icon: <ViewWeek fontSize="small" />,
     },
     {
       label: 'Draft',
       value: schedules.filter(s => s.status === 'Draft').length,
-      caption: 'Schedules still waiting to be published.',
       icon: <EditIcon fontSize="small" />,
     },
     {
       label: 'Published',
       value: schedules.filter(s => s.status === 'Published').length,
-      caption: 'Schedules visible for employee confirmation.',
       icon: <EventAvailable fontSize="small" />,
     },
     {
       label: 'Confirmed',
       value: schedules.filter(s => s.status === 'Confirmed').length,
-      caption: 'Schedules already acknowledged by employees.',
       icon: <DoneAll fontSize="small" />,
     },
   ];
@@ -1583,9 +1579,6 @@ export default function ScheduleManagement() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

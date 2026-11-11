@@ -692,22 +692,18 @@ export default function JobPostingManagement() {
             {
               label: "Total Postings",
               value: jobStats.total,
-              helper: "All saved job posts",
             },
             {
               label: "Active Openings",
               value: jobStats.active,
-              helper: "Visible to applicants",
             },
             {
               label: "Inactive Posts",
               value: jobStats.inactive,
-              helper: "Hidden or paused",
             },
             {
               label: "Departments",
               value: jobStats.departments,
-              helper: "With available roles",
             },
           ].map((stat) => (
             <Card key={stat.label} sx={statCardSx} elevation={0}>
@@ -749,11 +745,6 @@ export default function JobPostingManagement() {
                       }}
                     >
                       {loading ? "—" : stat.value}
-                    </Typography>
-                    <Typography
-                      sx={{ color: GREEN_UI.muted, fontSize: "0.82rem" }}
-                    >
-                      {stat.helper}
                     </Typography>
                   </Box>
                 </Stack>

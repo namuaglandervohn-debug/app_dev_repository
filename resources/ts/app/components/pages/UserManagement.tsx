@@ -546,9 +546,9 @@ export default function UserManagement() {
 
   const summaryCards = [
     { label: 'Total Accounts', value: totalUsers, icon: <AdminPanelSettings fontSize="small" /> },
-    { label: 'Active Accounts', value: activeUsers, caption: 'Can access the system', icon: <Visibility fontSize="small" /> },
-    { label: 'Inactive Accounts', value: inactiveUsers, caption: 'Temporarily disabled', icon: <VisibilityOff fontSize="small" /> },
-    { label: 'Employee Users', value: employeeUsers, caption: 'Employee role accounts', icon: <Badge fontSize="small" /> },
+    { label: 'Active Accounts', value: activeUsers, icon: <Visibility fontSize="small" /> },
+    { label: 'Inactive Accounts', value: inactiveUsers, icon: <VisibilityOff fontSize="small" /> },
+    { label: 'Employee Users', value: employeeUsers, icon: <Badge fontSize="small" /> },
   ];
 
   const renderDialogSectionTitle = (title: string) => (
@@ -735,9 +735,6 @@ export default function UserManagement() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

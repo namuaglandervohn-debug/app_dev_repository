@@ -927,25 +927,21 @@ export default function RequestManagement() {
     {
       label: 'Total Requests',
       value: requests.length,
-      caption: 'All submitted leave, overtime, and undertime requests.',
       icon: <AssignmentTurnedIn fontSize="small" />,
     },
     {
       label: 'Pending',
       value: requests.filter(r => r.status === 'Pending').length,
-      caption: 'Requests waiting for supervisor review.',
       icon: <PendingActions fontSize="small" />,
     },
     {
       label: 'For HR Validation',
       value: requests.filter(r => r.status === 'Supervisor Approved').length,
-      caption: 'Supervisor-approved requests awaiting final HR action.',
       icon: <HourglassTop fontSize="small" />,
     },
     {
       label: 'Approved',
       value: requests.filter(r => r.status === 'Approved').length,
-      caption: 'Requests fully approved and validated.',
       icon: <CheckCircleOutline fontSize="small" />,
     },
   ];
@@ -1620,9 +1616,6 @@ export default function RequestManagement() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

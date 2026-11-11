@@ -555,14 +555,6 @@ export default function EmployeeDTR() {
     [records]
   );
 
-  const latestRecordDate = records.length
-    ? new Date(records[records.length - 1].attendance_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "No record yet";
-
   const selectedEmployeeOption = employeeOptions.find(employee => employee.employeeId === targetEmployeeId);
   const displayName =
     employeeProfile?.first_name || employeeProfile?.last_name
@@ -573,25 +565,21 @@ export default function EmployeeDTR() {
     {
       label: "Employee ID",
       value: targetEmployeeId || "—",
-      caption: isHR ? "Selected employee record" : "Linked employee account",
       icon: <BadgeOutlined fontSize="small" />,
     },
     {
       label: "Month Covered",
       value: `${monthName} ${year}`,
-      caption: `${daysInMonth} calendar days included`,
       icon: <CalendarMonth fontSize="small" />,
     },
     {
       label: "Recorded Days",
       value: records.length,
-      caption: `Latest: ${latestRecordDate}`,
       icon: <CheckCircleOutline fontSize="small" />,
     },
     {
       label: "Total Hours",
       value: totalHours.toFixed(2),
-      caption: "Based on attendance records",
       icon: <AccessTime fontSize="small" />,
     },
   ];
@@ -800,9 +788,6 @@ export default function EmployeeDTR() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           ))}
         </Box>

@@ -691,25 +691,21 @@ export default function Reports() {
     {
       label: 'Current Report',
       value: filtered.length,
-      caption: `${selected.label} records in selected date range`,
       icon: <Assessment fontSize="small" />,
     },
     {
       label: 'Loaded Records',
       value: totalLoadedRecords,
-      caption: 'Total records loaded across all report modules',
       icon: <Dataset fontSize="small" />,
     },
     {
       label: 'Report Types',
       value: REPORT_TYPES.length,
-      caption: 'Available HRIS report categories',
       icon: <GridView fontSize="small" />,
     },
     {
       label: 'Period Filter',
       value: `${dateFrom.slice(5)} → ${dateTo.slice(5)}`,
-      caption: 'Active date range used for preview, print, and CSV export',
       icon: <CalendarMonth fontSize="small" />,
     },
   ];
@@ -859,9 +855,6 @@ export default function Reports() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

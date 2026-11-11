@@ -290,9 +290,6 @@ export default function GMDashboard() {
                     {stat.icon}
                   </Box>
                 </Box>
-                <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.4, display: 'block' }}>
-                  Live summary from your current HRIS records
-                </Typography>
               </CardContent>
             </Card>
           </Grid>

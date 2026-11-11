@@ -534,7 +534,6 @@ export default function SupervisorDashboard() {
     () => [
       {
         title: 'Pending Requests',
-        caption: 'Requests waiting for supervisor review',
         value: loading ? '…' : String(stats.pendingRequests),
         icon: <Timelapse />,
         bg: GREEN_UI.amberSoft,
@@ -542,7 +541,6 @@ export default function SupervisorDashboard() {
       },
       {
         title: 'Published Schedules',
-        caption: 'Approved schedules visible to employees',
         value: loading ? '…' : String(stats.publishedSchedules),
         icon: <EventAvailable />,
         bg: GREEN_UI.greenSoft,
@@ -550,7 +548,6 @@ export default function SupervisorDashboard() {
       },
       {
         title: 'Evaluations Submitted',
-        caption: 'Performance evaluations already submitted',
         value: loading ? '…' : String(stats.evaluationsSubmitted),
         icon: <QueryStats />,
         bg: GREEN_UI.tealSoft,
@@ -691,9 +688,6 @@ export default function SupervisorDashboard() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

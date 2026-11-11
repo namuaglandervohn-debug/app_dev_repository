@@ -1240,25 +1240,21 @@ export default function PayrollComputation() {
     {
       label: 'Payroll Records',
       value: filtered.length,
-      caption: filterPeriod || filterStatus !== 'all' ? 'Records matching the current filter' : 'Total payroll rows currently loaded',
       icon: <Payments fontSize="small" />,
     },
     {
       label: 'Gross Pay',
       value: `₱${Math.round(totals.gross).toLocaleString()}`,
-      caption: 'Combined gross pay from visible records',
       icon: <Calculate fontSize="small" />,
     },
     {
       label: 'Deductions',
       value: `₱${Math.round(totals.ded).toLocaleString()}`,
-      caption: 'Total visible payroll deductions',
       icon: <DeleteOutline fontSize="small" />,
     },
     {
       label: 'Net Pay',
       value: `₱${Math.round(totals.net).toLocaleString()}`,
-      caption: 'Estimated amount for release',
       icon: <TaskAlt fontSize="small" />,
     },
   ];
@@ -1570,9 +1566,6 @@ export default function PayrollComputation() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

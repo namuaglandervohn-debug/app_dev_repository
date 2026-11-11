@@ -2235,25 +2235,21 @@ export default function AttendanceMonitoring() {
           {
             label: "Visible Records",
             value: filtered.length,
-            caption: filterDate || filterEmployee || filterStatus !== "all" ? "Records matching your filters" : "Currently displayed attendance logs",
             icon: <FactCheckRounded />,
           },
           {
             label: "Present",
             value: summary.present,
-            caption: "Present records, including entries with late minutes",
             icon: <AddTaskRounded />,
           },
           {
             label: "Late Entries",
             value: summary.late,
-            caption: "Records with late minutes for payroll review",
             icon: <WatchLaterRounded />,
           },
           {
             label: "Absent / Leave",
             value: summary.absent + summary.onLeave,
-            caption: "Combined absent and approved leave records",
             icon: <EventBusyRounded />,
           },
         ].map((stat) => (
@@ -2282,9 +2278,6 @@ export default function AttendanceMonitoring() {
                 </Box>
                 <Box sx={iconTileSx}>{stat.icon}</Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

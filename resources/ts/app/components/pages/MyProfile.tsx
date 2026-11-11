@@ -626,10 +626,10 @@ export default function MyProfile() {
 
       <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
         {[
-          { label: 'Employee ID', value: employee?.id ?? 'Not linked', caption: 'System profile record', icon: <Badge /> },
-          { label: 'Outlet / Branch', value: employee?.outlet || 'Not set', caption: 'Assigned branch from HR records', icon: <LocationOn /> },
-          { label: 'Documents', value: totalDocumentCount, caption: 'Self-service and application files', icon: <InsertDriveFile /> },
-          { label: 'Contact', value: employee?.contact ?? 'Not set', caption: employee?.email ?? 'Update your contact details', icon: <Phone /> },
+          { label: 'Employee ID', value: employee?.id ?? 'Not linked', icon: <Badge /> },
+          { label: 'Outlet / Branch', value: employee?.outlet || 'Not set', icon: <LocationOn /> },
+          { label: 'Documents', value: totalDocumentCount, icon: <InsertDriveFile /> },
+          { label: 'Contact', value: employee?.contact ?? 'Not set', icon: <Phone /> },
         ].map(stat => (
           <Grid key={stat.label} size={{ xs: 12, sm: 6, md: 3 }}>
             <Paper
@@ -668,9 +668,6 @@ export default function MyProfile() {
                 </Box>
                 <Box sx={sectionIconSx}>{stat.icon}</Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

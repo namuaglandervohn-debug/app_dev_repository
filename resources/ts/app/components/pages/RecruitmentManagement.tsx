@@ -1377,25 +1377,21 @@ export default function RecruitmentManagement() {
       {
         label: 'Total Applications',
         value: applications.length,
-        caption: 'All submitted applicants',
         icon: <InsertDriveFile fontSize="small" />,
       },
       {
         label: 'For Review',
         value: applications.filter(a => a.status === 'Submitted' || a.status === 'Under Review').length,
-        caption: 'Needs HR checking',
         icon: <EditNote fontSize="small" />,
       },
       {
         label: 'For Interview',
         value: applications.filter(a => a.status === 'For Interview').length,
-        caption: 'Ready for schedule / decision',
         icon: <Event fontSize="small" />,
       },
       {
         label: 'Hired',
         value: applications.filter(a => a.status === 'Hired').length,
-        caption: 'Converted to employees',
         icon: <TaskAlt fontSize="small" />,
       },
     ],
@@ -2051,9 +2047,6 @@ export default function RecruitmentManagement() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

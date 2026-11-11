@@ -1004,25 +1004,21 @@ export default function PerformanceEvaluation() {
     {
       label: "Total Evaluations",
       value: displayedEvaluations.length,
-      caption: isEmployee ? "Evaluations assigned to your employee profile." : "Visible evaluation records in this workspace.",
       icon: <TaskAlt fontSize="small" />,
     },
     {
       label: "Submitted / Pending",
       value: evaluations.filter((r) => r.status === "Submitted" || r.status === "Reviewed").length,
-      caption: "Records waiting for review or approval.",
       icon: <Grade fontSize="small" />,
     },
     {
       label: "Approved Evaluations",
       value: evaluations.filter((r) => r.status === "Approved").length,
-      caption: "Evaluation records finalized by management.",
       icon: <Grade fontSize="small" />,
     },
     {
       label: "Assigned Drafts",
       value: assignedDraftEvaluations.length,
-      caption: "Draft evaluations assigned to supervisors.",
       icon: <EmojiEvents fontSize="small" />,
       featured: true,
     },
@@ -1224,9 +1220,6 @@ export default function PerformanceEvaluation() {
                   {stat.icon}
                 </Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

@@ -520,25 +520,21 @@ export default function EmployeeRecords() {
           {
             label: 'Total Employees',
             value: employees.length,
-            caption: 'All employee records in the directory',
             icon: <GroupsRounded />,
           },
           {
             label: 'Active Employees',
             value: employees.filter((emp) => emp.status === 'Active').length,
-            caption: 'Currently active personnel',
             icon: <CheckCircleRounded />,
           },
           {
             label: 'On Leave',
             value: employees.filter((emp) => emp.status === 'On Leave').length,
-            caption: 'Employees marked as on leave',
             icon: <EventAvailableRounded />,
           },
           {
             label: 'Search Results',
             value: filtered.length,
-            caption: search ? 'Records matching your search' : 'Currently visible records',
             icon: <SearchRounded />,
           },
         ].map((stat) => (
@@ -567,9 +563,6 @@ export default function EmployeeRecords() {
                 </Box>
                 <Box sx={iconTileSx}>{stat.icon}</Box>
               </Box>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-                {stat.caption}
-              </Typography>
             </Paper>
           </Grid>
         ))}

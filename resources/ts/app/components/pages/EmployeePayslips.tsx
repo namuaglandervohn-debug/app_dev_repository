@@ -33,7 +33,6 @@ interface Payslip {
   position: string;
   outlet?: string;
   period: string;
-  cutoffLabel?: string;
   totalHours: string;
   overtime: string;
   deductions: string;
@@ -143,7 +142,6 @@ const mapItemToPayslip = (item: any, summariesById: Map<string, any>, displayId?
     position: item.position || '',
     outlet: item.outlet || '',
     period: monthFromDate(summary?.period_start),
-    cutoffLabel: summary?.cutoff_label ?? '',
     totalHours: String(item.total_work_hours ?? item.regular_hours ?? '0'),
     overtime: String(item.overtime_hours ?? '0'),
     deductions: money(item.total_deductions),
@@ -355,7 +353,7 @@ export default function EmployeePayslips() {
 
       const { data: summaries, error: summariesError } = await supabase
         .from('payroll_summaries')
-        .select('payroll_id, period_start, period_end, cutoff_label, status, endorsed_at, reviewed_at, created_at')
+        .select('payroll_id, period_start, period_end, status, endorsed_at, reviewed_at, created_at')
         .in('status', ['Endorsed', 'Exported'])
         .order('period_start', { ascending: false });
 
@@ -545,25 +543,21 @@ export default function EmployeePayslips() {
     {
       label: 'Released Payslips',
       value: payslips.length,
-      caption: 'Payroll records available for viewing and printing.',
       icon: <ReceiptLong fontSize="small" />,
     },
     {
       label: 'Latest Period',
       value: latestPayslip?.period ?? '—',
-      caption: latestPayslip?.cutoffLabel || 'Most recent released payroll period.',
       icon: <CalendarMonth fontSize="small" />,
     },
     {
       label: 'Latest Net Pay',
       value: latestPayslip?.netPay ?? '₱0.00',
-      caption: 'Latest released amount after deductions.',
       icon: <Payments fontSize="small" />,
     },
     {
       label: 'Total Net Released',
       value: money(totalNetPay),
-      caption: employeeContext?.employeeId ? `Employee ID: ${employeeContext.employeeId}` : 'Linked employee account summary.',
       icon: <AccountBalanceWallet fontSize="small" />,
     },
   ];
@@ -727,9 +721,6 @@ export default function EmployeePayslips() {
                 {stat.icon}
               </Box>
             </Box>
-            <Typography variant="caption" sx={{ color: GREEN_UI.muted, mt: 1.2 }}>
-              {stat.caption}
-            </Typography>
           </Paper>
         ))}
       </Box>

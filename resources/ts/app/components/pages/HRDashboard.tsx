@@ -32,7 +32,6 @@ interface Stats {
   pendingRequests: number;
   supervisorApprovedRequests: number;
   attendanceIssues: number;
-  payrollForReview: number;
   lastPayrollGenerated: string | null;
   onDutyOrOnCall: number;
   topEvaluee: string | null;
@@ -48,7 +47,6 @@ const DEFAULT_STATS: Stats = {
   pendingRequests: 0,
   supervisorApprovedRequests: 0,
   attendanceIssues: 0,
-  payrollForReview: 0,
   lastPayrollGenerated: null,
   onDutyOrOnCall: 0,
   topEvaluee: null,
@@ -128,13 +126,6 @@ const isAttendanceIssue = (row: StatusRecord): boolean => {
   );
 };
 
-const isPayrollForReview = (status: unknown): boolean => {
-  const normalized = normalizeText(status);
-
-  // Reviewed = forwarded to Accounting/Finance; Approved = processed but not yet released.
-  return normalized === "reviewed" || normalized === "approved";
-};
-
 const fetchRows = async <T extends StatusRecord>(
   table: string,
   columns: string,
@@ -195,12 +186,6 @@ const fetchAttendanceIssuesCount = async (): Promise<number> => {
   );
 
   return rows.filter(isAttendanceIssue).length;
-};
-
-const fetchPayrollForReviewCount = async (): Promise<number> => {
-  const rows = await fetchRows("payroll_summaries", "id, payroll_id, status");
-
-  return rows.filter((row) => isPayrollForReview(row.status)).length;
 };
 
 const fetchLastPayrollGenerated = async (): Promise<string | null> => {
@@ -308,7 +293,6 @@ const resolveLiveDashboardStats = async (): Promise<{
     pendingRequests,
     supervisorApprovedRequests,
     attendanceIssues,
-    payrollForReview,
     lastPayrollGenerated,
     onDutyOrOnCall,
     topPerformer,
@@ -319,7 +303,6 @@ const resolveLiveDashboardStats = async (): Promise<{
     safe("Pending Requests", 0, fetchPendingRequestsCount),
     safe("Pending HR Validation", 0, fetchPendingHrValidationCount),
     safe("Attendance Issues", 0, fetchAttendanceIssuesCount),
-    safe("Payroll For Review", 0, fetchPayrollForReviewCount),
     safe("Last Payroll Generated", null, fetchLastPayrollGenerated),
     safe("On Duty / On-Call", 0, fetchOnDutyOrOnCallCount),
     safe(
@@ -337,7 +320,6 @@ const resolveLiveDashboardStats = async (): Promise<{
       pendingRequests,
       supervisorApprovedRequests,
       attendanceIssues,
-      payrollForReview,
       lastPayrollGenerated,
       onDutyOrOnCall,
       topEvaluee: topPerformer.topEvaluee,
@@ -501,7 +483,6 @@ export default function HRDashboard() {
         icon: <PeopleAlt />,
         color: "#2F9E5E",
         softColor: "#E5F7EA",
-        helper: "Currently employed personnel",
       },
       {
         title: "Pending Applications",
@@ -509,7 +490,6 @@ export default function HRDashboard() {
         icon: <PersonAddAlt1 />,
         color: "#ED8A1F",
         softColor: "#FFF1DE",
-        helper: "Applicants awaiting review",
       },
       {
         title: "For Interview",
@@ -517,7 +497,6 @@ export default function HRDashboard() {
         icon: <EventAvailable />,
         color: "#2B9C95",
         softColor: "#DFF7F5",
-        helper: "Candidates ready for interview",
       },
       {
         title: "Pending HR Validation",
@@ -525,7 +504,6 @@ export default function HRDashboard() {
         icon: <PendingActions />,
         color: "#8B5AD8",
         softColor: "#F0E9FF",
-        helper: "Requests waiting for HR action",
       },
       {
         title: "On Duty / On-Call",
@@ -533,7 +511,6 @@ export default function HRDashboard() {
         icon: <EventAvailable />,
         color: "#2B9C95",
         softColor: "#DFF7F5",
-        helper: "Employees scheduled or logged today",
       },
       {
         title: "Attendance Issues",
@@ -541,7 +518,6 @@ export default function HRDashboard() {
         icon: <WarningAmber />,
         color: "#D85C5C",
         softColor: "#FFEAEA",
-        helper: "Logs that need checking",
       },
       {
         title: "Last Payroll Generated",
@@ -549,7 +525,6 @@ export default function HRDashboard() {
         icon: <AccountBalance />,
         color: "#2E7BCF",
         softColor: "#E7F0FF",
-        helper: `${stats.payrollForReview} payroll summary/s for review`,
       },
       {
         title: "Top Performer",
@@ -561,7 +536,6 @@ export default function HRDashboard() {
         icon: <EmojiEvents />,
         color: "#B98913",
         softColor: "#FFF4D8",
-        helper: "Highest recorded evaluation score",
       },
     ],
     [loading, stats],
@@ -829,18 +803,6 @@ export default function HRDashboard() {
                       }}
                     >
                       {stat.value}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        mt: 1.2,
-                        color: GREEN_UI.muted,
-                        fontSize: "0.83rem",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {stat.helper}
                     </Typography>
                   </Box>
 

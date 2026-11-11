@@ -208,7 +208,6 @@ export default function EmployeeDashboard() {
       title: 'Attendance Today',
       value: loading ? '…' : (todayAtt ? todayAtt.status : 'No entry'),
       icon: <Fingerprint />,
-      helper: todayAtt ? `${todayAtt.timeIn || '—'} – ${todayAtt.timeOut || '—'}` : 'View your DTR for official records',
       color: '#2F8F8B',
       bg: '#e8f7f5',
     },
@@ -216,7 +215,6 @@ export default function EmployeeDashboard() {
       title: 'Active Schedule',
       value: loading ? '…' : (mySchedule ? (mySchedule.outlet ?? mySchedule.week ?? 'Assigned') : 'No schedule'),
       icon: <CalendarMonth />,
-      helper: mySchedule ? (mySchedule.week ?? 'Latest assigned schedule') : 'No active schedule yet',
       color: GREEN_UI.greenDark,
       bg: GREEN_UI.greenSoft,
     },
@@ -224,7 +222,6 @@ export default function EmployeeDashboard() {
       title: 'Pending Requests',
       value: loading ? '…' : String(pendingReqs),
       icon: <Assignment />,
-      helper: pendingReqs === 1 ? '1 request waiting for action' : `${pendingReqs} requests waiting for action`,
       color: '#9b6b00',
       bg: '#fff7e0',
     },
@@ -232,7 +229,6 @@ export default function EmployeeDashboard() {
       title: 'Latest Payslip',
       value: loading ? '...' : (latestPayslip ? 'Available' : 'No payslip'),
       icon: <Payments />,
-      helper: latestPayslip ? 'Most recent released/encoded payslip' : 'No payslip available yet',
       color: '#6c3a8f',
       bg: '#f3eaf9',
     },
@@ -394,19 +390,6 @@ export default function EmployeeDashboard() {
                 </Typography>
                 <Typography variant="body2" fontWeight={600} sx={{ color: GREEN_UI.text }}>
                   {stat.title}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: GREEN_UI.muted,
-                    display: 'block',
-                    mt: 0.5,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stat.helper}
                 </Typography>
               </CardContent>
             </Card>
