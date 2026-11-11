@@ -3,7 +3,7 @@ import { Link, Navigate, useSearchParams } from 'react-router';
 import { Alert, Box, Button, CircularProgress, Container, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { ArrowBackRounded } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabaseClient';
+import { signupEmailConfirmed, supabase } from '../../lib/supabaseClient';
 import AuthBackground from '../AuthBackground';
 import BrandLogo from '../BrandLogo';
 import { DashboardHeader } from '../layouts/DashboardOverview';
@@ -61,7 +61,7 @@ export default function ApplicantPortal() {
   const [ready, setReady] = useState(false);
   const [profileOwner, setProfileOwner] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(signupEmailConfirmed ? 'Email verified. Sign in with your email and password.' : '');
   const [applications, setApplications] = useState<ApplicantSubmission[]>([]);
   const [uploadFor, setUploadFor] = useState<string | null>(null);
   const [requirementFiles, setRequirementFiles] = useState<File[]>([]);
@@ -106,7 +106,7 @@ export default function ApplicantPortal() {
         const result = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password, options: { emailRedirectTo: `${window.location.origin}/applicant`, data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
         if (result.error) throw result.error;
         setPassword('');
-        setNotice('Check your inbox or spam folder for the confirmation link. Open it to access your Applicant Dashboard. If you already confirmed your email, sign in.');
+        setNotice('Check your inbox or spam folder for the confirmation link. After verifying your email, sign in with your email and password.');
         setMode(0);
       } else { await login(email.trim().toLowerCase(), password); setPassword(''); }
     } catch (e: any) {
