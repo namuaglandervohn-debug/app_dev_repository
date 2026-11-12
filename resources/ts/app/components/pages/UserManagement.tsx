@@ -303,6 +303,7 @@ export default function UserManagement() {
     const response = await fetch('/api/admin/user-accounts', {
       method: 'POST',
       headers: {
+        Accept: 'application/json',
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
@@ -311,7 +312,7 @@ export default function UserManagement() {
         email: form.email,
         password: form.password,
         role: form.role,
-        employee_id: form.employeeId,
+        employee_id: form.role === 'employee' ? form.employeeId : null,
         outlet: form.outlet,
       }),
     });
@@ -325,6 +326,9 @@ export default function UserManagement() {
     }
 
     const userData = result.user;
+    if (typeof userData?.user_id !== 'string' || !userData.user_id) {
+      throw new Error('The server did not confirm account creation. Refresh User Accounts before retrying.');
+    }
 
     const newUser: UserAccount = {
       id: userData.user_id,
@@ -346,7 +350,7 @@ export default function UserManagement() {
 
     setSnackbar({
       open: true,
-      message: `Account created and linked to Supabase Auth${form.employeeId ? ` with Employee ID ${form.employeeId}` : ''}.`,
+      message: `Account created and linked to Supabase Auth${userData.employee_id ? ` with Employee ID ${userData.employee_id}` : ''}.`,
       severity: "success",
     });
   } catch (e: any) {
@@ -1079,7 +1083,7 @@ export default function UserManagement() {
               <TextField
                 fullWidth
                 label="Linked Employee ID"
-                value={form.employeeId}
+                value={form.role === 'employee' ? form.employeeId : ''}
                 disabled
                 InputProps={{
                   readOnly: true,
@@ -1089,7 +1093,7 @@ export default function UserManagement() {
                     </InputAdornment>
                   ),
                 }}
-                helperText="Auto-generated — assigned sequentially"
+                helperText={form.role === 'employee' ? "Auto-generated — assigned sequentially" : undefined}
                 sx={{
                   ...softTextFieldSx,
                   '& .MuiInputBase-input.Mui-disabled': {

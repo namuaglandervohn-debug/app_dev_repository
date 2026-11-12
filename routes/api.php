@@ -220,34 +220,30 @@ Route::post('/admin/user-accounts', function (Request $request) {
         ]);
     }
 
-    $createAuthResponse = Http::withHeaders([
-        'apikey' => supabaseServiceRoleKey(),
-        'Authorization' => 'Bearer '.supabaseServiceRoleKey(),
-        'Content-Type' => 'application/json',
-    ])->acceptJson()->post(supabaseBaseUrl().'/auth/v1/admin/users', [
-        'email' => $email,
-        'password' => $data['password'],
-        'email_confirm' => true,
-        'user_metadata' => [
-            'full_name' => $name,
-            'role' => $databaseRole,
-            'employee_id' => $employeeId ?: null,
-        ],
-    ]);
+    $existingEmployee = null;
+    if ($data['role'] === 'employee') {
+        if (! $employeeId) {
+            throw ValidationException::withMessages(['employee_id' => 'An employee ID is required.']);
+        }
 
-    if ($createAuthResponse->failed()) {
-        throw ValidationException::withMessages([
-            'email' => $createAuthResponse->json('message') ?? $createAuthResponse->body(),
-        ]);
-    }
-
-    $authUser = $createAuthResponse->json('user') ?? $createAuthResponse->json();
-    $authUserId = $authUser['id'] ?? null;
-
-    if (! $authUserId) {
-        throw ValidationException::withMessages([
-            'supabase' => 'Supabase Auth did not return a user id.',
-        ]);
+        $existingEmployee = supabaseRest('GET', '/rest/v1/employees', null, [
+            'select' => 'employee_id,email,applicant_id',
+            'employee_id' => "eq.{$employeeId}",
+            'limit' => 1,
+        ])[0] ?? null;
+        if ($existingEmployee && (
+            strtolower(trim((string) ($existingEmployee['email'] ?? ''))) !== $email
+            || ! empty($existingEmployee['applicant_id'])
+            || supabaseRest('GET', '/rest/v1/user_accounts', null, [
+                'select' => 'user_id',
+                'employee_id' => "eq.{$employeeId}",
+                'limit' => 1,
+            ])
+        )) {
+            throw ValidationException::withMessages([
+                'employee_id' => 'This employee ID is already in use. Reopen Create Account to get a new ID.',
+            ]);
+        }
     }
 
     $year = now()->year;
@@ -267,33 +263,38 @@ Route::post('/admin/user-accounts', function (Request $request) {
 
     $userId = sprintf('USR-%s-%04d', $year, $maxSequence + 1);
 
-    $insertedProfiles = supabaseRest('POST', '/rest/v1/user_accounts', [
-        'user_id' => $userId,
-        'auth_user_id' => $authUserId,
-        'employee_id' => $employeeId ?: null,
-        'full_name' => $name,
+    $createAuthResponse = Http::withHeaders([
+        'apikey' => supabaseServiceRoleKey(),
+        'Authorization' => 'Bearer '.supabaseServiceRoleKey(),
+        'Content-Type' => 'application/json',
+    ])->acceptJson()->post(supabaseBaseUrl().'/auth/v1/admin/users', [
         'email' => $email,
-        'password' => null,
-        'role' => $databaseRole,
-        'outlet' => $outlet ?: null,
-        'is_active' => true,
+        'password' => $data['password'],
+        'email_confirm' => true,
+        'user_metadata' => [
+            'full_name' => $name,
+            'role' => $databaseRole,
+            'employee_id' => $employeeId ?: null,
+        ],
     ]);
 
-    $profile = $insertedProfiles[0] ?? null;
-    if (! $profile) {
+    if ($createAuthResponse->failed()) {
         throw ValidationException::withMessages([
-            'supabase' => 'Account profile was not returned after creation.',
+            'email' => $createAuthResponse->json('message') ?? $createAuthResponse->json('msg') ?? 'The login could not be created.',
         ]);
     }
 
-    if ($data['role'] === 'employee' && $employeeId) {
-        $existingEmployees = supabaseRest('GET', '/rest/v1/employees', null, [
-            'select' => 'employee_id',
-            'employee_id' => "eq.{$employeeId}",
-            'limit' => 1,
-        ]);
+    $authUser = $createAuthResponse->json('user') ?? $createAuthResponse->json();
+    $authUserId = $authUser['id'] ?? null;
 
-        if (! $existingEmployees) {
+    if (! $authUserId) {
+        throw ValidationException::withMessages([
+            'supabase' => 'Supabase Auth did not return a user id.',
+        ]);
+    }
+
+    try {
+        if ($data['role'] === 'employee' && ! $existingEmployee) {
             $nameParts = preg_split('/\s+/', $name) ?: [];
             $firstName = $nameParts[0] ?? '';
             $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : $firstName;
@@ -307,6 +308,37 @@ Route::post('/admin/user-accounts', function (Request $request) {
                 'status' => 'Active',
                 'hire_date' => now()->toDateString(),
             ]);
+        }
+
+        $profile = supabaseRest('POST', '/rest/v1/user_accounts', [
+            'user_id' => $userId,
+            'auth_user_id' => $authUserId,
+            'employee_id' => $employeeId ?: null,
+            'full_name' => $name,
+            'email' => $email,
+            'password' => null,
+            'role' => $databaseRole,
+            'outlet' => $outlet ?: null,
+            'is_active' => true,
+        ])[0] ?? null;
+        if (empty($profile['user_id'])) {
+            throw ValidationException::withMessages([
+                'supabase' => 'The server did not return the saved account. Refresh User Accounts before retrying.',
+            ]);
+        }
+    } catch (Throwable $error) {
+        $profile = supabaseRest('GET', '/rest/v1/user_accounts', null, [
+            'auth_user_id' => "eq.{$authUserId}",
+            'limit' => 1,
+        ])[0] ?? null;
+        if (empty($profile['user_id'])) {
+            $key = supabaseServiceRoleKey();
+            $cleanup = Http::withToken($key)->withHeader('apikey', $key)->acceptJson()
+                ->delete(supabaseBaseUrl().'/auth/v1/admin/users/'.rawurlencode($authUserId));
+            if ($cleanup->failed()) {
+                Log::warning('Could not roll back an incomplete staff login.', ['status' => $cleanup->status()]);
+            }
+            throw $error;
         }
     }
 

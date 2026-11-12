@@ -8,7 +8,8 @@ import {
 import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import { POSITIONS } from '../../lib/constants';
+import { getAttendanceOvertimeMinutes } from '../../lib/attendanceOvertime';
+import { getJobTitleOptions, jobTitleKey } from '../../lib/jobTitles';
 import {
   calculatePayslipLineAmount, calculatePayslipTotals, netPayAfterDeductions,
   payrollHoursPerDay, payrollPremiumFields, payslipAmountFields, payslipQuantityAmounts, regularOvertimeMultiplier,
@@ -32,7 +33,6 @@ const POSITION_SALARIES: Record<string, number> = {
   'HR Assistant': 18000, 'Security Guard': 16000, 'Maintenance Staff': 15000,
 };
 
-const AVAILABLE_POSITIONS = POSITIONS.filter(position => position !== 'Payroll Staff');
 const COMPANY_PAID_LEAVE_TYPE = 'Company Paid Leave';
 const COMPANY_ANNUAL_LEAVE_ALLOWANCE = 5;
 
@@ -174,6 +174,33 @@ const parseSalaryRate = (value: unknown) => {
   if (!matches?.length) return 0;
   return Number(matches[0]) || 0;
 };
+
+const defaultDailyRateForPosition = (position: string) => {
+  if (!position) return 0;
+  return jobTitleKey(position) === 'service crew' ? 525 : 510;
+};
+
+async function loadJobSalaryRates(positions: string[]) {
+  const rates = new Map<string, number>();
+  if (!positions.length) return rates;
+
+  const { data, error } = await supabase
+    .from('job_postings')
+    .select('title, salary_range')
+    .in('title', positions)
+    .order('is_active', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .order('id');
+
+  if (error) throw error;
+
+  for (const job of data ?? []) {
+    const rate = parseSalaryRate(job.salary_range);
+    const key = jobTitleKey(job.title ?? '');
+    if (key && rate > 0 && !rates.has(key)) rates.set(key, rate);
+  }
+  return rates;
+}
 
 const roundMoney = (value: number) => Number((Number.isFinite(value) ? value : 0).toFixed(2));
 
@@ -354,7 +381,7 @@ export default function PayrollComputation() {
   const [savingRates, setSavingRates] = useState(false);
   const [generatePeriod, setGeneratePeriod] = useState(new Date().toISOString().slice(0, 7));
   const [generateCutoff, setGenerateCutoff] = useState('5');
-  const [generateBase, setGenerateBase] = useState('510');
+  const [generateBaseOverride, setGenerateBaseOverride] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY);
   const manualGross = roundMoney(toNumber(form.grossPay));
   const manualDeductions = roundMoney(toNumber(form.deductions));
@@ -366,6 +393,10 @@ export default function PayrollComputation() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const { user } = useAuth();
   const [generatePosition, setGeneratePosition] = useState('');
+  const [jobTitleOptions, setJobTitleOptions] = useState(() => getJobTitleOptions([]));
+  const [selectedJobRate, setSelectedJobRate] = useState<{ position: string; rate: number } | null>(null);
+  const postedDailyRate = selectedJobRate?.position === generatePosition ? selectedJobRate.rate : 0;
+  const generateBase = generateBaseOverride ?? String(postedDailyRate || defaultDailyRateForPosition(generatePosition));
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
   const payslipUploadRef = useRef<HTMLInputElement>(null);
   const [uploadingPayslip, setUploadingPayslip] = useState(false);
@@ -759,6 +790,8 @@ export default function PayrollComputation() {
   };
 
   const openGenerateDialog = async () => {
+    setGenerateBaseOverride(null);
+    setSelectedJobRate(null);
     try {
       const latestMonth = await latestAttendanceMonth();
       if (latestMonth) setGeneratePeriod(latestMonth);
@@ -768,6 +801,33 @@ export default function PayrollComputation() {
       setGenerateDialog(true);
     }
   };
+
+  useEffect(() => {
+    if (!generateDialog && !addDialog) return;
+
+    let canceled = false;
+    supabase.from('job_postings').select('title').then(({ data, error }) => {
+      if (canceled) return;
+      if (error) {
+        setSnackbar({ open: true, severity: 'error', message: 'Could not load saved job titles.' });
+        return;
+      }
+      setJobTitleOptions(getJobTitleOptions((data ?? []).map(job => job.title)));
+    });
+    return () => { canceled = true; };
+  }, [generateDialog, addDialog]);
+
+  useEffect(() => {
+    if (!generateDialog || !generatePosition) return;
+
+    let canceled = false;
+    loadJobSalaryRates([generatePosition])
+      .then(rates => {
+        if (!canceled) setSelectedJobRate({ position: generatePosition, rate: rates.get(jobTitleKey(generatePosition)) ?? 0 });
+      })
+      .catch(error => console.warn('Could not load the daily rate for payroll:', error.message));
+    return () => { canceled = true; };
+  }, [generateDialog, generatePosition]);
 
   const handleAdd = async () => {
     if (!form.employee || !form.grossPay) {
@@ -901,7 +961,7 @@ export default function PayrollComputation() {
         employeeIds.filter((employeeId) => {
           const employee = employeeMap.get(employeeId);
           const isActive = String(employee?.status ?? 'Active').toLowerCase() === 'active';
-          const matchesPosition = !generatePosition || String(employee?.position ?? '') === generatePosition;
+          const matchesPosition = !generatePosition || jobTitleKey(String(employee?.position ?? '')) === jobTitleKey(generatePosition);
           return isActive && matchesPosition;
         }),
       );
@@ -913,21 +973,12 @@ export default function PayrollComputation() {
           : 'Attendance logs were found, but none belong to active employees in the selected period.');
       }
 
-      const positions = [...new Set([...targetEmployeeIds].map((employeeId) => employeeMap.get(employeeId)?.position).filter(Boolean))];
-      const { data: jobPostings, error: jobsError } = positions.length > 0
-        ? await supabase
-            .from('job_postings')
-            .select('title, salary_range, is_active')
-            .in('title', positions)
-        : { data: [], error: null } as any;
-
-      if (jobsError) throw jobsError;
-
-      const jobSalaryMap = new Map<string, number>();
-      (jobPostings ?? []).forEach((job: any) => {
-        const rate = parseSalaryRate(job.salary_range);
-        if (job.title && rate > 0 && !jobSalaryMap.has(job.title)) jobSalaryMap.set(job.title, rate);
-      });
+      const positions = [...new Set([...targetEmployeeIds].flatMap(employeeId => {
+        const position = String(employeeMap.get(employeeId)?.position ?? '');
+        const listedTitle = jobTitleOptions.find(title => jobTitleKey(title) === jobTitleKey(position));
+        return [position, listedTitle].filter((title): title is string => Boolean(title));
+      }))];
+      const jobSalaryMap = await loadJobSalaryRates(positions);
 
       const groupedLogs = usableLogs.reduce((map: Map<string, any[]>, log: any) => {
         const employeeId = String(log.employee_id);
@@ -938,7 +989,8 @@ export default function PayrollComputation() {
       const summaryPayloads = [...groupedLogs.entries()].map(([employeeId, logs]) => {
         const employee = employeeMap.get(employeeId);
         const totalWorkHours = logs.reduce((sum, log) => sum + toNumber(log.total_hours), 0);
-        const totalOvertimeMinutes = logs.reduce((sum, log) => sum + Math.round(toNumber(log.overtime_minutes)), 0);
+        const overtimeByLog = logs.map(getAttendanceOvertimeMinutes);
+        const totalOvertimeMinutes = overtimeByLog.reduce((sum, minutes) => sum + minutes, 0);
         const totalLateMinutes = logs.reduce((sum, log) => sum + Math.round(toNumber(log.late_minutes)), 0);
         const totalUndertimeMinutes = logs.reduce((sum, log) => sum + Math.round(toNumber(log.undertime_minutes)), 0);
         const totalAbsentDays = logs.filter((log) => Boolean(log.is_absent)).length;
@@ -961,7 +1013,7 @@ export default function PayrollComputation() {
           total_incomplete_days: totalIncompleteDays,
           total_late_count: logs.filter((log) => Number(log.late_minutes ?? 0) > 0).length,
           total_undertime_count: logs.filter((log) => Number(log.undertime_minutes ?? 0) > 0).length,
-          total_overtime_count: logs.filter((log) => Number(log.overtime_minutes ?? 0) > 0).length,
+          total_overtime_count: overtimeByLog.filter((minutes) => minutes > 0).length,
           total_late_minutes: totalLateMinutes,
           total_undertime_minutes: totalUndertimeMinutes,
           total_overtime_minutes: totalOvertimeMinutes,
@@ -1000,7 +1052,6 @@ export default function PayrollComputation() {
       }
 
       const payrollId = await getNextPayrollId(year);
-      const fallbackRate = parseSalaryRate(generateBase);
       const isYearEndLeaveConversion = generateCutoff === '5' && String(generatePeriod).endsWith('-12');
       const leaveAllowanceMap = new Map<string, number>();
       const usedLeaveMap = new Map<string, number>();
@@ -1040,10 +1091,11 @@ export default function PayrollComputation() {
         });
       }
 
+      const fallbackRate = parseSalaryRate(generateBaseOverride ?? defaultDailyRateForPosition(generatePosition));
       const payrollItems = summaries.map((summary: any) => {
         const employee = employeeMap.get(summary.employee_id);
         const position = String(summary.position || employee?.position || '');
-        const salaryRate = jobSalaryMap.get(position) || fallbackRate || parseSalaryRate(employee?.salary) || 0;
+        const salaryRate = jobSalaryMap.get(jobTitleKey(position)) || fallbackRate || parseSalaryRate(employee?.salary) || 0;
         const hourlyRate = salaryRate > 0 ? salaryRate / payrollHoursPerDay : 0;
         const regularHours = toNumber(summary.regular_hours);
         const overtimeHours = toNumber(summary.overtime_hours);
@@ -2045,18 +2097,21 @@ export default function PayrollComputation() {
             label="Position (Optional)"
             select fullWidth value={generatePosition}
             onChange={e => {
-              const pos = e.target.value;
-              setGeneratePosition(pos);
+              setGeneratePosition(e.target.value);
+              setGenerateBaseOverride(null);
+              setSelectedJobRate(null);
             }}
             InputLabelProps={{ shrink: true }}
             helperText="Leave blank to generate for all active employees"
           >
             <MenuItem key="all-pos" value="">All Positions</MenuItem>
-            {AVAILABLE_POSITIONS.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+            {jobTitleOptions.map(title => <MenuItem key={title} value={title}>{title}</MenuItem>)}
           </TextField>
           <TextField label="Fallback Daily Salary Rate (₱)" type="number" fullWidth value={generateBase}
-            onChange={e => setGenerateBase(e.target.value)}
-            helperText="Used only if the selected job posting has no Salary Range / Daily Rate saved." />
+            onChange={e => setGenerateBaseOverride(e.target.value)}
+            helperText={postedDailyRate
+              ? `Payroll uses the saved job posting rate of ${money(postedDailyRate)}.`
+              : 'Payroll uses this rate when the job posting has no saved daily rate.'} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfff9' }}>
           <Button onClick={() => { setGenerateDialog(false); setGeneratePosition(''); }}>Cancel</Button>
@@ -2096,7 +2151,10 @@ export default function PayrollComputation() {
             InputLabelProps={{ shrink: true }}
           >
             <MenuItem value="">Select position…</MenuItem>
-            {AVAILABLE_POSITIONS.map(position => (
+            {form.position && !jobTitleOptions.includes(form.position) && (
+              <MenuItem value={form.position}>{form.position}</MenuItem>
+            )}
+            {jobTitleOptions.map(position => (
               <MenuItem key={position} value={position}>{position}</MenuItem>
             ))}
           </TextField>

@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  InputAdornment,
   MenuItem,
   Skeleton,
   Stack,
@@ -29,6 +30,7 @@ import {
   Work,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
+import { getJobTitleOptions, jobTitleKey } from "../../lib/jobTitles";
 import ActionSnackbar from "../ActionSnackbar";
 
 interface JobPosting {
@@ -73,33 +75,7 @@ const EMPTY_FORM: JobForm = {
   responsibilities: "",
 };
 
-const JOB_TITLES = [
-  "General Manager",
-  "Assistant General Manager",
-  "Operations Manager",
-  "Front Office & Sales Supervisor",
-  "Chef/Cook",
-  "Commis Chef",
-  "Dispatcher/Steward",
-  "Public/Room Attendant",
-  "Pool Attendant",
-  "Laundry Attendant",
-  "Gardener",
-  "HR and Admin Manager",
-  "Driver/Liaison",
-  "Purchaser",
-  "Stockman",
-  "Accounting and Finance Manager",
-  "Accounting Officer",
-  "Finance Officer",
-  "Compliance Officer",
-  "Service Crew",
-  "Sales Associate",
-  "Cashier",
-  "HR Assistant",
-  "Security Guard",
-  "Maintenance Staff",
-];
+const ADD_JOB_TITLE = "__add_job_title__";
 
 const DEPARTMENTS = [
   "Management",
@@ -144,7 +120,7 @@ function normalizeForm(form: JobForm) {
     department: form.department.trim(),
     location: form.location.trim(),
     employment_type: form.employment_type.trim(),
-    salary_range: normalizeSalaryValue(form.salary_range) || null,
+    salary_range: form.salary_range.replace(/\.$/, "") || null,
     description: form.description.trim(),
     qualifications: form.qualifications.trim() || null,
     responsibilities: form.responsibilities.trim() || null,
@@ -180,8 +156,12 @@ function getSalaryLabel(salary?: string | null) {
     : `₱ ${formattedSalary}`;
 }
 
-function normalizeSalaryValue(value: string) {
-  return value.replace(/,/g, "").trim();
+function parseDailyRateInput(value: string) {
+  const amount = value.trim().replace(/^₱\s*/, "");
+  if (!amount) return "";
+  return /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{0,2})?$/.test(amount)
+    ? amount.replace(/,/g, "")
+    : null;
 }
 
 function formatSalary(salary?: string | null) {
@@ -404,6 +384,8 @@ export default function JobPostingManagement() {
   const [saving, setSaving] = useState(false);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [addingJobTitle, setAddingJobTitle] = useState(false);
+  const jobTitleOptions = useMemo(() => getJobTitleOptions(jobs.map(job => job.title)), [jobs]);
 
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
@@ -411,7 +393,9 @@ export default function JobPostingManagement() {
     severity: "success",
   });
 
-  const missingFields = useMemo(() => getMissingRequiredFields(form), [form]);
+  const savedDailyRate = editing?.salary_range?.trim() ?? "";
+  const keepSavedDailyRate = Boolean(savedDailyRate) && form.salary_range === (parseDailyRateInput(savedDailyRate) ?? "");
+  const missingFields = getMissingRequiredFields(form).filter(field => field !== "salary_range" || !keepSavedDailyRate);
 
   const jobStats = useMemo(() => {
     const active = jobs.filter((job) => job.is_active).length;
@@ -462,6 +446,7 @@ export default function JobPostingManagement() {
   }, [fetchJobs]);
 
   const handleOpenCreate = () => {
+    setAddingJobTitle(false);
     setEditing(null);
     setForm(EMPTY_FORM);
     setSubmitted(false);
@@ -477,6 +462,7 @@ export default function JobPostingManagement() {
   };
 
   const handleEdit = (job: JobPosting) => {
+    setAddingJobTitle(false);
     setEditing(job);
     setSubmitted(false);
 
@@ -485,7 +471,7 @@ export default function JobPostingManagement() {
       department: job.department ?? "",
       location: job.location ?? "",
       employment_type: job.employment_type ?? "Full-Time",
-      salary_range: formatSalaryInput(job.salary_range ?? ""),
+      salary_range: parseDailyRateInput(job.salary_range ?? "") ?? "",
       description: job.description ?? "",
       qualifications: job.qualifications ?? "",
       responsibilities: job.responsibilities ?? "",
@@ -495,21 +481,18 @@ export default function JobPostingManagement() {
   };
 
   const updateFormField = (field: keyof JobForm, value: string) => {
-    const nextValue =
-      field === "salary_range" ? formatSalaryInput(value) : value;
-    setForm((prev) => ({ ...prev, [field]: nextValue }));
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const hasFieldError = (field: keyof JobForm) =>
-    submitted && REQUIRED_FIELDS.includes(field) && !form[field].trim();
+    submitted && missingFields.includes(field);
 
   const handleSave = async () => {
     setSubmitted(true);
 
-    const missing = getMissingRequiredFields(form);
-    if (missing.length > 0) {
+    if (missingFields.length > 0) {
       showSnackbar(
-        `Please complete: ${missing.map((field) => FIELD_LABELS[field]).join(", ")}.`,
+        `Please complete: ${missingFields.map((field) => FIELD_LABELS[field]).join(", ")}.`,
         "warning",
       );
       return;
@@ -519,6 +502,10 @@ export default function JobPostingManagement() {
 
     try {
       const payload = normalizeForm(form);
+      if (keepSavedDailyRate && editing) payload.salary_range = editing.salary_range ?? null;
+      if (addingJobTitle) {
+        payload.title = jobTitleOptions.find(title => jobTitleKey(title) === jobTitleKey(payload.title)) ?? payload.title;
+      }
 
       if (editing) {
         const { data, error } = await supabase
@@ -1243,19 +1230,27 @@ export default function JobPostingManagement() {
                   required
                   select
                   label="Job Title"
-                  value={form.title}
-                  error={hasFieldError("title")}
+                  value={addingJobTitle ? ADD_JOB_TITLE : form.title}
+                  error={!addingJobTitle && hasFieldError("title")}
                   helperText={
-                    hasFieldError("title") ? "Job title is required." : " "
+                    !addingJobTitle && hasFieldError("title") ? "Job title is required." : " "
                   }
-                  onChange={(e) => updateFormField("title", e.target.value)}
+                  onChange={(e) => {
+                    const addTitle = e.target.value === ADD_JOB_TITLE;
+                    setAddingJobTitle(addTitle);
+                    updateFormField("title", addTitle ? "" : e.target.value);
+                  }}
                   InputLabelProps={{ shrink: true }}
                   sx={textFieldSx}
                 >
                   <MenuItem value="" sx={{ fontWeight: 400 }}>
                     Select Job Title...
                   </MenuItem>
-                  {JOB_TITLES.map((title) => (
+                  <MenuItem value={ADD_JOB_TITLE}>Add a new job title…</MenuItem>
+                  {form.title && !addingJobTitle && !jobTitleOptions.includes(form.title) && (
+                    <MenuItem value={form.title}>{form.title}</MenuItem>
+                  )}
+                  {jobTitleOptions.map((title) => (
                     <MenuItem
                       key={title}
                       value={title}
@@ -1265,6 +1260,20 @@ export default function JobPostingManagement() {
                     </MenuItem>
                   ))}
                 </TextField>
+
+                {addingJobTitle && (
+                  <TextField
+                    fullWidth
+                    required
+                    autoFocus
+                    label="New Job Title"
+                    value={form.title}
+                    onChange={e => updateFormField("title", e.target.value)}
+                    error={hasFieldError("title")}
+                    helperText={hasFieldError("title") ? "Job title is required." : " "}
+                    sx={textFieldSx}
+                  />
+                )}
 
                 <TextField
                   fullWidth
@@ -1339,17 +1348,46 @@ export default function JobPostingManagement() {
                   fullWidth
                   required
                   label="Daily Rate"
-                  value={form.salary_range}
+                  value={formatSalaryInput(form.salary_range)}
                   error={hasFieldError("salary_range")}
                   helperText={
                     hasFieldError("salary_range")
                       ? "Salary rate is required for payroll computation."
-                      : ""
+                      : keepSavedDailyRate && !form.salary_range
+                        ? `Saved rate: ${formatSalary(savedDailyRate)}`
+                        : ""
                   }
-                  onChange={(e) =>
-                    updateFormField("salary_range", e.target.value)
-                  }
-                  sx={{ ...textFieldSx}}
+                  onChange={e => {
+                    const input = e.target;
+                    const inputType = (e.nativeEvent as InputEvent).inputType;
+                    const rate = parseDailyRateInput(inputType === "insertFromPaste"
+                      ? input.value
+                      : input.value.replace(/,/g, ""));
+                    if (rate === null) return;
+
+                    const charactersBeforeCaret = input.value.slice(0, input.selectionStart ?? input.value.length)
+                      .replace(/[₱,\s]/g, "").length;
+                    const formattedRate = formatSalaryInput(rate);
+                    let caret = 0;
+                    let characters = 0;
+                    while (caret < formattedRate.length && characters < charactersBeforeCaret) {
+                      if (formattedRate[caret] !== ",") characters++;
+                      caret++;
+                    }
+                    if (inputType === "deleteContentForward" && formattedRate[caret] === ",") caret++;
+
+                    updateFormField("salary_range", rate);
+                    requestAnimationFrame(() => {
+                      if (input === document.activeElement && input.value === formattedRate) {
+                        input.setSelectionRange(caret, caret);
+                      }
+                    });
+                  }}
+                  slotProps={{
+                    input: { startAdornment: <InputAdornment position="start">₱</InputAdornment> },
+                    htmlInput: { inputMode: "decimal" },
+                  }}
+                  sx={textFieldSx}
                 />
               </Box>
             </Box>

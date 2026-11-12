@@ -26,6 +26,7 @@ import {
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { COMPANY } from "../../lib/constants";
+import { getAttendanceOvertimeMinutes, REQUIRED_DAILY_HOURS } from "../../lib/attendanceOvertime";
 
 interface AttendanceLogRow {
   log_id: string;
@@ -65,8 +66,6 @@ interface DTRRecord {
   official_hours: string;
   remarks: string;
 }
-
-const REQUIRED_DAILY_HOURS = 8;
 
 interface EmployeeProfile {
   employee_id: string;
@@ -175,16 +174,10 @@ function getDayName(year: number, month: number, day: number) {
 function mapAttendanceLogToDTR(row: AttendanceLogRow): DTRRecord {
   const timeIn = String(row.raw_time_in ?? "").trim() || formatDbTime(row.time_in);
   const timeOut = String(row.raw_time_out ?? "").trim() || formatDbTime(row.time_out);
-  const overtimeMinutes = Number(row.overtime_minutes ?? 0);
   const lateMinutes = Number(row.late_minutes ?? 0);
   const undertimeMinutes = Number(row.undertime_minutes ?? 0);
   const totalHours = Number(row.total_hours ?? 0);
-  const derivedOvertimeMinutes =
-    overtimeMinutes > 0
-      ? overtimeMinutes
-      : Number.isFinite(totalHours) && totalHours > REQUIRED_DAILY_HOURS
-        ? Math.round((totalHours - REQUIRED_DAILY_HOURS) * 60)
-        : 0;
+  const derivedOvertimeMinutes = getAttendanceOvertimeMinutes(row);
   const derivedUndertimeMinutes =
     undertimeMinutes > 0
       ? undertimeMinutes
