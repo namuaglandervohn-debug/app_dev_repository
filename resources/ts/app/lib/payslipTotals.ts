@@ -7,7 +7,9 @@ const deductionFields = [
   'breakages', 'amesco', 'pagibigLoan', 'lateDeductionAmt', 'undertimeDeductionAmt',
 ] as const;
 
-type EditableAmounts = Partial<Record<(typeof earningFields)[number] | (typeof deductionFields)[number], string>>;
+export const payslipAmountFields = [...earningFields, ...deductionFields] as const;
+export type PayslipAmountField = (typeof payslipAmountFields)[number];
+type EditableAmounts = Partial<Record<PayslipAmountField, string>>;
 type SavedPayslip = EditableAmounts & { grossPay: string; deductions: string };
 
 export const payrollHoursPerDay = 8;

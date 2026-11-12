@@ -3,7 +3,7 @@ import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Chip, Dialog,
   DialogTitle, DialogContent, DialogActions, Grid, CircularProgress,
-  Alert, Tooltip, IconButton, MenuItem,
+  Alert, Tooltip, IconButton, MenuItem, InputAdornment,
 } from '@mui/material';
 import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
@@ -11,7 +11,8 @@ import { useAuth } from '../../context/AuthContext';
 import { POSITIONS } from '../../lib/constants';
 import {
   calculatePayslipLineAmount, calculatePayslipTotals, netPayAfterDeductions,
-  payrollHoursPerDay, payslipQuantityAmounts, regularOvertimeMultiplier, type PayslipQuantityField,
+  payrollHoursPerDay, payslipAmountFields, payslipQuantityAmounts, regularOvertimeMultiplier,
+  type PayslipAmountField, type PayslipQuantityField,
 } from '../../lib/payslipTotals';
 import ActionSnackbar from '../ActionSnackbar';
 
@@ -106,6 +107,9 @@ const toNumber = (value: number | string | null | undefined) =>
   typeof value === 'number'
     ? value
     : parseFloat(String(value ?? '').replace(/[₱,]/g, '')) || 0;
+
+const amountInputValue = (value: string) => value.replace(/[₱,\s]/g, '');
+const numericInputStyle = { fontSize: '0.73rem', textAlign: 'right' as const, padding: '1px 0' };
 
 const dbStatusToUi = (status?: string | null): Payroll['status'] => {
   switch ((status ?? '').toLowerCase()) {
@@ -373,8 +377,7 @@ export default function PayrollComputation() {
   const payslipTotals = editingPayslip && selectedPayroll
     ? calculatePayslipTotals(selectedPayroll, payslipEditForm)
     : { gross: 0, deductions: 0, net: 0 };
-  const pef = (key: keyof typeof EDIT_EMPTY) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
+  const updatePayslipField = (key: keyof typeof EDIT_EMPTY, value: string) => {
     setPayslipEditForm(form => {
       const next = { ...form, [key]: value };
       if (!selectedPayroll || !Object.prototype.hasOwnProperty.call(payslipQuantityAmounts, key)) return next;
@@ -391,6 +394,24 @@ export default function PayrollComputation() {
       return next;
     });
   };
+  const pef = (key: keyof typeof EDIT_EMPTY) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    updatePayslipField(key, event.target.value);
+
+  const renderAmountInput = (field: PayslipAmountField, label: string) => (
+    <TextField
+      variant="standard"
+      fullWidth
+      size="small"
+      value={amountInputValue(payslipEditForm[field])}
+      onChange={event => {
+        const value = amountInputValue(event.target.value);
+        if (/^-?\d*(?:\.\d*)?$/.test(value)) updatePayslipField(field, value ? `₱${value}` : '');
+      }}
+      placeholder="0"
+      inputProps={{ 'aria-label': `${label} amount`, inputMode: 'decimal', style: numericInputStyle }}
+      InputProps={{ startAdornment: <InputAdornment position="start" aria-hidden="true" disableTypography sx={{ fontSize: '0.73rem', mr: 0.25 }}>₱</InputAdornment> }}
+    />
+  );
 
   const currentUserName = (user as any)?.name ?? (user as any)?.full_name ?? (user as any)?.email ?? 'System User';
   const currentUserRole = (user as any)?.role ?? 'user';
@@ -2050,15 +2071,18 @@ export default function PayrollComputation() {
                     ['RETRO/ADJUSTMENT',  null,                  'retroAmt'          ],
                     ['Tardiness (Mins.)', 'tardinessMin',        'lateDeductionAmt'  ],
                     ['Undertime (Hours)', 'undertimeHours',      'undertimeDeductionAmt'],
-                  ] as [string, PayslipQuantityField | null, keyof typeof EDIT_EMPTY][]).map(([label, dk, ak]) => (
+                  ] as [string, PayslipQuantityField | null, PayslipAmountField][]).map(([label, dk, ak]) => (
                     <Box key={label} sx={{ display: 'flex', borderBottom: '1px solid #eee', alignItems: 'center' }}>
                       <Box sx={{ flex: 1, p: '1px 8px', borderRight: '1px solid #ccc', fontSize: '0.76rem' }}>{label}</Box>
                       <Box sx={{ width: '24%', px: 0.5, borderRight: '1px solid #ccc' }}>
-                        {dk ? <TextField variant="standard" fullWidth size="small" value={payslipEditForm[dk]} onChange={pef(dk)} placeholder="—" inputProps={{ 'aria-label': `${label} quantity`, inputMode: 'decimal', style: { fontSize: '0.73rem', textAlign: 'right', padding: '1px 0' } }} />
+                        {dk ? <TextField variant="standard" fullWidth size="small" value={payslipEditForm[dk]} onChange={event => {
+                          const value = event.target.value;
+                          if (/^\d*(?:\.\d*)?$/.test(value)) updatePayslipField(dk, value);
+                        }} placeholder="—" inputProps={{ 'aria-label': `${label} quantity`, inputMode: 'decimal', style: numericInputStyle }} />
                              : <Box sx={{ textAlign: 'right', fontSize: '0.75rem', color: 'text.disabled', p: '3px 2px' }}>—</Box>}
                       </Box>
                       <Box sx={{ width: '22%', px: 0.5 }}>
-                        <TextField variant="standard" fullWidth size="small" value={payslipEditForm[ak]} onChange={pef(ak)} placeholder="₱0" inputProps={{ 'aria-label': `${label} amount`, inputMode: 'decimal', style: { fontSize: '0.73rem', textAlign: 'right', padding: '1px 0' } }} />
+                        {renderAmountInput(ak, label)}
                       </Box>
                     </Box>
                   ))}
@@ -2080,10 +2104,10 @@ export default function PayrollComputation() {
                     ['BREAKAGES Charges (last)', 'breakages'   ],
                     ['AMESCO/OTHER CHARGES',     'amesco'      ],
                     ['PAG-IBIG LOAN',            'pagibigLoan' ],
-                  ] as [string, string][]).map(([label, key]) => (
+                  ] as [string, PayslipAmountField][]).map(([label, key]) => (
                     <Box key={label} sx={{ display: 'flex', borderBottom: '1px solid #eee', alignItems: 'center' }}>
                       <Box sx={{ flex: 1, p: '1px 8px', borderRight: '1px solid #ccc', fontSize: '0.76rem' }}>{label}</Box>
-                      <Box sx={{ width: '22%', px: 0.5 }}><TextField variant="standard" fullWidth size="small" value={(payslipEditForm as any)[key]} onChange={pef(key as any)} placeholder="₱0" inputProps={{ style: { fontSize: '0.73rem', textAlign: 'right', padding: '1px 0' } }} /></Box>
+                      <Box sx={{ width: '22%', px: 0.5 }}>{renderAmountInput(key, label)}</Box>
                     </Box>
                   ))}
                   {/* TOTAL DEDUCTIONS */}
@@ -2371,6 +2395,14 @@ export default function PayrollComputation() {
                 });
                 if (hasInvalidQuantity) {
                   setSnackbar({ open: true, message: 'Enter a valid, nonnegative number for each quantity.', severity: 'error' });
+                  return;
+                }
+                const hasInvalidAmount = payslipAmountFields.some(field => {
+                  const value = amountInputValue(payslipEditForm[field]);
+                  return value !== amountInputValue(selectedPayroll[field] ?? '') && !Number.isFinite(Number(value));
+                });
+                if (hasInvalidAmount) {
+                  setSnackbar({ open: true, message: 'Enter a valid number for each amount.', severity: 'error' });
                   return;
                 }
                 setSaving(true);
