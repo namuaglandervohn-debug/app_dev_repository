@@ -23,6 +23,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import ActionSnackbar from '../ActionSnackbar';
+import { escapePayslipText, payslipHeading, payslipPeriod } from '../../lib/payslipPresentation';
 
 interface Payslip {
   id: string;
@@ -33,6 +34,8 @@ interface Payslip {
   position: string;
   outlet?: string;
   period: string;
+  payPeriodLabel: string;
+  payRate: string;
   regularHours: string;
   overtime: string;
   deductions: string;
@@ -144,6 +147,8 @@ const mapItemToPayslip = (item: any, summariesById: Map<string, any>, displayId?
     position: item.position || '',
     outlet: item.outlet || '',
     period: monthFromDate(summary?.period_start),
+    payPeriodLabel: payslipPeriod(summary?.period_start, summary?.period_end, monthFromDate(summary?.period_start)),
+    payRate: item.salary_rate == null ? '—' : money(item.salary_rate),
     regularHours: String(item.regular_hours ?? item.total_work_hours ?? '0'),
     overtime: String(item.overtime_hours ?? '0'),
     deductions: money(item.total_deductions),
@@ -469,15 +474,14 @@ export default function EmployeePayslips() {
         .footer { color: #999; font-size: 10px; text-align: center; margin-top: 14px; }
       </style></head><body>
       <div class="header">
-        <h2>BUENAVENTURA ESTATE</h2>
-        <div style="font-size:11px;margin-bottom:4px;">ELECTRONIC PAYSLIP</div>
+        <h2>${escapePayslipText(payslipHeading(slip.outlet).title)}</h2>
       </div>
       <table style="margin-top:0;">
-        <tr><td style="width:40%"><b>Department:</b></td><td colspan="2">${slip.position || '—'}</td></tr>
-        <tr><td><b>Pay Period:</b></td><td colspan="2">${slip.period}</td></tr>
-        <tr class="highlight"><td><b>Employee ID:</b></td><td colspan="2"><b>${slip.employeeId || '—'}</b></td></tr>
+        <tr><td style="width:40%"><b>Department:</b></td><td colspan="2">${escapePayslipText(payslipHeading(slip.outlet).department)}</td></tr>
+        <tr><td><b>Pay period:</b></td><td colspan="2">${escapePayslipText(slip.payPeriodLabel)}</td></tr>
         <tr class="highlight"><td><b>Employee Name:</b></td><td colspan="2"><b>${slip.employee.toUpperCase()}</b></td></tr>
         <tr><td><b>Position:</b></td><td colspan="2">${slip.position || '—'}</td></tr>
+        <tr><td><b>Rate:</b></td><td colspan="2">${slip.payRate}</td></tr>
         <tr class="sec-hdr"><td>Earnings:</td><td class="center" style="width:24%">Days/Hours/Mins.</td><td class="right" style="width:22%">Amount</td></tr>
         <tr><td>Basic Pay</td><td class="right">${slip.regularHours || '—'}</td><td class="right">${slip.basicPayAmt || fmt(grossAmt)}</td></tr>
         <tr><td>Reg.OT</td><td class="right">${slip.overtime && slip.overtime !== '0' ? slip.overtime : '—'}</td><td class="right">${slip.otAmt || '—'}</td></tr>
@@ -486,7 +490,7 @@ export default function EmployeePayslips() {
         <tr><td>Special Holiday</td><td class="right">${slip.specialHolidayDays || '—'}</td><td class="right">${slip.specialHolidayAmt || '—'}</td></tr>
         <tr><td>SIL</td><td class="right">${slip.silDays || '—'}</td><td class="right">${slip.silAmt || '—'}</td></tr>
         <tr><td>Allowance</td><td class="right">—</td><td class="right">${slip.allowanceAmt || '—'}</td></tr>
-        <tr><td>RETRO/ADJUSTMENT</td><td class="right">—</td><td class="right">${slip.retroAmt || '—'}</td></tr>
+        <tr><td>RETRO</td><td class="right">—</td><td class="right">${slip.retroAmt || '—'}</td></tr>
         <tr><td>Tardiness (Mins.)</td><td class="right">${slip.tardinessMin || '—'}</td><td class="right">${fmt(parseAmt(slip.lateDeductionAmt))}</td></tr>
         <tr><td>Undertime (Hours)</td><td class="right">${slip.undertimeHours || '—'}</td><td class="right">${fmt(parseAmt(slip.undertimeDeductionAmt))}</td></tr>
         <tr class="gross-row"><td colspan="2" class="center">GROSS PAY</td><td class="right">${fmt(grossAmt)}</td></tr>
@@ -496,8 +500,8 @@ export default function EmployeePayslips() {
         <tr><td colspan="2">HDMF Premium</td><td class="right">${slip.hdmfAmt || '—'}</td></tr>
         <tr><td colspan="2">CASH ADVANCE</td><td class="right">${slip.cashAdvance || '—'}</td></tr>
         <tr><td colspan="2">ATD</td><td class="right">${slip.atd || '—'}</td></tr>
-        <tr><td colspan="2">Other Charges</td><td class="right">${slip.otherCharges || '—'}</td></tr>
-        <tr><td colspan="2">BREAKAGES Charges (last)</td><td class="right">${slip.breakages || '—'}</td></tr>
+        <tr><td colspan="2">Breakages</td><td class="right">${slip.breakages || '—'}</td></tr>
+        <tr><td colspan="2">OTHER Charges</td><td class="right">${slip.otherCharges || '—'}</td></tr>
         <tr><td colspan="2">AMESCO/OTHER CHARGES</td><td class="right">${slip.amesco || '—'}</td></tr>
         <tr><td colspan="2">PAG-IBIG LOAN</td><td class="right">${slip.pagibigLoan || '—'}</td></tr>
         <tr class="sec-hdr"><td colspan="2" class="right">TOTAL DEDUCTIONS:</td><td class="right">${slip.deductions}</td></tr>
@@ -987,7 +991,7 @@ export default function EmployeePayslips() {
               ['Special Holiday',    selected.specialHolidayDays || '—',                                   selected.specialHolidayAmt || '—'],
               ['SIL',                selected.silDays   || '—',                                            selected.silAmt  || '—'],
               ['Allowance',          '—',                                                                   selected.allowanceAmt || '—'],
-              ['RETRO/ADJUSTMENT',   '—',                                                                   selected.retroAmt || '—'],
+              ['RETRO',   '—',                                                                   selected.retroAmt || '—'],
               ['Tardiness (Mins.)',  selected.tardinessMin   || '—',                                       fmt(parseAmt(selected.lateDeductionAmt))],
               ['Undertime (Hours)',  selected.undertimeHours || '—',                                       fmt(parseAmt(selected.undertimeDeductionAmt))],
             ];
@@ -998,8 +1002,8 @@ export default function EmployeePayslips() {
               ['HDMF Premium',             selected.hdmfAmt     || '—'],
               ['CASH ADVANCE',             selected.cashAdvance || '—'],
               ['ATD',                      selected.atd         || '—'],
-              ['Other Charges',            selected.otherCharges || '—'],
-              ['BREAKAGES Charges (last)', selected.breakages   || '—'],
+              ['Breakages', selected.breakages   || '—'],
+              ['OTHER Charges',            selected.otherCharges || '—'],
               ['AMESCO/OTHER CHARGES',     selected.amesco      || '—'],
               ['PAG-IBIG LOAN',            selected.pagibigLoan || '—'],
             ];
@@ -1008,34 +1012,31 @@ export default function EmployeePayslips() {
               <Paper elevation={0} sx={{ ...innerCardSx, overflow: 'hidden', bgcolor: '#ffffff' }}>
                 <Box sx={{ textAlign: 'center', py: 1.5, px: 2, borderBottom: `1px solid ${GREEN_UI.border}` }}>
                   <Typography fontWeight={700} sx={{ color: GREEN_UI.greenDark, letterSpacing: '0.08em', fontSize: '0.9rem' }}>
-                    BUENAVENTURA ESTATE
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: GREEN_UI.muted, fontWeight: 700 }}>
-                    ELECTRONIC PAYSLIP
+                    {payslipHeading(selected.outlet).title}
                   </Typography>
                 </Box>
 
                 <Box sx={{ p: 1.5, display: 'grid', gap: 1 }}>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
                     <Paper elevation={0} sx={{ p: 1.25, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: GREEN_UI.cardBgSoft }}>
-                      <Typography sx={labelSx}>Department</Typography>
-                      <Typography sx={valueSx}>{selected.position || '—'}</Typography>
+                      <Typography sx={labelSx}>Department:</Typography>
+                      <Typography sx={valueSx}>{payslipHeading(selected.outlet).department}</Typography>
                     </Paper>
                     <Paper elevation={0} sx={{ p: 1.25, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: GREEN_UI.cardBgSoft }}>
-                      <Typography sx={labelSx}>Pay Period</Typography>
-                      <Typography sx={valueSx}>{selected.period}</Typography>
+                      <Typography sx={labelSx}>Pay period:</Typography>
+                      <Typography sx={valueSx}>{selected.payPeriodLabel}</Typography>
                     </Paper>
                     <Paper elevation={0} sx={{ p: 1.25, borderRadius: '16px', border: `1px solid ${GREEN_UI.borderStrong}`, bgcolor: GREEN_UI.greenSoft }}>
-                      <Typography sx={labelSx}>Employee ID</Typography>
-                      <Typography sx={valueSx}>{selected.employeeId || '—'}</Typography>
-                    </Paper>
-                    <Paper elevation={0} sx={{ p: 1.25, borderRadius: '16px', border: `1px solid ${GREEN_UI.borderStrong}`, bgcolor: GREEN_UI.greenSoft }}>
-                      <Typography sx={labelSx}>Employee Name</Typography>
+                      <Typography sx={labelSx}>Employee Name:</Typography>
                       <Typography sx={valueSx}>{selected.employee.toUpperCase()}</Typography>
                     </Paper>
-                    <Paper elevation={0} sx={{ p: 1.25, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfef9', gridColumn: { xs: 'auto', sm: '1 / -1' } }}>
-                      <Typography sx={labelSx}>Position</Typography>
+                    <Paper elevation={0} sx={{ p: 1.25, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfef9' }}>
+                      <Typography sx={labelSx}>Position:</Typography>
                       <Typography sx={valueSx}>{selected.position || '—'}</Typography>
+                    </Paper>
+                    <Paper elevation={0} sx={{ p: 1.25, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfef9' }}>
+                      <Typography sx={labelSx}>Rate:</Typography>
+                      <Typography sx={valueSx}>{selected.payRate}</Typography>
                     </Paper>
                   </Box>
                 </Box>
@@ -1044,7 +1045,7 @@ export default function EmployeePayslips() {
 
                 <Box sx={{ px: 1.5, py: 1.25 }}>
                   <Typography fontWeight={700} sx={{ color: GREEN_UI.text, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <Paid sx={{ fontSize: 18, color: GREEN_UI.greenDark }} /> Earnings
+                    <Paid sx={{ fontSize: 18, color: GREEN_UI.greenDark }} /> Earnings:
                   </Typography>
                   <Box sx={{ border: `1px solid ${GREEN_UI.border}`, borderRadius: '16px', overflow: 'hidden' }}>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', bgcolor: GREEN_UI.cardBgSoft, borderBottom: `1px solid ${GREEN_UI.border}` }}>
@@ -1068,7 +1069,7 @@ export default function EmployeePayslips() {
 
                 <Box sx={{ px: 1.5, py: 1.25 }}>
                   <Typography fontWeight={700} sx={{ color: GREEN_UI.text, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <Payments sx={{ fontSize: 18, color: '#9c2f2f' }} /> Deductions
+                    <Payments sx={{ fontSize: 18, color: '#9c2f2f' }} /> DEDUCTIONS:
                   </Typography>
                   <Box sx={{ border: `1px solid ${GREEN_UI.border}`, borderRadius: '16px', overflow: 'hidden' }}>
                     {deductionRows.map(([label, amount]) => (
@@ -1078,7 +1079,7 @@ export default function EmployeePayslips() {
                       </Box>
                     ))}
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 130px', bgcolor: GREEN_UI.cardBgSoft, borderBottom: `1px solid ${GREEN_UI.border}` }}>
-                      <Typography sx={{ p: 1, fontSize: '0.78rem', fontWeight: 700, color: GREEN_UI.text, textAlign: 'right' }}>TOTAL DEDUCTIONS</Typography>
+                      <Typography sx={{ p: 1, fontSize: '0.78rem', fontWeight: 700, color: GREEN_UI.text, textAlign: 'right' }}>TOTAL DEDUCTIONS:</Typography>
                       <Typography sx={{ p: 1, fontSize: '0.78rem', fontWeight: 700, color: '#9c2f2f', textAlign: 'right' }}>{selected.deductions}</Typography>
                     </Box>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 130px', bgcolor: '#fff9d7' }}>

@@ -15,6 +15,7 @@ import {
   type PayrollPremiumRates, type PayslipAmountField, type PayslipQuantityField,
 } from '../../lib/payslipTotals';
 import ActionSnackbar from '../ActionSnackbar';
+import { escapePayslipText, payslipHeading, payslipPeriod } from '../../lib/payslipPresentation';
 
 // ── Position → Default Monthly Salary mapping ────────────────────────────
 const POSITION_SALARIES: Record<string, number> = {
@@ -46,6 +47,8 @@ interface Payroll {
   position: string;
   outlet?: string;
   period: string;
+  payPeriodLabel: string;
+  payRate: string;
   cutoffLabel?: string;
   totalHours: string;
   regularHours: string;
@@ -370,7 +373,7 @@ export default function PayrollComputation() {
   // ── Payslip edit state ───────────────────────────────────────────────
   const [editingPayslip, setEditingPayslip] = useState(false);
   const EDIT_EMPTY = {
-    employee: '', position: '', period: '',
+    employee: '', position: '',
     payslipDate: '',
     regularHours: '', basicPayAmt: '',
     overtime: '', otAmt: '',
@@ -559,6 +562,8 @@ export default function PayrollComputation() {
       position: item.position || employee?.position || '',
       outlet: String(item.outlet ?? '').trim() || getEmployeeOutlet(employee, accountOutletsByEmployeeId.get(item.employee_id)),
       period: monthFromDate(summary?.period_start),
+      payPeriodLabel: payslipPeriod(summary?.period_start, summary?.period_end, monthFromDate(summary?.period_start)),
+      payRate: item.salary_rate == null ? '—' : money(item.salary_rate),
       cutoffLabel: summary?.cutoff_label ?? '',
       totalHours: String(item.total_work_hours ?? item.regular_hours ?? '0'),
       regularHours: String(item.regular_hours ?? item.total_work_hours ?? '0'),
@@ -1441,14 +1446,14 @@ export default function PayrollComputation() {
         .footer { color: #999; font-size: 10px; text-align: center; margin-top: 14px; }
       </style></head><body>
       <div class="header">
-        <h2>BUENAVENTURA ESTATE</h2>
-        <div style="font-size:11px;margin-bottom:4px;">ELECTRONIC PAYSLIP</div>
+        <h2>${escapePayslipText(payslipHeading(p.outlet).title)}</h2>
       </div>
       <table style="margin-top:0;">
-        <tr><td style="width:40%"><b>Department:</b></td><td colspan="2">${p.position || '—'}</td></tr>
-        <tr><td><b>Pay Period:</b></td><td colspan="2">${p.period}</td></tr>
+        <tr><td style="width:40%"><b>Department:</b></td><td colspan="2">${escapePayslipText(payslipHeading(p.outlet).department)}</td></tr>
+        <tr><td><b>Pay period:</b></td><td colspan="2">${escapePayslipText(p.payPeriodLabel)}</td></tr>
         <tr class="highlight"><td><b>Employee Name:</b></td><td colspan="2"><b>${p.employee.toUpperCase()}</b></td></tr>
         <tr><td><b>Position:</b></td><td colspan="2">${p.position || '—'}</td></tr>
+        <tr><td><b>Rate:</b></td><td colspan="2">${p.payRate}</td></tr>
         <tr class="sec-hdr"><td>Earnings:</td><td class="center" style="width:24%">Days/Hours/Mins.</td><td class="right" style="width:22%">Amount</td></tr>
         <tr><td>Basic Pay</td><td class="right">${p.regularHours || '—'}</td><td class="right">${p.basicPayAmt || fmtAmt(grossAmt)}</td></tr>
         <tr><td>Reg.OT</td><td class="right">${p.overtime && p.overtime !== '0' ? p.overtime : '—'}</td><td class="right">${p.otAmt || '—'}</td></tr>
@@ -1457,8 +1462,8 @@ export default function PayrollComputation() {
         <tr><td>Special Holiday</td><td class="right">${p.specialHolidayDays || '—'}</td><td class="right">${p.specialHolidayAmt || '—'}</td></tr>
         <tr><td>SIL</td><td class="right">${p.silDays || '—'}</td><td class="right">${p.silAmt || '—'}</td></tr>
         <tr><td>Allowance</td><td class="right">—</td><td class="right">${p.allowanceAmt || '—'}</td></tr>
-        <tr><td>RETRO/ADJUSTMENT</td><td class="right">—</td><td class="right">${p.retroAmt || '—'}</td></tr>
-        <tr><td>Unused Leave Conversion</td><td class="right">${p.leaveConversionDays || '—'}</td><td class="right">${p.leaveConversionAmt || '—'}</td></tr>
+        <tr><td>RETRO</td><td class="right">—</td><td class="right">${p.retroAmt || '—'}</td></tr>
+        ${p.leaveConversionAmt ? `<tr><td>Unused Leave Conversion</td><td class="right">${escapePayslipText(p.leaveConversionDays || '—')}</td><td class="right">${escapePayslipText(p.leaveConversionAmt)}</td></tr>` : ''}
         <tr><td>Tardiness (Mins.)</td><td class="right">${p.tardinessMin || '—'}</td><td class="right">${fmtAmt(toNumber(p.lateDeductionAmt))}</td></tr>
         <tr><td>Undertime (Hours)</td><td class="right">${p.undertimeHours || '—'}</td><td class="right">${fmtAmt(toNumber(p.undertimeDeductionAmt))}</td></tr>
         <tr class="gross-row"><td colspan="2" class="center">GROSS PAY</td><td class="right">${fmtAmt(grossAmt)}</td></tr>
@@ -1468,8 +1473,8 @@ export default function PayrollComputation() {
         <tr><td colspan="2">HDMF Premium</td><td class="right">${p.hdmfAmt || '—'}</td></tr>
         <tr><td colspan="2">CASH ADVANCE</td><td class="right">${p.cashAdvance || '—'}</td></tr>
         <tr><td colspan="2">ATD</td><td class="right">${p.atd || '—'}</td></tr>
-        <tr><td colspan="2">Other Charges</td><td class="right">${p.otherCharges || '—'}</td></tr>
-        <tr><td colspan="2">BREAKAGES Charges (last)</td><td class="right">${p.breakages || '—'}</td></tr>
+        <tr><td colspan="2">Breakages</td><td class="right">${p.breakages || '—'}</td></tr>
+        <tr><td colspan="2">OTHER Charges</td><td class="right">${p.otherCharges || '—'}</td></tr>
         <tr><td colspan="2">AMESCO/OTHER CHARGES</td><td class="right">${p.amesco || '—'}</td></tr>
         <tr><td colspan="2">PAG-IBIG LOAN</td><td class="right">${p.pagibigLoan || '—'}</td></tr>
         <tr class="sec-hdr"><td colspan="2" class="right">TOTAL DEDUCTIONS:</td><td class="right">${totalDed > 0 ? fmtAmt(totalDed) : '—'}</td></tr>
@@ -2143,26 +2148,20 @@ export default function PayrollComputation() {
                 <Box sx={{ border: '1px solid #999', fontSize: '0.78rem', lineHeight: 1.5, mb: 2 }}>
                   {/* Company Header */}
                   <Box sx={{ textAlign: 'center', py: 1, px: 2, borderBottom: '1px solid #999', bgcolor: '#f9f9f9' }}>
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.88rem', letterSpacing: 0.5 }}>BUENAVENTURA ESTATE</Typography>
-                    <Typography sx={{ fontSize: '0.68rem', color: '#777' }}>ELECTRONIC PAYSLIP — EDITING</Typography>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.88rem', letterSpacing: 0.5 }}>{payslipHeading(selectedPayroll.outlet).title}</Typography>
                   </Box>
-                  {/* Department */}
-                  {[['Department:', 'position'], ['Pay period:', 'period'], ['Position:', 'position'], ['Date:', 'payslipDate']].map(([lbl, fk], idx) => (
-                    <Box key={lbl} sx={{ display: 'flex', borderBottom: '1px solid #ccc', alignItems: 'center', ...(lbl === 'Pay period:' ? {} : {}) }}>
-                      <Box sx={{ width: '40%', fontWeight: idx === 0 ? 600 : 600, p: '3px 8px', borderRight: '1px solid #ccc', fontSize: '0.77rem' }}>{lbl}</Box>
-                      <Box sx={{ flex: 1, px: 1 }}>
-                        <TextField variant="standard" fullWidth size="small"
-                          type={fk === 'period' ? 'month' : fk === 'payslipDate' ? 'date' : 'text'}
-                          value={(payslipEditForm as any)[fk]} onChange={pef(fk as any)}
-                          InputLabelProps={{ shrink: true }} inputProps={{ style: { fontSize: '0.76rem' } }} />
-                      </Box>
+                  {[
+                    ['Department:', payslipHeading(selectedPayroll.outlet).department],
+                    ['Pay period:', selectedPayroll.payPeriodLabel],
+                    ['Employee Name:', <TextField variant="standard" fullWidth size="small" value={payslipEditForm.employee} onChange={pef('employee')} inputProps={{ 'aria-label': 'Employee Name', style: { fontSize: '0.76rem', fontWeight: 700 } }} />],
+                    ['Position:', <TextField variant="standard" fullWidth size="small" value={payslipEditForm.position} onChange={pef('position')} inputProps={{ 'aria-label': 'Position', style: { fontSize: '0.76rem' } }} />],
+                    ['Rate:', selectedPayroll.payRate],
+                  ].map(([label, value], index) => (
+                    <Box key={String(label)} sx={{ display: 'flex', borderBottom: '1px solid #ccc', alignItems: 'center', bgcolor: index === 2 ? '#e8f5e9' : undefined }}>
+                      <Box sx={{ width: '40%', fontWeight: 600, p: '3px 8px', borderRight: '1px solid #ccc' }}>{label}</Box>
+                      <Box sx={{ flex: 1, px: 1 }}>{value}</Box>
                     </Box>
                   ))}
-                  {/* Employee Name — highlighted */}
-                  <Box sx={{ display: 'flex', borderBottom: '1px solid #ccc', alignItems: 'center', bgcolor: '#e8f5e9' }}>
-                    <Box sx={{ width: '40%', fontWeight: 700, p: '3px 8px', borderRight: '1px solid #ccc', fontSize: '0.77rem' }}>Employee Name:</Box>
-                    <Box sx={{ flex: 1, px: 1 }}><TextField variant="standard" fullWidth size="small" value={payslipEditForm.employee} onChange={pef('employee')} inputProps={{ style: { fontSize: '0.76rem', fontWeight: 700 } }} /></Box>
-                  </Box>
                   {/* Earnings header */}
                   <Box sx={{ display: 'flex', borderBottom: '1px solid #ccc', bgcolor: '#f5f5f5' }}>
                     <Box sx={{ flex: 1, fontWeight: 700, p: '4px 8px', borderRight: '1px solid #ccc', fontSize: '0.77rem' }}>Earnings:</Box>
@@ -2177,7 +2176,7 @@ export default function PayrollComputation() {
                     ['Special Holiday',   'specialHolidayDays', 'specialHolidayAmt' ],
                     ['SIL',              'silDays',             'silAmt'            ],
                     ['Allowance',         null,                  'allowanceAmt'      ],
-                    ['RETRO/ADJUSTMENT',  null,                  'retroAmt'          ],
+                    ['RETRO',  null,                  'retroAmt'          ],
                     ['Tardiness (Mins.)', 'tardinessMin',        'lateDeductionAmt'  ],
                     ['Undertime (Hours)', 'undertimeHours',      'undertimeDeductionAmt'],
                   ] as [string, PayslipQuantityField | null, PayslipAmountField][]).map(([label, dk, ak]) => (
@@ -2209,8 +2208,8 @@ export default function PayrollComputation() {
                     ['HDMF Premium',             'hdmfAmt'     ],
                     ['CASH ADVANCE',             'cashAdvance' ],
                     ['ATD',                      'atd'         ],
-                    ['Other Charges',            'otherCharges'],
-                    ['BREAKAGES Charges (last)', 'breakages'   ],
+                    ['Breakages', 'breakages'   ],
+                    ['OTHER Charges',            'otherCharges'],
                     ['AMESCO/OTHER CHARGES',     'amesco'      ],
                     ['PAG-IBIG LOAN',            'pagibigLoan' ],
                   ] as [string, PayslipAmountField][]).map(([label, key]) => (
@@ -2244,6 +2243,14 @@ export default function PayrollComputation() {
                   <Box sx={{ p: '8px', fontSize: '0.72rem', lineHeight: 1.7, bgcolor: '#fafafa', borderBottom: '1px solid #eee' }}>
                     I acknowledge to have received the amount of <strong>{money(payslipTotals.net)}</strong> and have no further claim for services rendered.
                   </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-end', p: '10px 8px', gap: 2, flexWrap: 'wrap' }}>
+                    <TextField label="Date:" type="date" variant="standard" size="small" value={payslipEditForm.payslipDate}
+                      onChange={pef('payslipDate')} InputLabelProps={{ shrink: true }} />
+                    <Box sx={{ flex: 1, textAlign: 'center' }}>
+                      <Box sx={{ fontWeight: 700, borderBottom: '1px solid #333' }}>{payslipEditForm.employee.toUpperCase()}</Box>
+                      <Box>{payslipEditForm.position || '—'}</Box>
+                    </Box>
+                  </Box>
                 </Box>
               ) : (
                 /* ── View Mode — Receipt Format ── */
@@ -2270,8 +2277,10 @@ export default function PayrollComputation() {
                     ['Special Holiday',     selectedPayroll.specialHolidayDays || '—',                   selectedPayroll.specialHolidayAmt || '—'],
                     ['SIL',                 selectedPayroll.silDays   || '—',                            selectedPayroll.silAmt  || '—'],
                     ['Allowance',           '—',                                                          selectedPayroll.allowanceAmt || '—'],
-                    ['RETRO/ADJUSTMENT',    '—',                                                          selectedPayroll.retroAmt || '—'],
-                    ['Unused Leave Conversion', selectedPayroll.leaveConversionDays || '—',                selectedPayroll.leaveConversionAmt || '—'],
+                    ['RETRO',    '—',                                                          selectedPayroll.retroAmt || '—'],
+                    ...(selectedPayroll.leaveConversionAmt
+                      ? [['Unused Leave Conversion', selectedPayroll.leaveConversionDays || '—', selectedPayroll.leaveConversionAmt] as [string, string, string]]
+                      : []),
                     ['Tardiness (Mins.)',   selectedPayroll.tardinessMin   || '—',                       fmt(toNumber(selectedPayroll.lateDeductionAmt))],
                     ['Undertime (Hours)',   selectedPayroll.undertimeHours || '—',                       fmt(toNumber(selectedPayroll.undertimeDeductionAmt))],
                   ];
@@ -2282,8 +2291,8 @@ export default function PayrollComputation() {
                     ['HDMF Premium',             selectedPayroll.hdmfAmt     || '—'],
                     ['CASH ADVANCE',             selectedPayroll.cashAdvance || '—'],
                     ['ATD',                      selectedPayroll.atd         || '—'],
-                    ['Other Charges',            selectedPayroll.otherCharges || '—'],
-                    ['BREAKAGES Charges (last)', selectedPayroll.breakages   || '—'],
+                    ['Breakages', selectedPayroll.breakages   || '—'],
+                    ['OTHER Charges',            selectedPayroll.otherCharges || '—'],
                     ['AMESCO/OTHER CHARGES',     selectedPayroll.amesco      || '—'],
                     ['PAG-IBIG LOAN',            selectedPayroll.pagibigLoan || '—'],
                   ];
@@ -2292,18 +2301,18 @@ export default function PayrollComputation() {
                     <Box sx={{ border: '1px solid #999', fontSize: '0.78rem', lineHeight: 1.5, mb: 2 }}>
                       {/* Company Header */}
                       <Box sx={{ textAlign: 'center', fontWeight: 700, py: 1, px: 2, borderBottom: '1px solid #999', fontSize: '0.88rem', letterSpacing: 0.5 }}>
-                        BUENAVENTURA ESTATE
+                        {payslipHeading(selectedPayroll.outlet).title}
                       </Box>
 
                       {/* Department */}
                       <Box sx={rowSx}>
                         <Box sx={labelSx}>Department:</Box>
-                        <Box sx={valSx}>{selectedPayroll.position || '—'}</Box>
+                        <Box sx={valSx}>{payslipHeading(selectedPayroll.outlet).department}</Box>
                       </Box>
                       {/* Pay Period */}
                       <Box sx={rowSx}>
                         <Box sx={labelSx}>Pay period:</Box>
-                        <Box sx={valSx}>{selectedPayroll.period}</Box>
+                        <Box sx={valSx}>{selectedPayroll.payPeriodLabel}</Box>
                       </Box>
                       {/* Employee Name — highlighted */}
                       <Box sx={{ ...rowSx, bgcolor: '#e8f5e9' }}>
@@ -2314,6 +2323,10 @@ export default function PayrollComputation() {
                       <Box sx={rowSx}>
                         <Box sx={labelSx}>Position:</Box>
                         <Box sx={valSx}>{selectedPayroll.position || '—'}</Box>
+                      </Box>
+                      <Box sx={rowSx}>
+                        <Box sx={labelSx}>Rate:</Box>
+                        <Box sx={valSx}>{selectedPayroll.payRate}</Box>
                       </Box>
 
                       {/* Earnings header */}
@@ -2457,7 +2470,6 @@ export default function PayrollComputation() {
                   setPayslipEditForm({
                     employee:            selectedPayroll.employee         ?? '',
                     position:            selectedPayroll.position         ?? '',
-                    period:              selectedPayroll.period           ?? '',
                     payslipDate:         selectedPayroll.payslipDate      ?? today,
                     regularHours:        selectedPayroll.regularHours     ?? '',
                     basicPayAmt:         selectedPayroll.basicPayAmt      ?? '',
