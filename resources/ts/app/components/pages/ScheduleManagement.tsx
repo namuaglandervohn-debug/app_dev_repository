@@ -35,6 +35,7 @@ import {
 import * as XLSX from 'xlsx';
 import { supabase } from "../../lib/supabaseClient";
 import { OUTLETS, POSITIONS } from '../../lib/constants';
+import { parseRegularScheduleShift, splitShiftExample } from '../../lib/regularScheduleShift';
 import ActionSnackbar from '../ActionSnackbar';
 
 const AVAILABLE_POSITIONS = POSITIONS.filter(position => position !== 'Payroll Staff');
@@ -50,7 +51,8 @@ interface Schedule {
   declinedBy?: string; declinedAt?: string;
 }
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+type ScheduleDay = (typeof DAYS)[number];
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_NAMES: Record<string, string> = {
   monday: 'Monday',
@@ -62,6 +64,28 @@ const DAY_NAMES: Record<string, string> = {
   sunday: 'Sunday',
 };
 
+function scheduleDays(draft: Record<ScheduleDay, string>, existing?: Schedule) {
+  return Object.fromEntries(DAYS.map(day => {
+    if (draft[day] === existing?.[day]) return [day, draft[day]];
+    const value = draft[day].trim();
+    if (!value) return [day, ''];
+    if (/^off$/i.test(value)) return [day, 'Off'];
+    if (/^(rd|flex|suspended)$/i.test(value)) return [day, value.toUpperCase()];
+
+    const shift = parseRegularScheduleShift(value);
+    if (!shift) throw new Error(`${DAY_NAMES[day]} needs valid, non-overlapping times such as ${splitShiftExample}.`);
+    return [day, shift.label];
+  }));
+}
+
+const BULK_TIME_FIELDS = [
+  ['morningIn', 'Morning Time In'],
+  ['morningOut', 'Morning Time Out'],
+  ['afternoonIn', 'Afternoon Time In'],
+  ['afternoonOut', 'Afternoon Time Out'],
+] as const;
+const EMPTY_BULK_TIMES = { morningIn: '', morningOut: '', afternoonIn: '', afternoonOut: '' };
+
 const EMPTY = {
   employeeId: '',
   employee: '',
@@ -70,6 +94,7 @@ const EMPTY = {
   week: '',
   timeIn: '',
   timeOut: '',
+  bulkTimes: EMPTY_BULK_TIMES,
   breakTime: '1 hour',
   monday: '',
   tuesday: '',
@@ -674,20 +699,48 @@ export default function ScheduleManagement() {
     Boolean(getEmployeeById(employeeId)?.outlet);
 
   const applySelectedWorkdays = () => {
-    const shift = form.timeIn && form.timeOut ? `${form.timeIn} - ${form.timeOut}` : '';
+    const { morningIn, morningOut, afternoonIn, afternoonOut } = form.bulkTimes;
+    const morning = `${morningIn} - ${morningOut}`;
+    const shift = parseRegularScheduleShift(afternoonIn || afternoonOut
+      ? `${morning} / ${afternoonIn} - ${afternoonOut}`
+      : morning);
     if (!shift) {
-      setSnackbar({ open: true, message: 'Select a schedule time before applying workdays.', severity: 'error' });
+      setSnackbar({ open: true, message: 'Enter a complete time range for each period and check for overlap.', severity: 'error' });
       return;
     }
 
     setForm(prev => {
-      const next = { ...prev };
+      const next = { ...prev, timeIn: shift.timeIn, timeOut: shift.timeOut };
       DAYS.forEach(day => {
-        (next as any)[day] = applicableWorkdays.includes(day) ? shift : 'Off';
+        next[day] = applicableWorkdays.includes(day) ? shift.label : 'Off';
       });
       return next;
     });
   };
+
+  const renderScheduleDays = (draft: typeof EMPTY, setDraft: typeof setForm) => (
+    <Grid container spacing={1.5}>
+      <Grid size={12}>
+        <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
+          Enter morning and afternoon time ranges, for example {splitShiftExample}. Enter Off for a day off.
+        </Typography>
+      </Grid>
+      {DAYS.map(day => (
+        <Grid key={day} size={{ xs: 12, sm: 6 }}>
+          <TextField
+            fullWidth
+            label={DAY_NAMES[day]}
+            placeholder={splitShiftExample}
+            value={draft[day]}
+            onChange={event => setDraft(prev => ({ ...prev, [day]: event.target.value }))}
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            sx={softTextFieldSx}
+          />
+        </Grid>
+      ))}
+    </Grid>
+  );
 
   const handleSaveDraft = async () => {
   try {
@@ -695,6 +748,7 @@ export default function ScheduleManagement() {
     const employeeIds = selectedEmployeeIds.length > 0 ? selectedEmployeeIds : [form.employeeId].filter(Boolean);
     if (employeeIds.length === 0) throw new Error('Please choose at least one employee.');
 
+    const days = scheduleDays(form);
     const scheduleIds = await nextScheduleIds(employeeIds.length);
     const payload = employeeIds.map((employeeId, index) => {
       const selectedEmployee = getEmployeeById(employeeId);
@@ -710,13 +764,7 @@ export default function ScheduleManagement() {
         time_in: form.timeIn || null,
         time_out: form.timeOut || null,
         break_time: form.breakTime ?? "",
-        monday: form.monday ?? "",
-        tuesday: form.tuesday ?? "",
-        wednesday: form.wednesday ?? "",
-        thursday: form.thursday ?? "",
-        friday: form.friday ?? "",
-        saturday: form.saturday ?? "",
-        sunday: form.sunday ?? "",
+        ...days,
         status: "Draft",
       };
     });
@@ -1020,6 +1068,7 @@ export default function ScheduleManagement() {
       outlet: linkedEmployee?.outlet || s.outlet,
       week: s.week,
       timeIn: s.timeIn, timeOut: s.timeOut, breakTime: s.breakTime,
+      bulkTimes: EMPTY_BULK_TIMES,
       monday: s.monday, tuesday: s.tuesday, wednesday: s.wednesday,
       thursday: s.thursday, friday: s.friday, saturday: s.saturday, sunday: s.sunday,
     });
@@ -1046,13 +1095,7 @@ export default function ScheduleManagement() {
         time_in: editForm.timeIn || null,
         time_out: editForm.timeOut || null,
         break_time: editForm.breakTime ?? "",
-        monday: editForm.monday ?? "",
-        tuesday: editForm.tuesday ?? "",
-        wednesday: editForm.wednesday ?? "",
-        thursday: editForm.thursday ?? "",
-        friday: editForm.friday ?? "",
-        saturday: editForm.saturday ?? "",
-        sunday: editForm.sunday ?? "",
+        ...scheduleDays(editForm, editRecord),
         status: "Draft",
       })
       .eq("schedule_id", editRecord.id);
@@ -2181,31 +2224,24 @@ export default function ScheduleManagement() {
               <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>Daily Schedule Assignment</Typography>
             </Box>
             <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
-              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                <TextField
-                  fullWidth
-                  label="Schedule Time In"
-                  type="time"
-                  value={form.timeIn}
-                  onChange={e => setForm({ ...form, timeIn: e.target.value })}
-                  size="small"
-                  InputLabelProps={{ shrink: true }}
-                  sx={softTextFieldSx}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                <TextField
-                  fullWidth
-                  label="Schedule Time Out"
-                  type="time"
-                  value={form.timeOut}
-                  onChange={e => setForm({ ...form, timeOut: e.target.value })}
-                  size="small"
-                  InputLabelProps={{ shrink: true }}
-                  sx={softTextFieldSx}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
+              {BULK_TIME_FIELDS.map(([field, label]) => (
+                <Grid key={field} size={{ xs: 6, sm: 3 }}>
+                  <TextField
+                    fullWidth
+                    label={label}
+                    type="time"
+                    value={form.bulkTimes[field]}
+                    onChange={event => setForm(prev => ({
+                      ...prev,
+                      bulkTimes: { ...prev.bulkTimes, [field]: event.target.value },
+                    }))}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    sx={softTextFieldSx}
+                  />
+                </Grid>
+              ))}
+              <Grid size={12}>
                 <Typography variant="caption" sx={{ color: GREEN_UI.muted, fontWeight: 700, display: 'block', mb: 0.75 }}>
                   Applicable Workdays
                 </Typography>
@@ -2235,30 +2271,7 @@ export default function ScheduleManagement() {
                 </Box>
               </Grid>
             </Grid>
-            <Grid container spacing={1.5}>
-              {DAYS.map(day => (
-                <Grid key={day} size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Autocomplete
-                    freeSolo
-                    options={SHIFT_PRESETS}
-                    value={form[day as keyof typeof form] || ''}
-                    onChange={(_, v) => setForm({ ...form, [day]: v ?? '' })}
-                    onInputChange={(_, v) => setForm({ ...form, [day]: v })}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        fullWidth
-                        label={day.charAt(0).toUpperCase() + day.slice(1)}
-                        placeholder="e.g. 8:00 AM – 5:00 PM"
-                        size="small"
-                        InputLabelProps={{ shrink: true }}
-                        sx={softTextFieldSx}
-                      />
-                    )}
-                  />
-                </Grid>
-              ))}
-            </Grid>
+            {renderScheduleDays(form, setForm)}
           </Paper>
           </>
           ) : (
@@ -2596,30 +2609,7 @@ export default function ScheduleManagement() {
               <AccessTime sx={{ color: GREEN_UI.greenDark }} />
               <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>Daily Schedule Assignment</Typography>
             </Box>
-            <Grid container spacing={1.5}>
-              {DAYS.map(day => (
-                <Grid key={day} size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Autocomplete
-                    freeSolo
-                    options={SHIFT_PRESETS}
-                    value={editForm[day as keyof typeof editForm] || ''}
-                    onChange={(_, v) => setEditForm({ ...editForm, [day]: v ?? '' })}
-                    onInputChange={(_, v) => setEditForm({ ...editForm, [day]: v })}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        fullWidth
-                        label={day.charAt(0).toUpperCase() + day.slice(1)}
-                        placeholder="e.g. 8:00 AM – 5:00 PM"
-                        size="small"
-                        InputLabelProps={{ shrink: true }}
-                        sx={softTextFieldSx}
-                      />
-                    )}
-                  />
-                </Grid>
-              ))}
-            </Grid>
+            {renderScheduleDays(editForm, setEditForm)}
           </Paper>
         </DialogContent>
         <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, bgcolor: '#fbfff9', borderTop: `1px solid ${GREEN_UI.border}` }}>
