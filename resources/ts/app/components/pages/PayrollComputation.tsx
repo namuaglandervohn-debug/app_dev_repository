@@ -5,14 +5,14 @@ import {
   DialogTitle, DialogContent, DialogActions, Grid, CircularProgress,
   Alert, Tooltip, IconButton, MenuItem, InputAdornment,
 } from '@mui/material';
-import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download } from '@mui/icons-material';
+import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { POSITIONS } from '../../lib/constants';
 import {
   calculatePayslipLineAmount, calculatePayslipTotals, netPayAfterDeductions,
-  payrollHoursPerDay, payslipAmountFields, payslipQuantityAmounts, regularOvertimeMultiplier,
-  type PayslipAmountField, type PayslipQuantityField,
+  payrollHoursPerDay, payrollPremiumFields, payslipAmountFields, payslipQuantityAmounts, regularOvertimeMultiplier,
+  type PayrollPremiumRates, type PayslipAmountField, type PayslipQuantityField,
 } from '../../lib/payslipTotals';
 import ActionSnackbar from '../ActionSnackbar';
 
@@ -331,6 +331,10 @@ const parsePayslipDetails = (value: unknown): Record<string, string> => {
   return value as Record<string, string>;
 };
 
+const premiumRatesColumns = 'revision,nsd_percent,regular_holiday_percent,special_holiday_percent,sil_percent';
+type PremiumRatesRow = PayrollPremiumRates & { revision: number };
+type PremiumRatesDraft = Partial<Record<keyof PayrollPremiumRates, string>>;
+
 export default function PayrollComputation() {
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [loading, setLoading] = useState(true);
@@ -339,6 +343,12 @@ export default function PayrollComputation() {
   const [viewDialog, setViewDialog] = useState(false);
   const [addDialog, setAddDialog] = useState(false);
   const [generateDialog, setGenerateDialog] = useState(false);
+  const [ratesDialog, setRatesDialog] = useState(false);
+  const [premiumRates, setPremiumRates] = useState<PremiumRatesRow | null>(null);
+  const [ratesDraft, setRatesDraft] = useState<PremiumRatesDraft>({});
+  const [ratesError, setRatesError] = useState('');
+  const [loadingRates, setLoadingRates] = useState(false);
+  const [savingRates, setSavingRates] = useState(false);
   const [generatePeriod, setGeneratePeriod] = useState(new Date().toISOString().slice(0, 7));
   const [generateCutoff, setGenerateCutoff] = useState('5');
   const [generateBase, setGenerateBase] = useState('510');
@@ -389,7 +399,7 @@ export default function PayrollComputation() {
         next[amountField] = selectedPayroll[amountField] ?? '';
         return next;
       }
-      const calculated = calculatePayslipLineAmount(selectedPayroll, quantityField, value);
+      const calculated = calculatePayslipLineAmount(selectedPayroll, quantityField, value, premiumRates ?? undefined);
       if (calculated !== undefined) next[amountField] = money(calculated);
       return next;
     });
@@ -422,6 +432,65 @@ export default function PayrollComputation() {
   const isEmployee = normalizedRole === 'employee' || normalizedRole.includes('employee');
   const canManagePayroll = isHRAdmin || isGeneralManager;
   const canReleasePayroll = isAccountingFinance || isGeneralManager;
+
+  useEffect(() => {
+    if (!ratesDialog && !viewDialog) return;
+    let active = true;
+    setLoadingRates(true);
+    setRatesError('');
+    setPremiumRates(null);
+    const loadRates = async () => {
+      try {
+        const { data, error } = await supabase.from('payroll_premium_rates').select(premiumRatesColumns).eq('id', 1).single();
+        if (error) throw error;
+        if (!active) return;
+        const rates: PremiumRatesRow = data;
+        setPremiumRates(rates);
+        if (ratesDialog) setRatesDraft(Object.fromEntries(payrollPremiumFields.map(({ column }) => [column, String(rates[column] ?? '')])));
+      } catch {
+        if (active) setRatesError('Payroll rates could not be loaded. Close and reopen this dialog to retry.');
+      } finally {
+        if (active) setLoadingRates(false);
+      }
+    };
+    void loadRates();
+    return () => { active = false; };
+  }, [ratesDialog, viewDialog]);
+
+  const savePremiumRates = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isHRAdmin || !premiumRates || loadingRates || savingRates) return;
+
+    const nextRates: PayrollPremiumRates = {};
+    for (const { column, label } of payrollPremiumFields) {
+      const value = ratesDraft[column]?.trim() ?? '';
+      if (value && (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) || !Number.isFinite(Number(value)))) {
+        setRatesError(`Enter a valid nonnegative percentage for ${label}.`);
+        return;
+      }
+      nextRates[column] = value ? Number(value) : null;
+    }
+
+    setSavingRates(true);
+    setRatesError('');
+    try {
+      const { data, error } = await supabase.from('payroll_premium_rates')
+        .update({ ...nextRates, revision: premiumRates.revision + 1 })
+        .eq('id', 1).eq('revision', premiumRates.revision).select(premiumRatesColumns).maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        setRatesError('The rates could not be saved. Reopen the dialog to load the latest settings and try again.');
+        return;
+      }
+      setPremiumRates(data);
+      setRatesDialog(false);
+      setSnackbar({ open: true, message: 'Payroll rates saved.', severity: 'success' });
+    } catch {
+      setRatesError('Payroll rates could not be saved. Please try again.');
+    } finally {
+      setSavingRates(false);
+    }
+  };
 
   const resolveCurrentUserAccountUserId = async (): Promise<string | null> => {
     const authUser = user as any;
@@ -1506,6 +1575,13 @@ export default function PayrollComputation() {
               </span>
             </Tooltip>
 
+            {isHRAdmin && (
+              <Button variant="outlined" startIcon={<Settings />} onClick={() => setRatesDialog(true)}
+                sx={{ ...pillButtonSx, py: 1.1, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark, bgcolor: '#ffffff' }}>
+                Payroll Rates
+              </Button>
+            )}
+
             {canReleasePayroll && (
               <Button
                 variant="contained"
@@ -1907,6 +1983,38 @@ export default function PayrollComputation() {
         </Paper>
       )}
 
+      {isHRAdmin && (
+        <Dialog open={ratesDialog} onClose={() => { if (!savingRates) setRatesDialog(false); }}
+          maxWidth="xs" fullWidth PaperProps={{ sx: dialogPaperSx }} aria-labelledby="payroll-rates-title">
+          <Box component="form" onSubmit={savePremiumRates} noValidate>
+            <DialogTitle id="payroll-rates-title" fontWeight={700} sx={dialogTitleSx}>Payroll Rates</DialogTitle>
+            <DialogContent sx={{ display: 'grid', gap: 2, pt: '18px !important' }}>
+              <Typography variant="body2" color="text.secondary">
+                Enter the percentage to add on each payslip line. If Basic Pay already includes the day, enter only the additional premium. Leave a rate blank for manual entry or to reuse a rate from an existing payslip.
+              </Typography>
+              {ratesError && <Alert severity="error">{ratesError}</Alert>}
+              {loadingRates && <CircularProgress size={24} aria-label="Loading payroll rates" />}
+              {!loadingRates && premiumRates && payrollPremiumFields.map(({ column, label, basis }) => (
+                <TextField key={column} label={label} value={ratesDraft[column] ?? ''}
+                  disabled={savingRates} onChange={event => {
+                    const value = event.target.value;
+                    if (/^\d*(?:\.\d*)?$/.test(value)) setRatesDraft(current => ({ ...current, [column]: value }));
+                  }}
+                  helperText={basis === 'hourly' ? 'Percentage of hourly pay per eligible hour' : 'Percentage of daily pay per eligible day'}
+                  inputProps={{ inputMode: 'decimal' }}
+                  InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} />
+              ))}
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2 }}>
+              <Button disabled={savingRates} onClick={() => setRatesDialog(false)}>Cancel</Button>
+              <Button type="submit" variant="contained" disabled={loadingRates || savingRates || !premiumRates}>
+                {savingRates ? 'Saving…' : 'Save Rates'}
+              </Button>
+            </DialogActions>
+          </Box>
+        </Dialog>
+      )}
+
       {/* Generate Payroll Dialog */}
       <Dialog open={generateDialog} onClose={() => { setGenerateDialog(false); setGeneratePosition(''); }} maxWidth="sm" fullWidth PaperProps={{ sx: dialogPaperSx }}>
         <DialogTitle fontWeight={700} sx={dialogTitleSx}>Generate Payroll</DialogTitle>
@@ -2027,6 +2135,7 @@ export default function PayrollComputation() {
           </Box>
         </DialogTitle>
         <DialogContent sx={{ p: 2 }}>
+          {editingPayslip && ratesError && <Alert severity="warning" sx={{ mb: 1 }}>{ratesError}</Alert>}
           {selectedPayroll && (
             <Box>
               {editingPayslip ? (
@@ -2341,7 +2450,7 @@ export default function PayrollComputation() {
           )}
           {!editingPayslip ? (
             selectedPayroll?.status !== 'Released' && (
-            <Button variant="outlined" color="primary"
+            <Button variant="outlined" color="primary" disabled={loadingRates}
               onClick={() => {
                 if (selectedPayroll) {
                   const today = new Date().toISOString().split('T')[0];

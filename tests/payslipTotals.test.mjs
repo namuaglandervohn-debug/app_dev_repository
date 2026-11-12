@@ -34,6 +34,18 @@ test('older payslips reuse their recorded unit rates where available', () => {
   assert.equal(calculatePayslipLineAmount(saved, 'specialHolidayDays', '1'), undefined);
 });
 
+test('configured percentages use hourly pay for NSD and daily pay for leave and holidays', () => {
+  const saved = { hourlyRate: 62.5, regularHolidayDays: '1', regularHolidayAmt: '₱1000' };
+  const rates = { nsd_percent: 12.5, regular_holiday_percent: 100, special_holiday_percent: 30, sil_percent: 100 };
+  assert.equal(calculatePayslipLineAmount(saved, 'nsdHours', '8', rates), 62.5);
+  assert.equal(calculatePayslipLineAmount(saved, 'regularHolidayDays', '2', rates), 1000);
+  assert.equal(calculatePayslipLineAmount(saved, 'specialHolidayDays', '1.5', rates), 225);
+  assert.equal(calculatePayslipLineAmount(saved, 'silDays', '2', rates), 1000);
+  assert.equal(calculatePayslipLineAmount(saved, 'regularHolidayDays', '2', { regular_holiday_percent: null }), 2000);
+  assert.equal(calculatePayslipLineAmount(saved, 'regularHolidayDays', '2', { regular_holiday_percent: 0 }), 0);
+  assert.equal(calculatePayslipLineAmount({}, 'silDays', '2', rates), undefined);
+});
+
 test('attendance deductions replace their saved amounts once and leave other deductions in place', () => {
   const saved = { grossPay: '₱1,000', deductions: '₱40', lateDeductionAmt: '₱10', undertimeDeductionAmt: '₱5' };
   assert.deepEqual(calculatePayslipTotals(saved, { lateDeductionAmt: '₱20', undertimeDeductionAmt: '₱0' }), {

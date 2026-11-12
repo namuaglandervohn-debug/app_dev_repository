@@ -15,6 +15,16 @@ type SavedPayslip = EditableAmounts & { grossPay: string; deductions: string };
 export const payrollHoursPerDay = 8;
 export const regularOvertimeMultiplier = 1.25;
 
+export const payrollPremiumFields = [
+  { field: 'nsdHours', column: 'nsd_percent', label: 'Night Shift Differential', basis: 'hourly' },
+  { field: 'regularHolidayDays', column: 'regular_holiday_percent', label: 'Regular Holiday', basis: 'daily' },
+  { field: 'specialHolidayDays', column: 'special_holiday_percent', label: 'Special Holiday', basis: 'daily' },
+  { field: 'silDays', column: 'sil_percent', label: 'Service Incentive Leave (SIL)', basis: 'daily' },
+] as const;
+
+type PremiumColumn = (typeof payrollPremiumFields)[number]['column'];
+export type PayrollPremiumRates = Partial<Record<PremiumColumn, number | null>>;
+
 export const payslipQuantityAmounts = {
   regularHours: 'basicPayAmt',
   overtime: 'otAmt',
@@ -36,7 +46,7 @@ function amount(value?: string) {
   return Number.isFinite(parsed) ? roundMoney(parsed) : 0;
 }
 
-export function calculatePayslipLineAmount(saved: PayslipRatesSource, field: PayslipQuantityField, value: string) {
+export function calculatePayslipLineAmount(saved: PayslipRatesSource, field: PayslipQuantityField, value: string, premiumRates: PayrollPremiumRates = {}) {
   const quantity = Number(value.trim());
   if (!Number.isFinite(quantity) || quantity < 0) return undefined;
 
@@ -58,8 +68,18 @@ export function calculatePayslipLineAmount(saved: PayslipRatesSource, field: Pay
       return hourlyRate === undefined ? undefined : roundMoney(Math.round(quantity) / 60 * hourlyRate);
     case 'undertimeHours':
       return hourlyRate === undefined ? undefined : roundMoney(Math.round(quantity * 60) / 60 * hourlyRate);
-    default:
+    default: {
+      const premium = payrollPremiumFields.find(item => item.field === field);
+      const percent = premium && premiumRates[premium.column];
+      if (percent != null && Number.isFinite(percent) && percent >= 0) {
+        if (percent === 0) return 0;
+        if (hourlyRate !== undefined) {
+          const baseRate = premium?.basis === 'daily' ? hourlyRate * payrollHoursPerDay : hourlyRate;
+          return roundMoney(quantity * baseRate * (percent / 100));
+        }
+      }
       return savedUnitRate === undefined ? undefined : roundMoney(quantity * savedUnitRate);
+    }
   }
 }
 
