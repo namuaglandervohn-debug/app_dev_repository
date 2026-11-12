@@ -53,6 +53,7 @@ interface Schedule {
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type ScheduleDay = (typeof DAYS)[number];
+const DEFAULT_WORKDAYS: ScheduleDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_NAMES: Record<string, string> = {
   monday: 'Monday',
@@ -95,6 +96,7 @@ const EMPTY = {
   timeIn: '',
   timeOut: '',
   bulkTimes: EMPTY_BULK_TIMES,
+  lastAppliedShift: '',
   breakTime: '1 hour',
   monday: '',
   tuesday: '',
@@ -521,7 +523,7 @@ export default function ScheduleManagement() {
   const [editRecord, setEditRecord] = useState<Schedule | null>(null);
   const [editForm, setEditForm] = useState(EMPTY);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
-  const [applicableWorkdays, setApplicableWorkdays] = useState<string[]>(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
+  const [applicableWorkdays, setApplicableWorkdays] = useState(DEFAULT_WORKDAYS);
   const [scheduleType, setScheduleType] = useState<'regular' | 'special'>('regular');
   const [specialDutyForm, setSpecialDutyForm] = useState(EMPTY_SPECIAL_DUTY);
 
@@ -698,24 +700,29 @@ export default function ScheduleManagement() {
   const hasEmployeeOutlet = (employeeId: string) =>
     Boolean(getEmployeeById(employeeId)?.outlet);
 
-  const applySelectedWorkdays = () => {
-    const { morningIn, morningOut, afternoonIn, afternoonOut } = form.bulkTimes;
-    const morning = `${morningIn} - ${morningOut}`;
-    const shift = parseRegularScheduleShift(afternoonIn || afternoonOut
-      ? `${morning} / ${afternoonIn} - ${afternoonOut}`
-      : morning);
-    if (!shift) {
-      setSnackbar({ open: true, message: 'Enter a complete time range for each period and check for overlap.', severity: 'error' });
-      return;
-    }
+  const { morningIn, morningOut, afternoonIn, afternoonOut } = form.bulkTimes;
+  const morning = `${morningIn} - ${morningOut}`;
+  const hasCompleteBulkTimes = Boolean(morningIn && morningOut && Boolean(afternoonIn) === Boolean(afternoonOut));
+  const bulkShift = hasCompleteBulkTimes ? parseRegularScheduleShift(afternoonIn
+    ? `${morning} / ${afternoonIn} - ${afternoonOut}`
+    : morning) : null;
+  const isAvailableForBulk = (day: ScheduleDay) => /^(off)?$/i.test(form[day].trim());
+  const workdaysToApply = applicableWorkdays.filter(isAvailableForBulk);
+  const canApplyBulkShift = Boolean(bulkShift && bulkShift.label !== form.lastAppliedShift && workdaysToApply.length);
 
+  const applySelectedWorkdays = () => {
+    if (!bulkShift || !canApplyBulkShift) return;
     setForm(prev => {
-      const next = { ...prev, timeIn: shift.timeIn, timeOut: shift.timeOut };
-      DAYS.forEach(day => {
-        next[day] = applicableWorkdays.includes(day) ? shift.label : 'Off';
-      });
+      const next = {
+        ...prev,
+        timeIn: bulkShift.timeIn,
+        timeOut: bulkShift.timeOut,
+        lastAppliedShift: bulkShift.label,
+      };
+      for (const day of workdaysToApply) next[day] = bulkShift.label;
       return next;
     });
+    setApplicableWorkdays([]);
   };
 
   const renderScheduleDays = (draft: typeof EMPTY, setDraft: typeof setForm) => (
@@ -1069,6 +1076,7 @@ export default function ScheduleManagement() {
       week: s.week,
       timeIn: s.timeIn, timeOut: s.timeOut, breakTime: s.breakTime,
       bulkTimes: EMPTY_BULK_TIMES,
+      lastAppliedShift: '',
       monday: s.monday, tuesday: s.tuesday, wednesday: s.wednesday,
       thursday: s.thursday, friday: s.friday, saturday: s.saturday, sunday: s.sunday,
     });
@@ -1512,6 +1520,7 @@ export default function ScheduleManagement() {
                 startIcon={<AddCircleOutline />}
                 onClick={() => {
                   setForm(EMPTY);
+                  setApplicableWorkdays(DEFAULT_WORKDAYS);
                   setSelectedEmployeeIds([]);
                   setScheduleType('regular');
                   resetSpecialDutyForm();
@@ -2082,6 +2091,7 @@ export default function ScheduleManagement() {
                 if (nextType === 'special') {
                   setSelectedEmployeeIds([]);
                   setForm(EMPTY);
+                  setApplicableWorkdays(DEFAULT_WORKDAYS);
                 }
               }}
               sx={{ justifyContent: 'center', gap: { xs: 1.5, sm: 4 }, flexWrap: 'wrap' }}
@@ -2241,6 +2251,13 @@ export default function ScheduleManagement() {
                   />
                 </Grid>
               ))}
+              {hasCompleteBulkTimes && !bulkShift && (
+                <Grid size={12}>
+                  <Typography variant="body2" color="error" role="alert">
+                    Check that the time ranges are valid and do not overlap.
+                  </Typography>
+                </Grid>
+              )}
               <Grid size={12}>
                 <Typography variant="caption" sx={{ color: GREEN_UI.muted, fontWeight: 700, display: 'block', mb: 0.75 }}>
                   Applicable Workdays
@@ -2252,8 +2269,10 @@ export default function ScheduleManagement() {
                       label={DAY_NAMES[day]}
                       size="small"
                       clickable
-                      color={applicableWorkdays.includes(day) ? 'success' : 'default'}
-                      variant={applicableWorkdays.includes(day) ? 'filled' : 'outlined'}
+                      disabled={!isAvailableForBulk(day)}
+                      aria-pressed={workdaysToApply.includes(day)}
+                      color={workdaysToApply.includes(day) ? 'success' : 'default'}
+                      variant={workdaysToApply.includes(day) ? 'filled' : 'outlined'}
                       onClick={() => setApplicableWorkdays(prev =>
                         prev.includes(day) ? prev.filter(value => value !== day) : [...prev, day]
                       )}
@@ -2264,6 +2283,7 @@ export default function ScheduleManagement() {
                     label="Apply"
                     size="small"
                     clickable
+                    disabled={!canApplyBulkShift}
                     color="primary"
                     onClick={applySelectedWorkdays}
                     sx={{ fontWeight: 700 }}
