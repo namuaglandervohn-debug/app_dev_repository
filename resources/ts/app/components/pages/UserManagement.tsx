@@ -1108,7 +1108,7 @@ export default function UserManagement() {
               <TextField
                 fullWidth
                 required
-                label="Supabase Auth Password"
+                label="Password"
                 type={showPwd ? 'text' : 'password'}
                 value={form.password}
                 onChange={e => setForm({ ...form, password: e.target.value })}
@@ -1278,7 +1278,7 @@ export default function UserManagement() {
             <Grid size={12}>
               <TextField
                 fullWidth
-                label="Supabase Auth Password"
+                label="Password"
                 placeholder="Manage password changes in Supabase Auth"
                 type={showEditPwd ? 'text' : 'password'}
                 value={newPwd}
