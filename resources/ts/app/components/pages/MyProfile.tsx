@@ -1,4 +1,5 @@
 import { formatDisplayDate } from '../../lib/displayDate';
+import { employeeApplicationFields } from '../../lib/employeeApplicationFields';
 import { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Grid, Chip, Divider, CircularProgress,
@@ -172,6 +173,7 @@ export default function MyProfile() {
   const { user } = useAuth();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [application, setApplication] = useState<Application | null>(null);
+  const [applicationFields, setApplicationFields] = useState<ReturnType<typeof employeeApplicationFields>>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
@@ -235,6 +237,7 @@ export default function MyProfile() {
         }
 
         const coverLetter = safeJson(applicant?.cover_letter);
+        setApplicationFields(employeeRow ? employeeApplicationFields(employeeRow, applicant, coverLetter) : []);
 
         if (employeeRow) {
           const row = employeeRow;
@@ -647,6 +650,25 @@ export default function MyProfile() {
                     ))}
                   </Grid>
                 </Paper>
+
+                {applicationFields.map(({ title, fields }) => (
+                  <Paper key={title} elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 }, mt: 2.25 }}>
+                    <Typography component="h3" variant="caption" sx={{ display: 'block', mb: 1.5, color: GREEN_UI.greenDark, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                      {title}
+                    </Typography>
+                    <Grid container spacing={1.5}>
+                      {fields.map(([label, value]) => (
+                        <Grid key={label} size={{ xs: 12, sm: 6 }}>
+                          <TextField fullWidth size="small" label={label} value={value || '—'}
+                            multiline={value.length > 40 || value.includes('\n')}
+                            slotProps={{ input: { readOnly: true }, inputLabel: { shrink: true } }}
+                            sx={softTextFieldSx}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Paper>
+                ))}
               </>
             )}
           </Paper>
