@@ -175,7 +175,7 @@ export default function ApplicantPortal() {
         validateProfile();
         const registrationEmail = email.trim().toLowerCase();
         const result = await supabase.auth.signUp({ email: registrationEmail, password, options: { emailRedirectTo: `${window.location.origin}/applicant`, data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
-        if (result.error) throw result.error;
+        if (result.error && !['user_already_exists', 'email_exists'].includes(result.error.code ?? '')) throw result.error;
         navigate(loginPath, { replace: true, state: { registrationEmail } });
       }
     } catch (e: any) {

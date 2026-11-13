@@ -42,7 +42,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(registrationEmail
-    ? 'Check your inbox or spam folder for the confirmation link. After verifying your email, sign in here.' : '');
+    ? 'For a new account, check your inbox or spam folder for the confirmation link. If you already verified your email, use your existing password or select Forgot password?' : '');
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; action: 'reset' | 'confirm' }>({ open: false, action: 'reset' });
   const [accountEmail, setAccountEmail] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -88,7 +88,10 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid email or password");
+      const message = err instanceof Error ? err.message : "Invalid email or password";
+      setError(message === 'Invalid login credentials'
+        ? 'Email or password is incorrect. Use Forgot password? to reset an existing password.'
+        : message);
     } finally {
       submitting.current = false;
       setSigningIn(false);
