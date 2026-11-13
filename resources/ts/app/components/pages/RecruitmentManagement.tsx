@@ -2385,7 +2385,6 @@ export default function RecruitmentManagement() {
                   {renderProfileField('Name of School', raw.school_name ?? educationBackground.schoolName)}
                   {renderProfileField('Course / Program', raw.course_program ?? educationBackground.courseProgram)}
                   {renderProfileField('Year Graduated', raw.year_graduated ?? educationBackground.yearGraduated)}
-                  {renderProfileField('Honors / Awards', raw.honors_awards ?? educationBackground.honorsAwards, { xs: 12 })}
 
                   {renderProfileSectionTitle('IV. WORK EXPERIENCE')}
                   {renderProfileField('Total Years of Experience', selectedApp.experience ?? workExperience.totalYearsExperience, { xs: 12, sm: 6 }, 'experience')}

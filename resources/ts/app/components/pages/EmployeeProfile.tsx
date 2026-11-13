@@ -1033,7 +1033,6 @@ export default function EmployeeProfile() {
                 {detailItem('Name of school', application.educationBackground?.schoolName)}
                 {detailItem('Course / Program', application.educationBackground?.courseProgram)}
                 {detailItem('Year graduated', application.educationBackground?.yearGraduated)}
-                {detailItem('Honors / Awards', application.educationBackground?.honorsAwards, { xs: 12 })}
               </>
             ))}
               </>
@@ -1298,7 +1297,6 @@ export default function EmployeeProfile() {
                 <Grid size={{ xs: 12, md: 6 }}>{editAppField('Name of school', editApplication.educationBackground?.schoolName, (value) => updateEducation({ schoolName: value }))}</Grid>
                 <Grid size={{ xs: 12, md: 6 }}>{editAppField('Course / Program', editApplication.educationBackground?.courseProgram, (value) => updateEducation({ courseProgram: value }))}</Grid>
                 <Grid size={{ xs: 12, md: 6 }}>{editAppField('Year graduated', editApplication.educationBackground?.yearGraduated, (value) => updateEducation({ yearGraduated: value }))}</Grid>
-                <Grid size={12}>{editAppField('Honors / Awards', editApplication.educationBackground?.honorsAwards, (value) => updateEducation({ honorsAwards: value }), { multiline: true, rows: 2 })}</Grid>
               </Grid>
             </Paper>
           )}

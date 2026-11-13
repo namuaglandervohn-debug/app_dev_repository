@@ -42,8 +42,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState(registrationEmail
-    ? 'For a new account, check your inbox or spam folder for the confirmation link. If you already verified your email, use your existing password or select Forgot password?' : '');
+  const [notice, setNotice] = useState('');
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; action: 'reset' | 'confirm' }>({ open: false, action: 'reset' });
   const [accountEmail, setAccountEmail] = useState('');
   const [emailError, setEmailError] = useState('');
