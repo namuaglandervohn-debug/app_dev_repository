@@ -4,6 +4,7 @@ import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, Dialog
 import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
+import { applicantConfirmationRedirect } from '../../lib/applicantConfirmationRedirect';
 import AuthBackground from '../AuthBackground';
 import RootLayout from '../layouts/RootLayout';
 import { ApplicationTracker } from './TrackApplicationPage';
@@ -174,7 +175,7 @@ export default function ApplicantPortal() {
       } else if (registering) {
         validateProfile();
         const registrationEmail = email.trim().toLowerCase();
-        const result = await supabase.auth.signUp({ email: registrationEmail, password, options: { emailRedirectTo: `${window.location.origin}/applicant`, data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
+        const result = await supabase.auth.signUp({ email: registrationEmail, password, options: { emailRedirectTo: applicantConfirmationRedirect(window.location.origin), data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
         if (result.error && !['user_already_exists', 'email_exists'].includes(result.error.code ?? '')) throw result.error;
         navigate(loginPath, { replace: true, state: { registrationEmail } });
       }

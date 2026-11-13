@@ -33,6 +33,7 @@ import AuthBackground from "../AuthBackground";
 import BrandLogo from "../BrandLogo";
 import { COMPANY } from "../../lib/constants";
 import { consumeSignupEmailConfirmation, supabase } from "../../lib/supabaseClient";
+import { applicantConfirmationRedirect } from "../../lib/applicantConfirmationRedirect";
 
 export default function LoginPage() {
   const { state } = useLocation();
@@ -124,7 +125,7 @@ export default function LoginPage() {
       const redirectTo = `${window.location.origin}/applicant`;
       const { error } = emailDialog.action === 'reset'
         ? await supabase.auth.resetPasswordForEmail(address, { redirectTo })
-        : await supabase.auth.resend({ type: 'signup', email: address, options: { emailRedirectTo: redirectTo } });
+        : await supabase.auth.resend({ type: 'signup', email: address, options: { emailRedirectTo: applicantConfirmationRedirect(window.location.origin) } });
       if (error) throw error;
       setEmailNotice(emailDialog.action === 'reset'
         ? 'If an account exists for that address, check your inbox or spam folder for a password reset link.'
