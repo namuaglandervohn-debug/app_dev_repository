@@ -14,6 +14,8 @@ import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import { accountColors } from '../layouts/accountColors';
 import { profileAvatarSx, profileCardSx, profileDetailsSx, profileFieldSx, profileHeroSx, profileIconSx } from '../layouts/profileStyles';
 import { APPLICANT_COUNTRIES, APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
+import { applicationHistoryColumns, type ApplicationHistoryItem } from '../../lib/applicationHistory';
+import { formatDisplayDate } from '../../lib/displayDate';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, BARANGAYS_BY_CITY, ZIP_BY_CITY } from '../../lib/applicantAddress';
 
 const initial = { firstName: '', middleName: '', lastName: '', suffix: '', birthdate: '', contactNumber: '', gender: '', civilStatus: '', nationality: 'Filipino', currentCountry: 'Philippines', currentRegion: '', currentProvince: '', currentCity: '', currentBarangay: '', currentStreet: '', currentZipCode: '' };
@@ -36,9 +38,7 @@ const requirementFileTypes: Record<string, string> = {
   jpeg: 'image/jpeg',
   png: 'image/png',
 };
-type ApplicantSubmission = {
-  applicant_id: string;
-  position_applied: string;
+type ApplicantSubmission = ApplicationHistoryItem & {
   status: string;
   requirements_note: string | null;
   is_archived: boolean;
@@ -61,8 +61,8 @@ function missingRequirements(app: ApplicantSubmission) {
 
 async function loadApplicantApplications(userId: string): Promise<ApplicantSubmission[]> {
   const { data, error } = await supabase.from('applicants')
-    .select('applicant_id,position_applied,status,requirements_note,is_archived,has_resume,has_birth_cert,has_tor,has_med_cert,custom_requirements')
-    .eq('auth_user_id', userId).order('created_at', { ascending: false });
+    .select(`${applicationHistoryColumns},status,requirements_note,is_archived,has_resume,has_birth_cert,has_tor,has_med_cert,custom_requirements`)
+    .eq('auth_user_id', userId).order('created_at', { ascending: false }).order('applicant_id', { ascending: false });
   if (error) throw error;
   return data ?? [];
 }
@@ -306,8 +306,13 @@ export default function ApplicantPortal() {
                 {profileReady && applications.map(app => (
                   <Paper key={app.applicant_id} elevation={0} sx={{ ...profileDetailsSx, p: 1.5, mt: 1.25 }}>
                     <Typography fontWeight={700}>{app.position_applied} - {app.is_archived ? 'Archived' : recruitmentStatusLabel(app.status)}</Typography>
-                    <Typography variant="body2" color="text.secondary">{app.applicant_id}</Typography>
-                    <Button onClick={() => setTrackingId(app.applicant_id)} sx={{ mt: 0.5 }}>View application status</Button>
+                    <Typography variant="body2" color="text.secondary">
+                      {[app.applicant_id, formatDisplayDate(app.created_at)].filter(Boolean).join(' · ')}
+                    </Typography>
+                    <Stack direction="row" flexWrap="wrap" sx={{ mt: 0.5 }}>
+                      <Button onClick={() => setTrackingId(app.applicant_id)}>View application status</Button>
+                      <Button component={Link} to={`/apply?reuse=${encodeURIComponent(app.applicant_id)}`}>Reuse answers</Button>
+                    </Stack>
                     {app.status === 'Missing Requirements' && !app.is_archived && (
                       <Stack spacing={1} alignItems="flex-start" sx={{ mt: 1 }}>
                         <Typography variant="body2">{missingRequirements(app)}</Typography>

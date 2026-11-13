@@ -10,6 +10,7 @@ import {
   Container,
   Alert,
   Dialog,
+  DialogTitle,
   DialogContent,
   DialogActions,
   Grid,
@@ -56,6 +57,8 @@ import { fileToDataUrl, saveApplicationFiles } from '../../lib/applicationFiles'
 import { supabase } from '../../lib/supabaseClient';
 import { submitApplicantWithConfirmation, sendApplicantConfirmation } from '../../lib/submitApplicantWithConfirmation';
 import { currentLeaveDate as currentManilaDate } from '../../lib/leaveRequestDates';
+import { applicationHistoryColumns, previousApplicationAnswers, type ApplicationHistoryItem } from '../../lib/applicationHistory';
+import { formatDisplayDate } from '../../lib/displayDate';
 
 const ACCEPTED_APPLICATION_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
 const ACCEPTED_APPLICATION_FILE_LABEL = 'PDF, DOC, DOCX, JPG, JPEG, and PNG';
@@ -193,9 +196,14 @@ export default function ApplyForJobPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedPosition = (searchParams.get('position') ?? '').trim();
+  const requestedSource = searchParams.get('reuse') ?? '';
 
   const { user, loading: authLoading } = useAuth();
-  const [savedProfile, setSavedProfile] = useState<Record<string, any>>({});
+  const [history, setHistory] = useState<ApplicationHistoryItem[]>([]);
+  const [sourceId, setSourceId] = useState('');
+  const [choosingHistory, setChoosingHistory] = useState(false);
+  const [loadingAnswers, setLoadingAnswers] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [formData, setFormData] = useState<FormState>(EMPTY);
@@ -229,22 +237,65 @@ export default function ApplyForJobPage() {
     setProfileLoading(true);
     void (async () => {
       try {
-        const result = await supabase.from('applicant_profiles').select('profile').eq('auth_user_id', user.id).single();
+        const [result, submissions] = await Promise.all([
+          supabase.from('applicant_profiles').select('profile').eq('auth_user_id', user.id).single(),
+          supabase.from('applicants').select(applicationHistoryColumns).eq('auth_user_id', user.id)
+            .order('created_at', { ascending: false }).order('applicant_id', { ascending: false }),
+        ]);
         if (result.error) throw result.error;
         if (!active) return;
         const profile = completeApplicantAddress(result.data.profile || {});
-        setSavedProfile(profile);
-        setOtherSkillsEnabled(typeof profile.otherSkills === 'string' && Boolean(profile.otherSkills.trim()));
         setProfileLoaded(true);
-        setFormData(prev => ({ ...prev, ...reusableApplicantProfile(profile, Object.keys(EMPTY)), email: user.email, age: calculateAge(profile.birthdate || ''), contactNumber: sanitizePhoneNumber(profile.contactNumber || ''), position: requestedPosition || prev.position }));
-        if (Array.isArray(profile.workExperiences) && profile.workExperiences.length) setWorkExperiences(profile.workExperiences);
-        if (Array.isArray(profile.characterReferences) && profile.characterReferences.length) setCharacterReferences(profile.characterReferences);
-        if (Array.isArray(profile.emergencyContacts) && profile.emergencyContacts.length) setEmergencyContacts(profile.emergencyContacts);
+        const basicKeys = Object.keys(EMPTY).filter(key => key.startsWith('current') ||
+          ['firstName', 'middleName', 'lastName', 'suffix', 'birthdate', 'gender', 'civilStatus', 'nationality', 'contactNumber'].includes(key));
+        setFormData({ ...EMPTY, ...reusableApplicantProfile(profile, basicKeys), email: user.email,
+          age: calculateAge(profile.birthdate || ''), contactNumber: sanitizePhoneNumber(profile.contactNumber || ''), position: requestedPosition });
+        setWorkExperiences([EMPTY_WORK_EXPERIENCE]);
+        setCharacterReferences([EMPTY_CHARACTER_REFERENCE]);
+        setEmergencyContacts([EMPTY_EMERGENCY_CONTACT]);
+        setOtherSkillsEnabled(false);
+        const rows = submissions.data ?? [];
+        setHistory(rows);
+        setSourceId(rows.find(row => row.applicant_id === requestedSource)?.applicant_id ?? rows[0]?.applicant_id ?? '');
+        setChoosingHistory(rows.length > 0);
+        if (submissions.error) setError('Could not load previous applications. You can still start with your saved profile.');
       } catch (e: any) { if (active) setError('Your saved profile could not be loaded. '+e.message); }
       finally { if (active) setProfileLoading(false); }
     })();
     return () => { active = false; };
-  }, [user?.id, authLoading]);
+  }, [user?.id, authLoading, requestedPosition, requestedSource]);
+
+  const reuseApplication = async () => {
+    if (!user || !sourceId || loadingAnswers) return;
+    setLoadingAnswers(true);
+    setHistoryError('');
+    try {
+      const { data, error: loadError } = await supabase.from('applicants')
+        .select('first_name,middle_name,last_name,suffix,birthdate,gender,civil_status,phone_number,height,weight,education,cover_letter')
+        .eq('auth_user_id', user.id).eq('applicant_id', sourceId).single();
+      if (loadError) throw loadError;
+      const answers = previousApplicationAnswers(data, RELATIONSHIPS);
+      const fields = completeApplicantAddress(answers.fields);
+      setFormData(prev => ({ ...prev, ...fields,
+        age: calculateAge(fields.birthdate ?? prev.birthdate),
+        contactNumber: sanitizePhoneNumber(fields.contactNumber ?? prev.contactNumber),
+      }));
+      setWorkExperiences(answers.workExperiences.length ? answers.workExperiences : [EMPTY_WORK_EXPERIENCE]);
+      setCharacterReferences(answers.characterReferences.length ? answers.characterReferences.map(ref => ({
+        name: ref.name, position: ref.position, company: ref.company, contact: sanitizePhoneNumber(ref.contact),
+      })) : [EMPTY_CHARACTER_REFERENCE]);
+      setEmergencyContacts(answers.emergencyContacts.length ? answers.emergencyContacts.map(contact => ({
+        name: contact.name, relation: contact.relation, relationOther: contact.relationOther,
+        phone: sanitizePhoneNumber(contact.phone), address: contact.address,
+      })) : [EMPTY_EMERGENCY_CONTACT]);
+      setOtherSkillsEnabled(Boolean(fields.otherSkills.trim()));
+      setChoosingHistory(false);
+    } catch {
+      setHistoryError('Could not load that application. Try again or start a new form.');
+    } finally {
+      setLoadingAnswers(false);
+    }
+  };
 
   const stepPaperSx = {
     p: { xs: 2, sm: 2.5, md: 4 },
@@ -703,7 +754,6 @@ export default function ApplyForJobPage() {
       const profile = { ...reusableApplicantProfile(formData, Object.keys(EMPTY)), workExperiences, characterReferences, emergencyContacts };
       const profileResult = await supabase.from('applicant_profiles').update({ profile, updated_at: new Date().toISOString() }).eq('auth_user_id', user.id).select('auth_user_id').single();
       if (profileResult.error) throw profileResult.error;
-      setSavedProfile(profile);
 
       const resumeFileData = resumeFiles[0] ? await fileToDataUrl(resumeFiles[0]) : null;
       const usedNames = new Set([...resumeFiles, ...supportingFiles].map(file => file.name));
@@ -813,21 +863,7 @@ export default function ApplyForJobPage() {
 
   const handleCopyId = async () => { setCopyFailed(false); const ok = await copyToClipboard(applicantId); if (ok) { setCopied(true); setTimeout(() => setCopied(false), 2500); } else setCopyFailed(true); };
   const handleCloseDialog = () => {
-    setSuccessDialog(false);
-    setFormData({ ...EMPTY, ...reusableApplicantProfile(savedProfile, Object.keys(EMPTY)), email: user?.email || '' });
-    setFieldErrors({});
-    setEmailNotice('');
-    setEmailPending(false);
-    setResumeFiles([]);
-    setSupportingFiles([]);
-    setOtherSkillsEnabled(typeof savedProfile.otherSkills === 'string' && Boolean(savedProfile.otherSkills.trim()));
-    setCertificateFiles([]);
-    setCertificateError('');
-    setCharacterReferences(savedProfile.characterReferences?.length ? savedProfile.characterReferences : [{ ...EMPTY_CHARACTER_REFERENCE }]);
-    setWorkExperiences(savedProfile.workExperiences?.length ? savedProfile.workExperiences : [{ ...EMPTY_WORK_EXPERIENCE }]);
-    setEmergencyContacts(savedProfile.emergencyContacts?.length ? savedProfile.emergencyContacts : [{ ...EMPTY_EMERGENCY_CONTACT }]);
-    setActiveStep(0);
-    setError('');
+    navigate('/applicant', { replace: true });
   };
 
   const renderCountrySelect = (prefix: AddressPrefix, label = 'Country') => {
@@ -896,6 +932,29 @@ export default function ApplyForJobPage() {
 
   return (
     <AuthBackground>
+      <Dialog open={choosingHistory} fullWidth maxWidth="sm" aria-labelledby="application-history-title">
+        <DialogTitle id="application-history-title">Use a previous application?</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Typography variant="body2">Choose a submission to copy its details into this form. You can review and edit them before submitting. Upload your documents and sign the declaration for this application.</Typography>
+            {historyError && <Alert severity="error">{historyError}</Alert>}
+            <TextField select fullWidth label="Previous application" value={sourceId} disabled={loadingAnswers}
+              onChange={event => setSourceId(event.target.value)}>
+              {history.map(item => (
+                <MenuItem key={item.applicant_id} value={item.applicant_id} sx={{ whiteSpace: 'normal' }}>
+                  {[item.position_applied, formatDisplayDate(item.created_at), item.applicant_id].filter(Boolean).join(' · ')}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap', px: 3, pb: 2 }}>
+          <Button onClick={() => setChoosingHistory(false)} disabled={loadingAnswers}>Start new form</Button>
+          <Button variant="contained" onClick={() => void reuseApplication()} disabled={loadingAnswers || !sourceId}>
+            {loadingAnswers ? 'Loading…' : 'Use previous answers'}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Box sx={{ background: 'radial-gradient(circle at top left, rgba(187,247,208,0.75) 0%, rgba(246,251,244,0.98) 36%, #f6fbf4 100%)', borderRadius: { xs: 0, sm: '26px' }, py: { xs: 1.5, sm: 2.5, md: 5 }, px: { xs: 1, sm: 1.5, md: 3 }, minHeight: '100dvh' }}>
         <Container maxWidth="xl" disableGutters sx={{ px: { xs: 0, sm: 2, md: 3 } }}>
           <Box sx={{ mb: { xs: 2, md: 3 } }}>
