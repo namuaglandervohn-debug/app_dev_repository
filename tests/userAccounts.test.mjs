@@ -58,6 +58,7 @@ test('creates the employee record before inserting the linked account', async ()
   assert.equal(response.code, 201);
   assert.equal(response.body.user.employee_id, 'EMP001');
   assert.equal(response.body.welcome_email_sent, true);
+  assert.equal(response.body.welcome_email_id, 'test-message');
   assert.deepEqual(calls.filter(call => call.method === 'POST').map(call => call.path),
     ['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails']);
   assert.equal(calls.find(call => call.path === '/rest/v1/user_accounts' && call.method === 'POST').body.password, null);
@@ -89,6 +90,7 @@ test('keeps the account active when the mail provider fails', async () => {
   await run();
   assert.equal(response.code, 201);
   assert.equal(response.body.welcome_email_sent, false);
+  assert.equal(response.body.welcome_email_id, null);
   assert.ok(calls.every(call => call.method !== 'DELETE'));
 });
 

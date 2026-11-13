@@ -349,10 +349,11 @@ export default function UserManagement() {
     setForm(EMPTY_FORM);
 
     const welcomeEmailSent = result.welcome_email_sent === true;
+    const emailReference = typeof result.welcome_email_id === 'string' ? result.welcome_email_id : '';
     setSnackbar({
       open: true,
       message: welcomeEmailSent
-        ? 'Account created and welcome email sent.'
+        ? `Account created. Resend accepted the welcome email. Delivery is pending.${emailReference ? ` Resend ID: ${emailReference}` : ''}`
         : 'Account created. The welcome email could not be sent. Contact the new user with sign-in instructions.',
       severity: welcomeEmailSent ? "success" : "warning",
     });

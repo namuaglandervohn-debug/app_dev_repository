@@ -21,7 +21,7 @@ const unwrap = ({ data, error }) => {
 
 async function sendWelcomeEmail({ env, fetcher, name, email, password, userId }) {
   const key = clean(env.RESEND_API_KEY);
-  if (!key) return false;
+  if (!key) return null;
 
   const template = await readFile(new URL('../../resources/views/emails/account-welcome.html', import.meta.url), 'utf8');
   const values = { name, email, password };
@@ -44,7 +44,9 @@ async function sendWelcomeEmail({ env, fetcher, name, email, password, userId })
       text: `Hi ${name},\n\nYour HRIS account is ready.\nSign-in email: ${email}\nTemporary password: ${password}\n\nSign in: https://app-dev-repository.vercel.app/login\nChange your temporary password after signing in. If you weren’t expecting this email, contact HR.`,
     }),
   });
-  return response.ok && typeof (await response.json())?.id === 'string';
+  if (!response.ok) return null;
+  const id = (await response.json())?.id;
+  return typeof id === 'string' && id ? id : null;
 }
 
 export function createUserAccountsHandler({ env = process.env, clientFactory = createClient, fetcher = fetch } = {}) {
@@ -159,9 +161,14 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         }
       }
 
-      const welcomeEmailSent = await sendWelcomeEmail({ env, fetcher, name, email, password, userId: profile.user_id })
-        .catch(() => false);
-      return send(201, { message: 'Account created.', user: profile, welcome_email_sent: welcomeEmailSent });
+      const welcomeEmailId = await sendWelcomeEmail({ env, fetcher, name, email, password, userId: profile.user_id })
+        .catch(() => null);
+      return send(201, {
+        message: 'Account created.',
+        user: profile,
+        welcome_email_sent: welcomeEmailId !== null,
+        welcome_email_id: welcomeEmailId,
+      });
     } catch {
       return send(502, { message: 'The account could not be saved. Refresh User Accounts before retrying.' });
     }

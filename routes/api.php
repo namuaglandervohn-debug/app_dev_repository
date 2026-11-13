@@ -342,18 +342,21 @@ Route::post('/admin/user-accounts', function (Request $request) {
         }
     }
 
+    $welcomeEmailId = sendAccountWelcomeEmail($name, $email, $data['password'], $profile['user_id']);
+
     return response()->json([
         'message' => 'Supabase Auth user and HRIS account profile created.',
         'user' => $profile,
-        'welcome_email_sent' => sendAccountWelcomeEmail($name, $email, $data['password'], $profile['user_id']),
+        'welcome_email_sent' => $welcomeEmailId !== null,
+        'welcome_email_id' => $welcomeEmailId,
     ], 201);
 });
 
-function sendAccountWelcomeEmail(string $name, string $email, string $password, string $userId): bool
+function sendAccountWelcomeEmail(string $name, string $email, string $password, string $userId): ?string
 {
     $key = trim((string) config('services.resend.key'));
     if ($key === '') {
-        return false;
+        return null;
     }
 
     try {
@@ -369,9 +372,11 @@ function sendAccountWelcomeEmail(string $name, string $email, string $password, 
                 'text' => "Hi {$name},\n\nYour HRIS account is ready.\nSign-in email: {$email}\nTemporary password: {$password}\n\nSign in: https://app-dev-repository.vercel.app/login\nChange your temporary password after signing in. If you weren’t expecting this email, contact HR.",
             ]);
 
-        return $response->successful() && is_string($response->json('id'));
+        $id = $response->json('id');
+
+        return $response->successful() && is_string($id) && $id !== '' ? $id : null;
     } catch (Throwable) {
-        return false;
+        return null;
     }
 }
 

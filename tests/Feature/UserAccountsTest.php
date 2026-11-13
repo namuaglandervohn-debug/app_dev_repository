@@ -49,7 +49,8 @@ class UserAccountsTest extends TestCase
             'password' => 'Example-Test123',
             'role' => 'employee',
             'employee_id' => 'EMP001',
-        ])->assertCreated()->assertJsonPath('user.employee_id', 'EMP001')->assertJsonPath('welcome_email_sent', true);
+        ])->assertCreated()->assertJsonPath('user.employee_id', 'EMP001')
+            ->assertJsonPath('welcome_email_sent', true)->assertJsonPath('welcome_email_id', 'test-message');
 
         $this->assertSame(['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails'], $writes);
         Http::assertSent(fn (Request $request) => $request->url() === 'https://api.resend.com/emails'
