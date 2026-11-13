@@ -1,4 +1,5 @@
 import { formatDisplayDate } from '../../lib/displayDate';
+import { pairAttendancePunches } from '../../lib/payrollPremiums';
 import TextField from '../DateTextField';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
@@ -66,6 +67,7 @@ interface Attendance {
   timeIn: string;
   timeOut: string;
   totalHours: string;
+  workIntervals?: [number, number][] | null;
   late: string;
   undertime: string;
   overtime: string;
@@ -232,10 +234,8 @@ function computeAttendanceFromPunches(
   const timeOut =
     minutes.length >= 2 ? formatMinutesAsTime(minutes[minutes.length - 1]) : "";
 
-  let workedMinutes = 0;
-  for (let i = 0; i + 1 < minutes.length; i += 2) {
-    workedMinutes += diffMinutes(minutes[i], minutes[i + 1]);
-  }
+  const workIntervals = pairAttendancePunches(minutes);
+  let workedMinutes = workIntervals.reduce((sum, [start, end]) => sum + end - start, 0);
 
   if (workedMinutes === 0 && minutes.length >= 2) {
     workedMinutes = diffMinutes(minutes[0], minutes[minutes.length - 1]);
@@ -244,6 +244,7 @@ function computeAttendanceFromPunches(
   const result: Partial<AttendanceDraft> = {
     timeIn,
     timeOut,
+    workIntervals: minutes.length % 2 === 0 ? workIntervals : null,
     totalHours: workedMinutes > 0 ? (workedMinutes / 60).toFixed(2) : "",
     late: "0",
     undertime: "0",
@@ -583,6 +584,7 @@ function parseAbnormalReportRows(rows: SheetRow[]): Partial<Attendance>[] {
         timeIn: computed.timeIn ?? "",
         timeOut: computed.timeOut ?? "",
         totalHours: computed.totalHours ?? "",
+        workIntervals: computed.workIntervals,
         late: String(status === "Late" ? lateMinutes : 0),
         undertime: "0",
         overtime: "0",
@@ -637,6 +639,7 @@ function parseAbnormalReportRows(rows: SheetRow[]): Partial<Attendance>[] {
       date,
       timeIn: computed.timeIn ?? "",
       timeOut: computed.timeOut ?? "",
+      workIntervals: computed.workIntervals,
       totalHours:
         computed.totalHours ??
         (totalMinutes !== null ? (totalMinutes / 60).toFixed(2) : "0"),
@@ -883,6 +886,7 @@ function mapAttendanceLogToRow(row: any, index = 0): Attendance {
     timeIn: fromDbTime(row?.time_in ?? row?.timeIn),
     timeOut: fromDbTime(row?.time_out ?? row?.timeOut),
     totalHours: String(row?.total_hours ?? row?.totalHours ?? "0"),
+    workIntervals: row?.work_intervals ?? null,
     late: String(row?.late_minutes ?? row?.late ?? "0"),
     undertime: String(row?.undertime_minutes ?? row?.undertime ?? "0"),
     overtime: String(row?.overtime_minutes ?? row?.overtime ?? "0"),
@@ -1032,6 +1036,7 @@ function buildAttendancePayload(row: Partial<Attendance>, employee: EmployeeOpti
     raw_time_in: String(row.timeIn ?? ""),
     raw_time_out: String(row.timeOut ?? ""),
     total_hours: toSafeNumber(row.totalHours),
+    work_intervals: row.workIntervals ?? null,
     late_minutes: lateMinutes,
     undertime_minutes: undertimeMinutes,
     overtime_minutes: overtimeMinutes,
@@ -1377,7 +1382,7 @@ export default function AttendanceMonitoring() {
     try {
       const { data, error } = await supabase
         .from("attendance_logs")
-        .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, validation_status, created_at")
+        .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, validation_status, created_at")
         .order("attendance_date", { ascending: false })
         .order("created_at", { ascending: false });
 
@@ -1651,7 +1656,7 @@ export default function AttendanceMonitoring() {
       if (employeeIds.length > 0 && dates.length > 0) {
         const { data, error } = await supabase
           .from("attendance_logs")
-          .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, validation_status, created_at")
+          .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, validation_status, created_at")
           .in("attendance_date", dates);
 
         if (error) throw error;
@@ -1919,7 +1924,14 @@ export default function AttendanceMonitoring() {
         ? await resolveEmployeeForAttendance(editRecord.employeeId)
         : await resolveEmployeeForAttendance(editRecord.employee);
       const payload = buildAttendancePayload(
-        { ...editRecord, ...editForm, employee: editRecord.employeeId ?? editRecord.employee },
+        {
+          ...editRecord,
+          ...editForm,
+          workIntervals: editForm.timeIn === editRecord.timeIn && editForm.timeOut === editRecord.timeOut
+            ? editRecord.workIntervals
+            : null,
+          employee: editRecord.employeeId ?? editRecord.employee,
+        },
         employee,
       );
 

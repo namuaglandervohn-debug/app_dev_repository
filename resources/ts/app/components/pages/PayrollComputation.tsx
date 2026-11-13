@@ -19,6 +19,7 @@ import {
 } from '../../lib/payslipTotals';
 import ActionSnackbar from '../ActionSnackbar';
 import { escapePayslipText, payslipHeading, payslipPeriod } from '../../lib/payslipPresentation';
+import { calculatePayrollPremiums, payrollPremiumDefaults, type PayrollHoliday } from '../../lib/payrollPremiums';
 
 // ── Position → Default Monthly Salary mapping ────────────────────────────
 const POSITION_SALARIES: Record<string, number> = {
@@ -363,9 +364,15 @@ const parsePayslipDetails = (value: unknown): Record<string, string> => {
   return value as Record<string, string>;
 };
 
-const premiumRatesColumns = 'revision,nsd_percent,regular_holiday_percent,special_holiday_percent,sil_percent';
-type PremiumRatesRow = PayrollPremiumRates & { revision: number };
+const premiumRatesColumns = 'revision,nsd_percent,regular_holiday_percent,special_holiday_percent,sil_percent,holidays';
+type PremiumRatesRow = PayrollPremiumRates & { revision: number; holidays: PayrollHoliday[] };
 type PremiumRatesDraft = Partial<Record<keyof PayrollPremiumRates, string>>;
+
+const loadPayrollRates = async (): Promise<PremiumRatesRow> => {
+  const { data, error } = await supabase.from('payroll_premium_rates').select(premiumRatesColumns).eq('id', 1).single();
+  if (error) throw error;
+  return data;
+};
 
 export default function PayrollComputation() {
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
@@ -378,6 +385,9 @@ export default function PayrollComputation() {
   const [ratesDialog, setRatesDialog] = useState(false);
   const [premiumRates, setPremiumRates] = useState<PremiumRatesRow | null>(null);
   const [ratesDraft, setRatesDraft] = useState<PremiumRatesDraft>({});
+  const [holidayDraft, setHolidayDraft] = useState<PayrollHoliday[]>([]);
+  const [holidayDate, setHolidayDate] = useState('');
+  const [holidayType, setHolidayType] = useState<PayrollHoliday['type']>('regular');
   const [ratesError, setRatesError] = useState('');
   const [loadingRates, setLoadingRates] = useState(false);
   const [savingRates, setSavingRates] = useState(false);
@@ -392,7 +402,7 @@ export default function PayrollComputation() {
   const [generating, setGenerating] = useState(false);
   const [filterPeriod, setFilterPeriod] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
   const { user } = useAuth();
   const [generatePosition, setGeneratePosition] = useState('');
   const [jobTitleOptions, setJobTitleOptions] = useState(() => getJobTitleOptions([]));
@@ -435,7 +445,21 @@ export default function PayrollComputation() {
         next[amountField] = selectedPayroll[amountField] ?? '';
         return next;
       }
-      const calculated = calculatePayslipLineAmount(selectedPayroll, quantityField, value, premiumRates ?? undefined);
+      const rates = premiumRates ? {
+          ...premiumRates,
+          nsd_percent: premiumRates.nsd_percent ?? payrollPremiumDefaults.nsd_percent,
+          regular_holiday_percent: premiumRates.regular_holiday_percent ?? payrollPremiumDefaults.regular_holiday_percent,
+          special_holiday_percent: premiumRates.special_holiday_percent ?? payrollPremiumDefaults.special_holiday_percent,
+      } : undefined;
+      if (quantityField === 'regularHolidayDays' && selectedPayroll.payslipDetails?.generatedPremiums && selectedPayroll.hourlyRate && rates) {
+        const quantity = Number(value);
+        const unworked = Math.min(quantity, Number(selectedPayroll.payslipDetails.regularUnworkedDays) || 0);
+        const dailyRate = selectedPayroll.hourlyRate * payrollHoursPerDay;
+        const workedPremium = (quantity - unworked) * rates.regular_holiday_percent / 100;
+        if (Number.isFinite(quantity)) next[amountField] = money(dailyRate * (unworked + workedPremium));
+        return next;
+      }
+      const calculated = calculatePayslipLineAmount(selectedPayroll, quantityField, value, rates);
       if (calculated !== undefined) next[amountField] = money(calculated);
       return next;
     });
@@ -477,12 +501,15 @@ export default function PayrollComputation() {
     setPremiumRates(null);
     const loadRates = async () => {
       try {
-        const { data, error } = await supabase.from('payroll_premium_rates').select(premiumRatesColumns).eq('id', 1).single();
-        if (error) throw error;
+        const rates = await loadPayrollRates();
         if (!active) return;
-        const rates: PremiumRatesRow = data;
         setPremiumRates(rates);
-        if (ratesDialog) setRatesDraft(Object.fromEntries(payrollPremiumFields.map(({ column }) => [column, String(rates[column] ?? '')])));
+        if (ratesDialog) {
+          setRatesDraft(Object.fromEntries(payrollPremiumFields.map(({ column }) => [column, String(rates[column] ?? '')])));
+          setHolidayDraft(rates.holidays ?? []);
+          setHolidayDate('');
+          setHolidayType('regular');
+        }
       } catch {
         if (active) setRatesError('Payroll rates could not be loaded. Close and reopen this dialog to retry.');
       } finally {
@@ -511,7 +538,7 @@ export default function PayrollComputation() {
     setRatesError('');
     try {
       const { data, error } = await supabase.from('payroll_premium_rates')
-        .update({ ...nextRates, revision: premiumRates.revision + 1 })
+        .update({ ...nextRates, holidays: holidayDraft, revision: premiumRates.revision + 1 })
         .eq('id', 1).eq('revision', premiumRates.revision).select(premiumRatesColumns).maybeSingle();
       if (error) throw error;
       if (!data) {
@@ -921,17 +948,29 @@ export default function PayrollComputation() {
     setGenerating(true);
     try {
       const { start, end, year, cutoffLabel, payDateLabel } = getSemiMonthlyCutoffRange(generatePeriod, generateCutoff);
-      const preparedByUserId = await resolveCurrentUserAccountUserId();
+      const [preparedByUserId, rates, existingPeriod] = await Promise.all([
+        resolveCurrentUserAccountUserId(),
+        loadPayrollRates(),
+        supabase.from('payroll_summaries').select('payroll_id, status')
+          .eq('period_start', start).eq('period_end', end).maybeSingle(),
+      ]);
+      if (existingPeriod.error) throw existingPeriod.error;
+      if (existingPeriod.data && existingPeriod.data.status !== 'Draft') {
+        throw new Error('This cutoff already has payroll beyond Draft. Review the existing payroll before generating it again.');
+      }
+      const holidays = (rates.holidays ?? []).filter(holiday => holiday.date >= start && holiday.date <= end);
+      const hasRegularHoliday = holidays.some(holiday => holiday.type === 'regular');
+      const holidayDates = new Set(holidays.map(holiday => holiday.date));
 
       const { data: attendanceLogs, error: logsError } = await supabase
         .from('attendance_logs')
-        .select('log_id, employee_id, employee_name, attendance_date, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_absent, is_incomplete')
+        .select('log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_absent, is_incomplete')
         .gte('attendance_date', start)
         .lte('attendance_date', end)
         .not('employee_id', 'is', null);
 
       if (logsError) throw logsError;
-      if (!attendanceLogs || attendanceLogs.length === 0) {
+      if (!attendanceLogs?.length && !hasRegularHoliday) {
         const latestMonth = await latestAttendanceMonth();
         const latestHint = latestMonth
           ? ` Latest saved attendance is for ${formatMonthLabel(latestMonth)}.`
@@ -939,13 +978,21 @@ export default function PayrollComputation() {
         throw new Error(`No attendance logs were found for ${cutoffLabel}.${latestHint} Choose a payroll period with saved Attendance Monitoring records, then generate payroll again.`);
       }
 
-      const employeeIds = [...new Set(attendanceLogs.map((log: any) => String(log.employee_id)).filter(Boolean))];
-      const { data: employees, error: employeesError } = await supabase
+      const employeeIdsWithLogs = [...new Set((attendanceLogs ?? []).map(log => String(log.employee_id)).filter(Boolean))];
+      const employeesQuery = supabase
         .from('employees')
-        .select('employee_id, first_name, middle_name, last_name, suffix, position, outlet, salary, status')
-        .in('employee_id', employeeIds);
+        .select('employee_id, first_name, middle_name, last_name, suffix, position, outlet, salary, status, hire_date');
+      const { data: employees, error: employeesError } = await (hasRegularHoliday
+        ? employeesQuery.ilike('status', 'active')
+        : employeesQuery.in('employee_id', employeeIdsWithLogs));
 
       if (employeesError) throw employeesError;
+      const employeeIds = (employees ?? []).filter(employee =>
+        employeeIdsWithLogs.includes(employee.employee_id) || holidays.some(holiday =>
+          holiday.type === 'regular' && (!employee.hire_date || employee.hire_date <= holiday.date),
+        ),
+      ).map(employee => employee.employee_id);
+      if (!employeeIds.length) throw new Error('No eligible active employees were found for the selected cutoff.');
 
       const { data: userAccounts, error: userAccountsError } = await supabase
         .from('user_accounts')
@@ -968,8 +1015,8 @@ export default function PayrollComputation() {
         }),
       );
 
-      const usableLogs = attendanceLogs.filter((log: any) => targetEmployeeIds.has(String(log.employee_id)));
-      if (usableLogs.length === 0) {
+      const usableLogs = (attendanceLogs ?? []).filter(log => targetEmployeeIds.has(String(log.employee_id)));
+      if (targetEmployeeIds.size === 0) {
         throw new Error(generatePosition
           ? `Attendance logs were found, but none are for active ${generatePosition} employees in the selected period.`
           : 'Attendance logs were found, but none belong to active employees in the selected period.');
@@ -988,7 +1035,8 @@ export default function PayrollComputation() {
         return map;
       }, new Map<string, any[]>());
 
-      const summaryPayloads = [...groupedLogs.entries()].map(([employeeId, logs]) => {
+      const summaryPayloads = [...targetEmployeeIds].map(employeeId => {
+        const logs = groupedLogs.get(employeeId) ?? [];
         const employee = employeeMap.get(employeeId);
         const totalWorkHours = logs.reduce((sum, log) => sum + toNumber(log.total_hours), 0);
         const overtimeByLog = logs.map(getAttendanceOvertimeMinutes);
@@ -1036,24 +1084,7 @@ export default function PayrollComputation() {
       if (summariesError) throw summariesError;
       if (!summaries || summaries.length === 0) throw new Error('Attendance logs were found, but no attendance summaries could be created.');
 
-      const { data: existingPeriodPayrolls, error: existingPeriodError } = await supabase
-        .from('payroll_summaries')
-        .select('payroll_id')
-        .eq('period_start', start)
-        .eq('period_end', end);
-
-      if (existingPeriodError) throw existingPeriodError;
-
-      const existingPayrollIds = (existingPeriodPayrolls ?? []).map((row: any) => row.payroll_id).filter(Boolean);
-      if (existingPayrollIds.length > 0) {
-        const { error: deleteOldError } = await supabase
-          .from('payroll_summaries')
-          .delete()
-          .in('payroll_id', existingPayrollIds);
-        if (deleteOldError) throw deleteOldError;
-      }
-
-      const payrollId = await getNextPayrollId(year);
+      const payrollId = existingPeriod.data?.payroll_id ?? await getNextPayrollId(year);
       const isYearEndLeaveConversion = generateCutoff === '5' && String(generatePeriod).endsWith('-12');
       const leaveAllowanceMap = new Map<string, number>();
       const usedLeaveMap = new Map<string, number>();
@@ -1094,6 +1125,7 @@ export default function PayrollComputation() {
       }
 
       const fallbackRate = parseSalaryRate(generateBaseOverride ?? defaultDailyRateForPosition(generatePosition));
+      let nightReviewCount = 0;
       const payrollItems = summaries.map((summary: any) => {
         const employee = employeeMap.get(summary.employee_id);
         const position = String(summary.position || employee?.position || '');
@@ -1104,16 +1136,22 @@ export default function PayrollComputation() {
         const lateMinutes = Math.round(toNumber(summary.total_late_minutes));
         const undertimeMinutes = Math.round(toNumber(summary.total_undertime_minutes));
         const absentDays = Math.round(toNumber(summary.total_absent_days));
+        const premiums = calculatePayrollPremiums(groupedLogs.get(summary.employee_id) ?? [], holidays, salaryRate, rates, employee?.hire_date);
+        const nightNeedsReview = premiums.nightNeedsReview && (rates.nsd_percent ?? payrollPremiumDefaults.nsd_percent) > 0;
+        if (nightNeedsReview) nightReviewCount++;
+        const nonHolidayAbsences = (groupedLogs.get(summary.employee_id) ?? [])
+          .filter(log => log.is_absent && !holidayDates.has(log.attendance_date)).length;
         const basicPay = roundMoney(regularHours * hourlyRate);
         const overtimePay = roundMoney(overtimeHours * hourlyRate * regularOvertimeMultiplier);
         const lateDeduction = roundMoney((lateMinutes / 60) * hourlyRate);
         const undertimeDeduction = roundMoney((undertimeMinutes / 60) * hourlyRate);
-        const absenceDeduction = roundMoney(absentDays * salaryRate);
+        const absenceDeduction = roundMoney(nonHolidayAbsences * salaryRate);
         const annualLeaveAllowance = leaveAllowanceMap.get(summary.employee_id) ?? COMPANY_ANNUAL_LEAVE_ALLOWANCE;
         const usedLeaveDays = usedLeaveMap.get(summary.employee_id) ?? 0;
         const unusedLeaveDays = isYearEndLeaveConversion ? Math.max(annualLeaveAllowance - usedLeaveDays, 0) : 0;
         const leaveConversionPay = roundMoney(unusedLeaveDays * salaryRate);
-        const grossPay = roundMoney(basicPay + overtimePay + leaveConversionPay);
+        const grossPay = roundMoney(basicPay + overtimePay + leaveConversionPay
+          + premiums.nsdAmt + premiums.regularHolidayAmt + premiums.specialHolidayAmt);
         const totalDeductions = roundMoney(lateDeduction + undertimeDeduction + absenceDeduction);
         const netPay = roundMoney(Math.max(grossPay - totalDeductions, 0));
 
@@ -1145,6 +1183,15 @@ export default function PayrollComputation() {
           payslip_details: {
             payrollDisplayId: formatPayrollDisplayIdFromEmployee(summary.employee_id, start, payrollId),
             hourlyRate: roundMoney(hourlyRate),
+            generatedPremiums: true,
+            nightNeedsReview,
+            regularUnworkedDays: premiums.regularUnworkedDays,
+            nsdHours: premiums.nsdHours ? String(premiums.nsdHours) : '',
+            nsdAmt: premiums.nsdAmt ? money(premiums.nsdAmt) : '',
+            regularHolidayDays: premiums.regularHolidayDays ? String(premiums.regularHolidayDays) : '',
+            regularHolidayAmt: premiums.regularHolidayAmt ? money(premiums.regularHolidayAmt) : '',
+            specialHolidayDays: premiums.specialHolidayDays ? String(premiums.specialHolidayDays) : '',
+            specialHolidayAmt: premiums.specialHolidayAmt ? money(premiums.specialHolidayAmt) : '',
             leaveConversionDays: unusedLeaveDays ? String(unusedLeaveDays) : '',
             leaveConversionRate: unusedLeaveDays ? money(salaryRate) : '',
             leaveConversionAmt: unusedLeaveDays ? money(leaveConversionPay) : '',
@@ -1175,9 +1222,10 @@ export default function PayrollComputation() {
         total_net_pay: 0,
       });
 
-      const { error: summaryInsertError } = await supabase
-        .from('payroll_summaries')
-        .insert({
+      const { error: saveError } = await supabase.rpc('save_generated_payroll', {
+        p_replace_draft: Boolean(existingPeriod.data),
+        p_items: payrollItems,
+        p_summary: {
           payroll_id: payrollId,
           period_start: start,
           period_end: end,
@@ -1195,23 +1243,19 @@ export default function PayrollComputation() {
           total_net_pay: roundMoney(totals.total_net_pay),
           endorsed_to: 'Accounting and Finance Personnel',
           remarks: `Generated directly from Attendance Monitoring attendance_logs. ${payDateLabel}.`,
-        });
-
-      if (summaryInsertError) throw summaryInsertError;
-
-      const { error: itemInsertError } = await supabase
-        .from('payroll_items')
-        .insert(payrollItems);
-
-      if (itemInsertError) throw itemInsertError;
+        },
+      });
+      if (saveError) throw saveError;
 
       await fetchPayroll();
       setGenerateDialog(false);
       setGeneratePosition('');
       setSnackbar({
         open: true,
-        message: `✅ Payroll generated from Attendance Monitoring. Payroll ID: ${payrollId}`,
-        severity: 'success',
+        message: nightReviewCount
+          ? `Payroll generated. Review night shift hours on ${nightReviewCount} payslip(s) with incomplete punch or break timing.`
+          : `Payroll generated from Attendance Monitoring. Payroll ID: ${payrollId}`,
+        severity: nightReviewCount ? 'warning' : 'success',
       });
     } catch (e: any) {
       setSnackbar({ open: true, message: `Failed: ${e.message ?? e}`, severity: 'error' });
@@ -2049,7 +2093,7 @@ export default function PayrollComputation() {
             <DialogTitle id="payroll-rates-title" fontWeight={700} sx={dialogTitleSx}>Payroll Rates</DialogTitle>
             <DialogContent sx={{ display: 'grid', gap: 2, pt: '18px !important' }}>
               <Typography variant="body2" color="text.secondary">
-                Enter the percentage to add on each payslip line. If Basic Pay already includes the day, enter only the additional premium. Leave a rate blank for manual entry or to reuse a rate from an existing payslip.
+                Payroll uses these percentages for eligible night hours and worked holidays. Basic Pay already includes worked hours, so enter only the holiday premium. An unworked regular holiday pays one daily rate.
               </Typography>
               {ratesError && <Alert severity="error">{ratesError}</Alert>}
               {loadingRates && <CircularProgress size={24} aria-label="Loading payroll rates" />}
@@ -2059,10 +2103,40 @@ export default function PayrollComputation() {
                     const value = event.target.value;
                     if (/^\d*(?:\.\d*)?$/.test(value)) setRatesDraft(current => ({ ...current, [column]: value }));
                   }}
-                  helperText={basis === 'hourly' ? 'Percentage of hourly pay per eligible hour' : 'Percentage of daily pay per eligible day'}
+                  helperText={column === 'sil_percent' ? 'Percentage of daily pay per eligible day'
+                    : `Default ${payrollPremiumDefaults[column]}% of ${basis} pay`}
                   inputProps={{ inputMode: 'decimal' }}
                   InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} />
               ))}
+              {!loadingRates && premiumRates && (
+                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                  <Typography fontWeight={700}>Holiday calendar</Typography>
+                  <TextField label="Holiday date" type="date" value={holidayDate} disabled={savingRates}
+                    onChange={event => setHolidayDate(event.target.value)} fullWidth />
+                  <TextField select label="Holiday type" value={holidayType} disabled={savingRates}
+                    onChange={event => setHolidayType(event.target.value as PayrollHoliday['type'])}>
+                    <MenuItem value="regular">Regular Holiday</MenuItem>
+                    <MenuItem value="special">Special Holiday</MenuItem>
+                  </TextField>
+                  <Button type="button" variant="outlined" disabled={!holidayDate || savingRates} onClick={() => {
+                    setHolidayDraft(current => [...current.filter(holiday => holiday.date !== holidayDate),
+                      { date: holidayDate, type: holidayType }].sort((a, b) => a.date.localeCompare(b.date)));
+                    setHolidayDate('');
+                  }}>Add or Update Holiday</Button>
+                  {holidayDraft.map(holiday => (
+                    <Box key={holiday.date} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Typography variant="body2">
+                        {formatDisplayDate(holiday.date)} · {holiday.type === 'regular' ? 'Regular' : 'Special'}
+                      </Typography>
+                      <IconButton type="button" size="small" disabled={savingRates}
+                        aria-label={`Remove holiday on ${formatDisplayDate(holiday.date)}`}
+                        onClick={() => setHolidayDraft(current => current.filter(item => item.date !== holiday.date))}>
+                        <DeleteOutline fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Box>
+              )}
             </DialogContent>
             <DialogActions sx={{ px: 3, py: 2 }}>
               <Button disabled={savingRates} onClick={() => setRatesDialog(false)}>Cancel</Button>
@@ -2201,6 +2275,9 @@ export default function PayrollComputation() {
         </DialogTitle>
         <DialogContent sx={{ p: 2 }}>
           {editingPayslip && ratesError && <Alert severity="warning" sx={{ mb: 1 }}>{ratesError}</Alert>}
+          {canManagePayroll && Boolean(selectedPayroll?.payslipDetails?.nightNeedsReview) && (
+            <Alert severity="warning" sx={{ mb: 1 }}>Check night shift hours against the original punches. Some work or break times are missing.</Alert>
+          )}
           {selectedPayroll && (
             <Box>
               {editingPayslip ? (
@@ -2600,6 +2677,9 @@ export default function PayrollComputation() {
                     nsdHours: payslipEditForm.nsdHours,
                     nsdAmt: payslipEditForm.nsdAmt,
                     regularHolidayDays: payslipEditForm.regularHolidayDays,
+                    regularUnworkedDays: selectedPayroll.payslipDetails?.generatedPremiums
+                      ? Math.min(Number(payslipEditForm.regularHolidayDays), Number(selectedPayroll.payslipDetails.regularUnworkedDays) || 0)
+                      : undefined,
                     regularHolidayAmt: payslipEditForm.regularHolidayAmt,
                     specialHolidayDays: payslipEditForm.specialHolidayDays,
                     specialHolidayAmt: payslipEditForm.specialHolidayAmt,
