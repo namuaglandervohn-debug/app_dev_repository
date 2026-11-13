@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  Box, Typography, Button, Chip, IconButton, Stack, LinearProgress,
+  Box, Typography, Button, Chip, IconButton, Stack, LinearProgress, type ButtonProps,
 } from '@mui/material';
 import {
   UploadFile, InsertDriveFile, PictureAsPdf, Image as ImageIcon,
@@ -15,6 +15,7 @@ interface FileUploadFieldProps {
   onChange: (files: File[]) => void;
   helperText?: string;
   maxSizeMB?: number;
+  browseButtonSx?: ButtonProps['sx'];
 }
 
 function getFileIcon(file: File) {
@@ -40,6 +41,7 @@ export default function FileUploadField({
   onChange,
   helperText,
   maxSizeMB = 10,
+  browseButtonSx,
 }: FileUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -92,7 +94,7 @@ export default function FileUploadField({
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
+        onClick={browseButtonSx ? undefined : () => inputRef.current?.click()}
         sx={{
           border: `2px dashed`,
           borderColor: dragging
@@ -105,7 +107,7 @@ export default function FileUploadField({
           borderRadius: 3,
           p: 2.5,
           textAlign: 'center',
-          cursor: 'pointer',
+          cursor: browseButtonSx ? undefined : 'pointer',
           bgcolor: dragging
             ? 'rgba(31,122,71,0.06)'
             : hasFiles
@@ -145,8 +147,15 @@ export default function FileUploadField({
               ? 'Drop files here'
               : hasFiles
               ? 'Click or drag to add more'
-              : 'Click to browse or drag & drop'}
+              : browseButtonSx ? 'Drag & drop files here' : 'Click to browse or drag & drop'}
           </Typography>
+
+          {browseButtonSx && (
+            <Button type="button" fullWidth variant="contained" startIcon={<UploadFile />}
+              onClick={() => inputRef.current?.click()} sx={browseButtonSx}>
+              {hasFiles ? 'Add Documents' : 'Select Documents'}
+            </Button>
+          )}
 
           {helperText && !hasFiles && (
             <Typography variant="caption" sx={{ color: 'text.disabled' }}>

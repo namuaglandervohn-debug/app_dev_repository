@@ -49,25 +49,14 @@ import AuthBackground from '../AuthBackground';
 import { useAuth } from '../../context/AuthContext';
 import { APPLICANT_COUNTRIES as COUNTRIES, APPLICANT_NATIONALITIES as NATIONALITIES, reusableApplicantProfile } from '../../lib/applicantProfile';
 import { completeApplicantAddress, PH_PROVINCES_BY_REGION, CITIES_BY_PROVINCE, ZIP_BY_CITY, BARANGAYS_BY_CITY } from '../../lib/applicantAddress';
+import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
+import { applicationTextFieldSx as textFieldSx, applicationButtonSx as softButtonSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 import { copyToClipboard } from '../../lib/copyToClipboard';
 import { fileToDataUrl, saveApplicationFiles } from '../../lib/applicationFiles';
 import { supabase } from '../../lib/supabaseClient';
 import { submitApplicantWithConfirmation, sendApplicantConfirmation } from '../../lib/submitApplicantWithConfirmation';
 import { currentLeaveDate as currentManilaDate } from '../../lib/leaveRequestDates';
 
-const CIVIL_STATUS = ['Single', 'Married', 'Widowed', 'Separated'];
-const GENDER = ['Male', 'Female', 'Prefer not to say'];
-const SUFFIXES = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV'];
-
-const EDUCATIONAL_ATTAINMENT = [
-  'Elementary',
-  'Junior High School',
-  'Senior High School',
-  'College / Vocational',
-  'Postgraduate',
-];
-
-const HEAR_ABOUT_OPTIONS = ['Facebook', 'Referral', 'Walk-in', 'Job Posting', 'Other'];
 const ACCEPTED_APPLICATION_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
 const ACCEPTED_APPLICATION_FILE_LABEL = 'PDF, DOC, DOCX, JPG, JPEG, and PNG';
 const CERTIFICATE_FILE_TYPES = new Map(Object.entries({
@@ -80,10 +69,6 @@ const SUPPORTING_DOCUMENT_EXAMPLES = 'Transcript of Records, Birth Certificate, 
 
 
 
-
-const RELATIONSHIPS = ['Parent', 'Mother', 'Father', 'Spouse', 'Sibling', 'Brother', 'Sister', 'Child', 'Relative', 'Guardian', 'Friend', 'Neighbor', 'Partner', 'Cousin', 'Aunt', 'Uncle', 'Grandparent', 'Other'];
-
-const SKILLS = ['Communication Skills', 'Customer Service', 'Computer Literacy', 'Leadership', 'Time Management', 'Teamwork', 'Problem-Solving', 'Cash Handling', 'Food and Beverage Service', 'Housekeeping', 'Administrative Work'];
 
 const steps = ['Position', 'Personal', 'Education & Work', 'Skills', 'References', 'Documents'];
 
@@ -260,48 +245,6 @@ export default function ApplyForJobPage() {
     })();
     return () => { active = false; };
   }, [user?.id, authLoading]);
-
-  const textFieldSx = {
-    '& .MuiInputLabel-root.Mui-focused': { color: '#000000', fontWeight: 400 },
-    '& .MuiInputLabel-root.Mui-disabled': { color: '#000000', fontWeight: 400, opacity: 0.72 },
-    '& .MuiInputLabel-asterisk': { color: '#000000' },
-    '& .MuiOutlinedInput-root': {
-      borderRadius: '16px',
-      backgroundColor: '#fbfefc',
-      transition: 'all 0.25s ease',
-      boxShadow: '0 6px 16px rgba(15, 23, 42, 0.025)',
-      '& input': { padding: { xs: '14px 14px', sm: '16px 15px' }, fontSize: { xs: '0.9rem', sm: '0.95rem' }, fontWeight: 400, color: '#1f2937' },
-      '& textarea': { padding: { xs: '14px 14px', sm: '16px 15px' }, fontSize: { xs: '0.9rem', sm: '0.95rem' }, fontWeight: 400, color: '#1f2937' },
-      '& fieldset': { borderColor: 'rgba(22, 101, 52, 0.14)', borderWidth: '1px' },
-      '&:hover': { backgroundColor: '#ffffff', boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)' },
-      '&:hover fieldset': { borderColor: 'rgba(34, 197, 94, 0.46)' },
-      '&.Mui-focused': { backgroundColor: '#ffffff', boxShadow: '0 0 0 5px rgba(34,197,94,0.10), 0 12px 28px rgba(15,23,42,0.06)' },
-      '&.Mui-focused fieldset': { borderColor: '#22c55e', borderWidth: '1.5px' },
-    },
-    '& .MuiSelect-select': { fontSize: { xs: '0.9rem', sm: '0.95rem' }, fontWeight: 400, color: '#1f2937' },
-    '& .MuiSelect-icon': { color: '#000000' },
-    '& .MuiFormHelperText-root': {
-      mx: { xs: 0.5, sm: 1.75 },
-      overflowWrap: 'anywhere',
-      fontWeight: 600,
-    },
-  };
-
-  const softButtonSx = {
-    textTransform: 'none',
-    fontWeight: 700,
-    borderRadius: '16px',
-    minHeight: { xs: 46, sm: 52 },
-    px: { xs: 2.5, sm: 4 },
-    lineHeight: 1.25,
-    whiteSpace: 'normal',
-    overflowWrap: 'anywhere',
-    textAlign: 'center',
-    letterSpacing: '-0.01em',
-    transition: 'all 0.25s ease',
-    boxShadow: '0 12px 28px rgba(31,122,71,0.14)',
-    '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 16px 34px rgba(31,122,71,0.20)' },
-  };
 
   const stepPaperSx = {
     p: { xs: 2, sm: 2.5, md: 4 },
@@ -1402,8 +1345,8 @@ export default function ApplyForJobPage() {
               )}
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="space-between" alignItems="center" sx={{ mt: 3, pt: 2 }}>
-                <Button type="button" variant="outlined" startIcon={<ArrowBackRounded />} onClick={activeStep === 0 ? () => navigate('/applicant') : handleBack} sx={{ ...softButtonSx, px: { xs: 2.5, sm: 5 }, py: 1.5, borderColor: '#166534', color: '#166534', minWidth: 160, width: { xs: '100%', sm: 'auto' }, background: '#ffffff' }}>{activeStep === 0 ? 'Cancel' : 'Back'}</Button>
-                {activeStep < steps.length - 1 ? <Button type="button" variant="contained" endIcon={<ArrowForwardRounded />} onClick={handleNext} sx={{ ...softButtonSx, px: { xs: 2.5, sm: 6 }, py: 1.5, minWidth: 180, width: { xs: '100%', sm: 'auto' }, background: 'linear-gradient(135deg, #166534 0%, #22c55e 100%)', boxShadow: '0 12px 25px rgba(22,101,52,0.25)' }}>Next Step</Button> : <Button type="submit" data-submit-application="true" variant="contained" startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : <Send />} disabled={submitting} sx={{ ...softButtonSx, px: { xs: 2.5, sm: 6 }, py: 1.5, minWidth: 220, width: { xs: '100%', sm: 'auto' }, background: 'linear-gradient(135deg, #166534 0%, #22c55e 100%)', boxShadow: '0 12px 25px rgba(22,101,52,0.25)' }}>{submitting ? 'Submitting...' : 'Submit Application'}</Button>}
+                <Button type="button" variant="outlined" startIcon={<ArrowBackRounded />} onClick={activeStep === 0 ? () => navigate('/applicant') : handleBack} sx={{ ...applicationSecondaryButtonSx, px: { xs: 2.5, sm: 5 }, py: 1.5, minWidth: 160, width: { xs: '100%', sm: 'auto' } }}>{activeStep === 0 ? 'Cancel' : 'Back'}</Button>
+                {activeStep < steps.length - 1 ? <Button type="button" variant="contained" endIcon={<ArrowForwardRounded />} onClick={handleNext} sx={{ ...applicationPrimaryButtonSx, px: { xs: 2.5, sm: 6 }, py: 1.5, minWidth: 180, width: { xs: '100%', sm: 'auto' } }}>Next Step</Button> : <Button type="submit" data-submit-application="true" variant="contained" startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : <Send />} disabled={submitting} sx={{ ...applicationPrimaryButtonSx, px: { xs: 2.5, sm: 6 }, py: 1.5, minWidth: 220, width: { xs: '100%', sm: 'auto' } }}>{submitting ? 'Submitting...' : 'Submit Application'}</Button>}
               </Stack>
             </Box>
           </Paper>

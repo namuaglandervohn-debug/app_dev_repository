@@ -3,13 +3,15 @@ import { useNavigate, useParams } from 'react-router';
 import {
   Box, Typography, Button, Paper, TextField, Divider, Chip, Grid,
   CircularProgress, Alert, MenuItem, Dialog, DialogTitle,
-  DialogContent, DialogActions, IconButton, Tooltip, InputAdornment, Autocomplete,
+  DialogContent, DialogActions, IconButton, Tooltip,
+  Checkbox, FormControlLabel, FormGroup, type TextFieldProps,
 } from '@mui/material';
 import {
   ArrowBackIosNew,
   EditNote,
   Save,
-  CancelOutlined,
+  ArrowBackRounded,
+  Add,
   AccountCircle,
   FileDownload,
   Visibility,
@@ -31,10 +33,12 @@ import {
   CheckCircle,
 } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
-import { OUTLETS, POSITIONS, DEPARTMENTS } from '../../lib/constants';
 import FileUploadField from '../FileUploadField';
 import { useAuth } from '../../context/AuthContext';
 import ActionSnackbar from '../ActionSnackbar';
+import { APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
+import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
+import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
 interface DocFile {
   name: string; type: string; data: string;
@@ -273,21 +277,6 @@ const pillButtonSx = {
   px: 2,
 };
 
-const softTextFieldSx = {
-  '& .MuiOutlinedInput-root': {
-    borderRadius: '16px',
-    backgroundColor: '#fbfef9',
-    transition: 'all 180ms ease',
-    '& fieldset': { borderColor: GREEN_UI.border },
-    '&:hover fieldset': { borderColor: GREEN_UI.borderStrong },
-    '&.Mui-focused fieldset': { borderColor: GREEN_UI.green, borderWidth: 1.5 },
-    '&.Mui-disabled': { backgroundColor: '#f6fbf4' },
-  },
-  '& .MuiInputLabel-root': { color: GREEN_UI.muted, fontWeight: 400 },
-  '& .MuiInputBase-input, & .MuiSelect-select': { fontWeight: 400 },
-  '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: GREEN_UI.text },
-};
-
 const statusChipSx = (status?: string) => {
   if (status === 'Active') {
     return { bgcolor: '#e5f8e9', color: '#217a43', borderColor: '#a9dfb6', fontWeight: 600 };
@@ -321,6 +310,7 @@ export default function EmployeeProfile() {
   const [previewDoc, setPreviewDoc] = useState<{ name: string; data: string; type: string } | null>(null);
   const [profileTab, setProfileTab] = useState('Personal');
   const [editProfileTab, setEditProfileTab] = useState('Personal');
+  const [otherSkillsEnabled, setOtherSkillsEnabled] = useState(false);
 
   useEffect(() => {
   if (!id) return;
@@ -492,7 +482,7 @@ export default function EmployeeProfile() {
       emergency_contact: editForm.emergencyContact,
       gender: editForm.gender,
       civil_status: editForm.civilStatus,
-      birthdate: editForm.birthdate,
+      birthdate: editForm.birthdate || null,
       birthplace: editForm.birthplace,
       employment_type: editForm.employmentType,
       salary: editForm.salary === "" ? null : editForm.salary,
@@ -817,16 +807,28 @@ export default function EmployeeProfile() {
     updateApplicationForm({ emergencyContacts });
   };
 
-  const editAppField = (label: string, value: string | undefined, onChange: (value: string) => void, props: any = {}) => (
+  const editAppField = (label: string, value: string | undefined, onChange: (value: string) => void, props: TextFieldProps = {}) => (
     <TextField
       fullWidth
       label={label}
       value={value ?? ''}
       onChange={(event) => onChange(event.target.value)}
       InputLabelProps={{ shrink: true }}
-      sx={softTextFieldSx}
+      sx={applicationTextFieldSx}
       {...props}
     />
+  );
+
+  const editAppChoice = (label: string, value: string | undefined, onChange: (value: string) => void, options: readonly string[]) => (
+    editAppField(label, value, onChange, {
+      select: true,
+      children: [
+        <MenuItem key="empty" value="">{options.includes('') ? 'None' : `Select ${label.toLowerCase()}…`}</MenuItem>,
+        ...[...new Set([...options, value ?? ''])].filter(Boolean).map(option => (
+          <MenuItem key={option} value={option}>{option}</MenuItem>
+        )),
+      ],
+    })
   );
 
   const detailItem = (label: string, value?: string | number | null, size: any = { xs: 12, sm: 6 }) => (
@@ -852,75 +854,6 @@ export default function EmployeeProfile() {
       </Grid>
     </Box>
   );
-
-  const editField = (
-    key: keyof Employee,
-    label: string,
-    options?: string[],
-    fieldOptions?: { multiline?: boolean; rows?: number; type?: string }
-  ) => {
-    if (options) {
-      const currentValue = String(editForm?.[key] ?? "");
-      const finalOptions = currentValue && !options.includes(currentValue)
-        ? [currentValue, ...options]
-        : options;
-
-      return (
-        <TextField
-          fullWidth
-          select
-          label={label}
-          value={currentValue}
-          margin="none"
-          size="small"
-          InputLabelProps={{ shrink: true }}
-          onChange={e => setEditForm({ ...editForm, [key]: e.target.value as any })}
-          sx={{
-            ...softTextFieldSx,
-            '& .MuiOutlinedInput-root': {
-              ...softTextFieldSx['& .MuiOutlinedInput-root'],
-              minHeight: 42,
-              borderRadius: '18px',
-              bgcolor: '#fbfef9',
-            },
-            '& .MuiInputLabel-root': { color: GREEN_UI.muted, fontWeight: 400, fontSize: '0.95rem' },
-            '& .MuiInputBase-input, & .MuiSelect-select': { fontWeight: 400, fontSize: '1rem', py: 1.35 },
-          }}
-        >
-          <MenuItem key="__empty__" value="" sx={{ fontWeight: 400 }}>Select {label}…</MenuItem>
-          {finalOptions.map(o => (
-            <MenuItem key={o} value={o} sx={{ fontWeight: 400 }}>{o}</MenuItem>
-          ))}
-        </TextField>
-      );
-    }
-
-    return (
-      <TextField
-        fullWidth
-        label={label}
-        value={editForm?.[key] ?? ""}
-        margin="none"
-        size="small"
-        type={fieldOptions?.type}
-        multiline={fieldOptions?.multiline}
-        rows={fieldOptions?.rows}
-        InputLabelProps={{ shrink: true }}
-        onChange={e => setEditForm({ ...editForm, [key]: e.target.value as any })}
-        sx={{
-          ...softTextFieldSx,
-          '& .MuiOutlinedInput-root': {
-            ...softTextFieldSx['& .MuiOutlinedInput-root'],
-            minHeight: fieldOptions?.multiline ? undefined : 42,
-            borderRadius: '18px',
-            bgcolor: '#fbfef9',
-          },
-          '& .MuiInputLabel-root': { color: GREEN_UI.muted, fontWeight: 400, fontSize: '0.95rem' },
-          '& .MuiInputBase-input, & .MuiSelect-select, & textarea': { fontWeight: 400, fontSize: '1rem', py: fieldOptions?.multiline ? undefined : 1.35 },
-        }}
-      />
-    );
-  };
 
   return (
     <Box sx={{ p: { xs: 1, sm: 2 }, background: GREEN_UI.pageBg, minHeight: '100%' }}>
@@ -968,6 +901,7 @@ export default function EmployeeProfile() {
                     });
                     setNewDocFiles([]);
                     setEditProfileTab('Personal');
+                    setOtherSkillsEnabled(Boolean(employee.applicationForm?.otherSkills));
                     setEditing(true);
                   }}
                 >
@@ -1312,9 +1246,9 @@ export default function EmployeeProfile() {
         >
           <Box sx={{ display: 'flex', gap: 3.25, overflowX: 'auto', px: { xs: 0, sm: 0.5 }, py: 1, mb: 2.25, borderBottom: '1px solid ' + GREEN_UI.border }}>
             {['Personal', 'Education', 'Work', 'References', 'Documents'].map((tab) => (
-              <Box key={tab} component="button" type="button" onClick={() => setEditProfileTab(tab)} sx={{ border: 0, px: 1.5, py: 0.55, borderRadius: '8px', bgcolor: editProfileTab === tab ? GREEN_UI.greenSoft : 'transparent', color: editProfileTab === tab ? GREEN_UI.greenDark : GREEN_UI.text, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap', '&:hover': { bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark } }}>
+              <Button key={tab} type="button" variant={editProfileTab === tab ? 'contained' : 'outlined'} aria-pressed={editProfileTab === tab} onClick={() => setEditProfileTab(tab)} sx={{ ...(editProfileTab === tab ? applicationPrimaryButtonSx : applicationSecondaryButtonSx), minHeight: 38, px: 2, flexShrink: 0 }}>
                 {tab}
-              </Box>
+              </Button>
             ))}
           </Box>
 
@@ -1327,8 +1261,9 @@ export default function EmployeeProfile() {
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Applicant ID', editApplication.applicantId || employee.applicantId, () => undefined, { disabled: true })}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Position applied for', editApplication.positionApplied || employee.position, (value) => updateApplicationForm({ positionApplied: value }))}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Application status', editApplication.status, (value) => updateApplicationForm({ status: value }))}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('How applicant heard about opening', editApplication.hearAbout === 'Other' ? editApplication.hearAboutOther : editApplication.hearAbout, (value) => updateApplicationForm({ hearAbout: value }))}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>{editField('dateHired', 'Date hired', undefined, { type: 'date' })}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('How applicant heard about opening', editApplication.hearAbout, (value) => updateApplicationForm({ hearAbout: value }), HEAR_ABOUT_OPTIONS)}</Grid>
+                  {editApplication.hearAbout === 'Other' && <Grid size={{ xs: 12, md: 6 }}>{editAppField('Please specify', editApplication.hearAboutOther, (value) => updateApplicationForm({ hearAboutOther: value }))}</Grid>}
+                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('Date hired', editForm.dateHired, (value) => setEditForm({ ...editForm, dateHired: value }), { type: 'date' })}</Grid>
                 </Grid>
               </Paper>
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
@@ -1337,12 +1272,12 @@ export default function EmployeeProfile() {
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('First name', editApplication.firstName || editForm.first_name, (value) => { setEditForm({ ...editForm, first_name: value, applicationForm: { ...(editForm.applicationForm ?? {}), firstName: value } }); })}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Middle name', editApplication.middleName || editForm.middle_name, (value) => { setEditForm({ ...editForm, middle_name: value, applicationForm: { ...(editForm.applicationForm ?? {}), middleName: value } }); })}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Last name', editApplication.lastName || editForm.last_name, (value) => { setEditForm({ ...editForm, last_name: value, applicationForm: { ...(editForm.applicationForm ?? {}), lastName: value } }); })}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('Suffix', editApplication.suffix || editForm.suffix, (value) => { setEditForm({ ...editForm, suffix: value, applicationForm: { ...(editForm.applicationForm ?? {}), suffix: value } }); })}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('Date of birth', editApplication.birthdate || editForm.birthdate, (value) => updateApplicationForm({ birthdate: value }), { type: 'date' })}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Suffix', editApplication.suffix ?? editForm.suffix, (value) => { setEditForm({ ...editForm, suffix: value, applicationForm: { ...editApplication, suffix: value } }); }, SUFFIXES)}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('Date of birth', editApplication.birthdate ?? editForm.birthdate, (value) => setEditForm({ ...editForm, birthdate: value, applicationForm: { ...editApplication, birthdate: value } }), { type: 'date' })}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Age', editApplication.age, (value) => updateApplicationForm({ age: value }))}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('Gender', editApplication.gender || editForm.gender, (value) => updateApplicationForm({ gender: value }))}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('Civil status', editApplication.civilStatus || editForm.civilStatus, (value) => updateApplicationForm({ civilStatus: value }))}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>{editAppField('Nationality', editApplication.nationality, (value) => updateApplicationForm({ nationality: value }))}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Gender', editApplication.gender ?? editForm.gender, (value) => setEditForm({ ...editForm, gender: value, applicationForm: { ...editApplication, gender: value } }), GENDER)}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Civil status', editApplication.civilStatus ?? editForm.civilStatus, (value) => setEditForm({ ...editForm, civilStatus: value, applicationForm: { ...editApplication, civilStatus: value } }), CIVIL_STATUS)}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Nationality', editApplication.nationality, (value) => updateApplicationForm({ nationality: value }), APPLICANT_NATIONALITIES)}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Birthplace', editApplication.birthplace || editForm.birthplace, (value) => updateApplicationForm({ birthplace: value }))}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Height (cm)', editApplication.height, (value) => updateApplicationForm({ height: value }))}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Weight(kg)', editApplication.weight, (value) => updateApplicationForm({ weight: value }))}</Grid>
@@ -1357,7 +1292,7 @@ export default function EmployeeProfile() {
             <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
               <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Education</Typography>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>{editAppField('Educational level', editApplication.educationBackground?.level || editForm.education, (value) => { setEditForm({ ...editForm, education: value, applicationForm: { ...(editForm.applicationForm ?? {}), educationBackground: { ...(editForm.applicationForm?.educationBackground ?? {}), level: value } } }); })}</Grid>
+                <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Highest educational level', editApplication.educationBackground?.level ?? editForm.education, (value) => { setEditForm({ ...editForm, education: value, applicationForm: { ...editApplication, educationBackground: { ...editApplication.educationBackground, level: value } } }); }, EDUCATIONAL_ATTAINMENT)}</Grid>
                 <Grid size={{ xs: 12, md: 6 }}>{editAppField('Name of school', editApplication.educationBackground?.schoolName, (value) => updateEducation({ schoolName: value }))}</Grid>
                 <Grid size={{ xs: 12, md: 6 }}>{editAppField('Course / Program', editApplication.educationBackground?.courseProgram, (value) => updateEducation({ courseProgram: value }))}</Grid>
                 <Grid size={{ xs: 12, md: 6 }}>{editAppField('Year graduated', editApplication.educationBackground?.yearGraduated, (value) => updateEducation({ yearGraduated: value }))}</Grid>
@@ -1369,13 +1304,29 @@ export default function EmployeeProfile() {
           {editProfileTab === 'Work' && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
-                <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Work Experience</Typography>
-                {(editApplication.workExperiences ?? [{}]).map((work, index) => (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
+                  <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700 }}>Work Experience</Typography>
+                  <Button variant="outlined" startIcon={<Add />} sx={applicationSecondaryButtonSx}
+                    onClick={() => updateApplicationForm({ workExperiences: [...(editApplication.workExperiences ?? [{}]), {}] })}>
+                    Add Work Experience
+                  </Button>
+                </Box>
+                {(editApplication.workExperiences ?? [{}]).map((work, index, entries) => (
                   <Grid key={'edit-work-' + index} container spacing={2} sx={{ mb: 2 }}>
+                    {entries.length > 1 && <Grid size={12} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button variant="outlined" color="error" startIcon={<DeleteOutline />} aria-label={`Remove work experience ${index + 1}`}
+                        onClick={() => updateApplicationForm({ workExperiences: entries.filter((_, entry) => entry !== index) })}>
+                        Remove
+                      </Button>
+                    </Grid>}
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Company / Organization', work.companyOrganization, (value) => updateWorkExperience(index, { companyOrganization: value }))}</Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Position held', work.positionHeld, (value) => updateWorkExperience(index, { positionHeld: value }))}</Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Total years of experience', work.totalYearsExperience, (value) => updateWorkExperience(index, { totalYearsExperience: value }))}</Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>{editAppField('Employment period', work.employmentPeriod || [work.employmentStartDate, work.employmentEndDate].filter(Boolean).join(' to '), (value) => updateWorkExperience(index, { employmentPeriod: value }))}</Grid>
+                    {work.employmentPeriod && !work.employmentStartDate && !work.employmentEndDate && (
+                      <Grid size={12}>{editAppField('Saved employment period', work.employmentPeriod, (value) => updateWorkExperience(index, { employmentPeriod: value }))}</Grid>
+                    )}
+                    <Grid size={{ xs: 12, md: 6 }}>{editAppField('Employment start date', work.employmentStartDate, (value) => updateWorkExperience(index, { employmentStartDate: value, employmentPeriod: [value, work.employmentEndDate].filter(Boolean).join(' to ') }), { type: 'date' })}</Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>{editAppField('Employment end date', work.employmentEndDate, (value) => updateWorkExperience(index, { employmentEndDate: value, employmentPeriod: [work.employmentStartDate, value].filter(Boolean).join(' to ') }), { type: 'date' })}</Grid>
                     <Grid size={12}>{editAppField('Duties / Responsibilities', work.dutiesResponsibilities, (value) => updateWorkExperience(index, { dutiesResponsibilities: value }), { multiline: true, rows: 3 })}</Grid>
                   </Grid>
                 ))}
@@ -1383,8 +1334,21 @@ export default function EmployeeProfile() {
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
                 <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Skills And Qualifications</Typography>
                 <Grid container spacing={2}>
-                  <Grid size={12}>{editAppField('Skills', compactList(editApplication.skills), (value) => updateApplicationForm({ skills: value.split(',').map(item => item.trim()).filter(Boolean) }), { multiline: true, rows: 2 })}</Grid>
-                  <Grid size={12}>{editAppField('Other skills', editApplication.otherSkills, (value) => updateApplicationForm({ otherSkills: value }), { multiline: true, rows: 2 })}</Grid>
+                  <Grid size={12}>
+                    <FormGroup row>
+                      {[...new Set([...SKILLS, ...(editApplication.skills ?? [])])].map(skill => (
+                        <FormControlLabel key={skill} label={skill} control={<Checkbox checked={editApplication.skills?.includes(skill) ?? false}
+                          onChange={(_, checked) => updateApplicationForm({ skills: checked
+                            ? [...(editApplication.skills ?? []), skill]
+                            : (editApplication.skills ?? []).filter(item => item !== skill) })} />} />
+                      ))}
+                      <FormControlLabel label="Others" control={<Checkbox checked={otherSkillsEnabled} onChange={(_, checked) => {
+                        setOtherSkillsEnabled(checked);
+                        if (!checked) updateApplicationForm({ otherSkills: '' });
+                      }} />} />
+                    </FormGroup>
+                  </Grid>
+                  {otherSkillsEnabled && <Grid size={12}>{editAppField('Other skills', editApplication.otherSkills, (value) => updateApplicationForm({ otherSkills: value }))}</Grid>}
                   <Grid size={12}>{editAppField('Certifications / Trainings', compactList(editApplication.certifications), (value) => updateApplicationForm({ certifications: value.split(',').map(item => item.trim()).filter(Boolean) }), { multiline: true, rows: 2 })}</Grid>
                 </Grid>
               </Paper>
@@ -1418,7 +1382,7 @@ export default function EmployeeProfile() {
                 {(editApplication.emergencyContacts ?? [{}]).map((contact, index) => (
                   <Grid key={'edit-emergency-' + index} container spacing={2} sx={{ mb: 2 }}>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Name', contact.name, (value) => updateEmergencyContact(index, { name: value }))}</Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>{editAppField('Relationship', contact.relation, (value) => updateEmergencyContact(index, { relation: value }))}</Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Relationship', contact.relation, (value) => updateEmergencyContact(index, { relation: value }), RELATIONSHIPS)}</Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Phone number', contact.phone, (value) => updateEmergencyContact(index, { phone: value }))}</Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Address', contact.address, (value) => updateEmergencyContact(index, { address: value }))}</Grid>
                   </Grid>
@@ -1464,13 +1428,13 @@ export default function EmployeeProfile() {
                 <Typography variant="body2" color="text.secondary" sx={{ my: 2 }}>No documents uploaded yet.</Typography>
               )}
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>Upload Additional Documents</Typography>
-              <FileUploadField label="Upload Documents" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" multiple files={newDocFiles} onChange={setNewDocFiles} helperText="ID cards, certificates, contracts, medical records, etc." />
+              <FileUploadField label="Upload Documents" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" multiple files={newDocFiles} onChange={setNewDocFiles} browseButtonSx={applicationPrimaryButtonSx} helperText="PDF, DOC, DOCX, JPG, JPEG, and PNG" />
             </Paper>
           )}
         </DialogContent>
 
-        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, gap: 1.2, borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#ffffff' }}>
-          <Button onClick={handleCloseEdit} disabled={saving} startIcon={<CancelOutlined />} sx={{ ...pillButtonSx, color: GREEN_UI.muted, py: 1 }}>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, gap: 1.2, justifyContent: 'space-between', borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#ffffff' }}>
+          <Button variant="outlined" onClick={handleCloseEdit} disabled={saving} startIcon={<ArrowBackRounded />} sx={applicationSecondaryButtonSx}>
             Cancel
           </Button>
           <Button
@@ -1478,7 +1442,7 @@ export default function EmployeeProfile() {
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
             onClick={handleSave}
             disabled={saving}
-            sx={{ ...pillButtonSx, py: 1, px: 2.2, bgcolor: GREEN_UI.green, boxShadow: '0 10px 22px rgba(58,168,101,0.24)', '&:hover': { bgcolor: GREEN_UI.greenDark } }}
+            sx={applicationPrimaryButtonSx}
           >
             {saving ? 'Saving…' : 'Save Changes'}
           </Button>
