@@ -57,7 +57,7 @@ import { fileToDataUrl, saveApplicationFiles } from '../../lib/applicationFiles'
 import { supabase } from '../../lib/supabaseClient';
 import { submitApplicantWithConfirmation, sendApplicantConfirmation } from '../../lib/submitApplicantWithConfirmation';
 import { currentLeaveDate as currentManilaDate } from '../../lib/leaveRequestDates';
-import { applicationHistoryColumns, previousApplicationAnswers, type ApplicationHistoryItem } from '../../lib/applicationHistory';
+import { applicationHistoryColumns, previousApplicationAnswers, previousApplicationFiles, type ApplicationHistoryItem } from '../../lib/applicationHistory';
 import { formatDisplayDate } from '../../lib/displayDate';
 
 const ACCEPTED_APPLICATION_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
@@ -204,6 +204,7 @@ export default function ApplyForJobPage() {
   const [choosingHistory, setChoosingHistory] = useState(false);
   const [loadingAnswers, setLoadingAnswers] = useState(false);
   const [historyError, setHistoryError] = useState('');
+  const [missingHistoryFiles, setMissingHistoryFiles] = useState<string[]>([]);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [formData, setFormData] = useState<FormState>(EMPTY);
@@ -254,6 +255,10 @@ export default function ApplyForJobPage() {
         setCharacterReferences([EMPTY_CHARACTER_REFERENCE]);
         setEmergencyContacts([EMPTY_EMERGENCY_CONTACT]);
         setOtherSkillsEnabled(false);
+        setResumeFiles([]);
+        setSupportingFiles([]);
+        setCertificateFiles([]);
+        setMissingHistoryFiles([]);
         const rows = submissions.data ?? [];
         setHistory(rows);
         setSourceId(rows.find(row => row.applicant_id === requestedSource)?.applicant_id ?? rows[0]?.applicant_id ?? '');
@@ -271,13 +276,19 @@ export default function ApplyForJobPage() {
     setHistoryError('');
     try {
       const { data, error: loadError } = await supabase.from('applicants')
-        .select('first_name,middle_name,last_name,suffix,birthdate,gender,civil_status,phone_number,height,weight,education,cover_letter')
+        .select('first_name,middle_name,last_name,suffix,birthdate,gender,civil_status,phone_number,height,weight,education,position_applied,tin,sss,philhealth,pagibig,cover_letter,resume_file_name,resume_file_data,supporting_documents,supporting_document_files')
         .eq('auth_user_id', user.id).eq('applicant_id', sourceId).single();
       if (loadError) throw loadError;
       const answers = previousApplicationAnswers(data, RELATIONSHIPS);
+      const files = previousApplicationFiles(data);
       const fields = completeApplicantAddress(answers.fields);
+      const position = [requestedPosition, fields.position].find(title => openPositions.includes(title)) ?? '';
+      setFieldErrors(!position && fields.position ? {
+        position: `${fields.position} is no longer open. Select an available position.`,
+      } : {});
       setFormData(prev => ({ ...prev, ...fields,
-        age: calculateAge(fields.birthdate ?? prev.birthdate),
+        position,
+        age: fields.age || calculateAge(fields.birthdate ?? prev.birthdate),
         contactNumber: sanitizePhoneNumber(fields.contactNumber ?? prev.contactNumber),
       }));
       setWorkExperiences(answers.workExperiences.length ? answers.workExperiences : [EMPTY_WORK_EXPERIENCE]);
@@ -289,6 +300,10 @@ export default function ApplyForJobPage() {
         phone: sanitizePhoneNumber(contact.phone), address: contact.address,
       })) : [EMPTY_EMERGENCY_CONTACT]);
       setOtherSkillsEnabled(Boolean(fields.otherSkills.trim()));
+      setResumeFiles(files.resume);
+      setSupportingFiles(files.supporting);
+      setCertificateFiles(files.certificates);
+      setMissingHistoryFiles(files.missing);
       setChoosingHistory(false);
     } catch {
       setHistoryError('Could not load that application. Try again or start a new form.');
@@ -936,7 +951,7 @@ export default function ApplyForJobPage() {
         <DialogTitle id="application-history-title">Use a previous application?</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <Typography variant="body2">Choose a submission to copy its details into this form. You can review and edit them before submitting. Upload your documents and sign the declaration for this application.</Typography>
+            <Typography variant="body2">Choose a submission to copy its answers, declaration, and saved files. Review them before submitting.</Typography>
             {historyError && <Alert severity="error">{historyError}</Alert>}
             <TextField select fullWidth label="Previous application" value={sourceId} disabled={loadingAnswers}
               onChange={event => setSourceId(event.target.value)}>
@@ -950,7 +965,7 @@ export default function ApplyForJobPage() {
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', px: 3, pb: 2 }}>
           <Button onClick={() => setChoosingHistory(false)} disabled={loadingAnswers}>Start new form</Button>
-          <Button variant="contained" onClick={() => void reuseApplication()} disabled={loadingAnswers || !sourceId}>
+          <Button variant="contained" onClick={() => void reuseApplication()} disabled={loadingAnswers || positionsLoading || !sourceId}>
             {loadingAnswers ? 'Loading…' : 'Use previous answers'}
           </Button>
         </DialogActions>
@@ -1330,6 +1345,11 @@ export default function ApplyForJobPage() {
               {activeStep === 5 && (
                 <Paper elevation={0} sx={stepPaperSx}>
                   <SectionTitle icon={<DescriptionOutlined />} title="VII. Required Documents" />
+                  {missingHistoryFiles.length > 0 && (
+                    <Alert severity="warning" sx={{ overflowWrap: 'anywhere' }}>
+                      These files could not be copied. Upload them again if needed. {missingHistoryFiles.join(', ')}
+                    </Alert>
+                  )}
                   <Grid container spacing={2.5} sx={{ mt: 1 }}>
                     <Grid size={{ xs: 12 }}>
                       <Alert severity="info" icon={<ArticleOutlined />} sx={{ borderRadius: 2, border: '1px solid rgba(22,101,52,0.12)', bgcolor: '#f0fdf4', color: '#14532d' }}>
