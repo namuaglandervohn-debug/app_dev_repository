@@ -29,7 +29,7 @@ class HiredAccountTest extends TestCase
             }
             if ($path === '/rest/v1/user_accounts') {
                 if ($request->method() !== 'GET') {
-                    return Http::response([array_merge(['user_id' => $existing['user_id'] ?? 'generated'], $request->data())]);
+                    return Http::response([array_merge(['user_id' => $existing['user_id'] ?? 'USR-2026-0001'], $request->data())]);
                 }
                 if (isset($query['or'])) {
                     return Http::response([['user_id' => 'HR-1', 'role' => 'hr_admin', 'email' => 'hr@example.com']]);
@@ -53,10 +53,11 @@ class HiredAccountTest extends TestCase
     {
         $this->fakeApi();
         $this->withToken('admin-token')->postJson('/api/applications/hired-account', $this->payload())
-            ->assertOk()->assertJsonPath('auth_user_id', 'employee-auth')->assertJsonPath('user.role', 'employee');
+            ->assertOk()->assertJsonPath('auth_user_id', 'employee-auth')->assertJsonPath('user.role', 'employee')
+            ->assertJsonPath('user.user_id', 'USR-2026-0001');
         Http::assertSent(fn (Request $request) => $request->method() === 'POST'
             && str_contains($request->url(), '/rest/v1/user_accounts')
-            && preg_match('/^USR-\d{4}-[0-9A-F]{16}$/', $request['user_id'])
+            && ! array_key_exists('user_id', $request->data())
             && $request['password'] === null);
     }
 

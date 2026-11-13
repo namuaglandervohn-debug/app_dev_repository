@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
 
@@ -140,7 +139,6 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
           }));
         }
         profile = unwrap(await admin.from('user_accounts').insert({
-          user_id: `USR-${new Date().getFullYear()}-${randomBytes(8).toString('hex').toUpperCase()}`,
           auth_user_id: authUserId,
           employee_id: employeeId || null,
           full_name: name,

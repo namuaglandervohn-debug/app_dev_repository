@@ -427,7 +427,6 @@ export default function MyProfile() {
   const profileName = user?.name ?? employee?.name ?? 'My Profile';
   const profileStatus = employee?.status ?? 'Active';
   const applicationDocs = application?.documents ?? [];
-  const totalDocumentCount = docs.length + applicationDocs.length;
 
   if (loading) {
     return (
@@ -581,8 +580,6 @@ export default function MyProfile() {
       <ProfileSummary items={[
         { label: 'Employee ID', value: employee?.id ?? 'Not linked', icon: <Badge /> },
         { label: 'Outlet / Branch', value: employee?.outlet || 'Not set', icon: <LocationOn /> },
-        { label: 'Documents', value: totalDocumentCount, icon: <InsertDriveFile /> },
-        { label: 'Contact', value: employee?.contact ?? 'Not set', icon: <Phone /> },
       ]} />
 
       <Grid container spacing={2.5}>

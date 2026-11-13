@@ -38,7 +38,8 @@ class UserAccountsTest extends TestCase
 
             return match ($path) {
                 '/auth/v1/admin/users' => Http::response(['id' => 'new-auth'], 201),
-                '/rest/v1/employees', '/rest/v1/user_accounts' => Http::response([$request->data()], 201),
+                '/rest/v1/employees' => Http::response([$request->data()], 201),
+                '/rest/v1/user_accounts' => Http::response([$request->data() + ['user_id' => 'USR-2026-0001']], 201),
                 '/emails' => Http::response(['id' => 'test-message'], 200),
             };
         });
@@ -49,7 +50,7 @@ class UserAccountsTest extends TestCase
             'password' => 'Example-Test123',
             'role' => 'employee',
             'employee_id' => 'EMP001',
-        ])->assertCreated()->assertJsonPath('user.employee_id', 'EMP001')
+        ])->assertCreated()->assertJsonPath('user.employee_id', 'EMP001')->assertJsonPath('user.user_id', 'USR-2026-0001')
             ->assertJsonPath('welcome_email_sent', true)->assertJsonPath('welcome_email_id', 'test-message');
 
         $this->assertSame(['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails'], $writes);

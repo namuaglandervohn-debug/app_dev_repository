@@ -22,7 +22,8 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
     if (url.pathname === '/rest/v1/user_accounts') {
       if (method === 'POST') {
         if (failProfile) return json({ code: '23503', message: 'Account profile could not be linked.' }, 400);
-        savedProfile = { ...body };
+        assert.equal(body.user_id, undefined);
+        savedProfile = { ...body, user_id: 'USR-2026-0001' };
         return loseProfileResponse ? json({ message: 'Response unavailable.' }, 502) : json(savedProfile, 201);
       }
       const authId = url.searchParams.get('auth_user_id');
@@ -57,6 +58,7 @@ test('creates the employee record before inserting the linked account', async ()
   await run();
   assert.equal(response.code, 201);
   assert.equal(response.body.user.employee_id, 'EMP001');
+  assert.equal(response.body.user.user_id, 'USR-2026-0001');
   assert.equal(response.body.welcome_email_sent, true);
   assert.equal(response.body.welcome_email_id, 'test-message');
   assert.deepEqual(calls.filter(call => call.method === 'POST').map(call => call.path),

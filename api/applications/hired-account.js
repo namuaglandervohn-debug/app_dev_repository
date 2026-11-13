@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
 class AccountError extends Error {
@@ -100,7 +99,7 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
       };
       const saved = check(existing
         ? await admin.from('user_accounts').update(profile).eq('user_id', existing.user_id).select('user_id,email,employee_id,role,auth_user_id').single()
-        : await admin.from('user_accounts').insert({ user_id: `USR-${new Date().getFullYear()}-${randomBytes(8).toString('hex').toUpperCase()}`, ...profile }).select('user_id,email,employee_id,role,auth_user_id').single());
+        : await admin.from('user_accounts').insert(profile).select('user_id,email,employee_id,role,auth_user_id').single());
       return send(200, { message: 'Employee login account is ready.', auth_user_id: authResult.user.id, user: saved });
     } catch (error) {
       const status = error instanceof AccountError ? error.status : 502;

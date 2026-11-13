@@ -43,7 +43,12 @@ function fixture() {
         const matches = rows.filter((row) => Object.entries(filters).every(([key, value]) => row[key] === value));
         if (mutation) {
           if (state.failProfile) return { data: null, error: new Error('Profile save failed') };
-          if (mutation === 'insert') { rows.push(payload); return ok(payload); }
+          if (mutation === 'insert') {
+            assert.equal(payload.user_id, undefined);
+            const saved = { ...payload, user_id: 'USR-2026-0001' };
+            rows.push(saved);
+            return ok(saved);
+          }
           Object.assign(matches[0], payload);
           return ok(matches[0]);
         }
@@ -88,7 +93,7 @@ test('creates an Auth user and linked employee profile; never returns the passwo
   assert.equal(response.body.user.email, f.body.email);
   assert.equal(response.body.auth_user_id, 'auth-1');
   assert.equal(f.state.profiles.at(-1).password, null);
-  assert.match(response.body.user.user_id, /^USR-\d{4}-[A-F0-9]{16}$/);
+  assert.equal(response.body.user.user_id, 'USR-2026-0001');
   assert.ok(!JSON.stringify(response.body).includes(f.body.password));
   assert.ok(!JSON.stringify(response.body).includes('server-secret'));
   assert.equal(response.headers['Cache-Control'], 'no-store');

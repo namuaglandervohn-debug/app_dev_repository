@@ -246,23 +246,6 @@ Route::post('/admin/user-accounts', function (Request $request) {
         }
     }
 
-    $year = now()->year;
-    $existingUsers = supabaseRest('GET', '/rest/v1/user_accounts', null, [
-        'select' => 'user_id',
-        'user_id' => "like.USR-{$year}-%",
-    ]);
-
-    $maxSequence = collect($existingUsers)
-        ->map(fn ($row) => (string) ($row['user_id'] ?? ''))
-        ->map(function (string $userId) use ($year): int {
-            return preg_match("/^USR-{$year}-(\d+)$/", $userId, $matches)
-                ? (int) $matches[1]
-                : 0;
-        })
-        ->max() ?? 0;
-
-    $userId = sprintf('USR-%s-%04d', $year, $maxSequence + 1);
-
     $createAuthResponse = Http::withHeaders([
         'apikey' => supabaseServiceRoleKey(),
         'Authorization' => 'Bearer '.supabaseServiceRoleKey(),
@@ -312,7 +295,6 @@ Route::post('/admin/user-accounts', function (Request $request) {
         }
 
         $profile = supabaseRest('POST', '/rest/v1/user_accounts', [
-            'user_id' => $userId,
             'auth_user_id' => $authUserId,
             'employee_id' => $employeeId ?: null,
             'full_name' => $name,
@@ -527,7 +509,6 @@ Route::post('/applications/hired-account', function (Request $request) {
         ]);
     } else {
         $profiles = supabaseRest('POST', '/rest/v1/user_accounts', array_merge([
-            'user_id' => 'USR-'.now()->year.'-'.strtoupper(bin2hex(random_bytes(8))),
         ], $profilePayload));
     }
 

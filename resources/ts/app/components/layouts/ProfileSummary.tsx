@@ -8,7 +8,7 @@ export default function ProfileSummary({ items }: { items: SummaryItem[] }) {
   return (
     <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
       {items.map(({ label, value, icon }) => (
-        <Grid key={label} size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid key={label} size={{ xs: 12, sm: 6 }}>
           <Paper elevation={0} sx={{
             ...profileCardSx, p: 2, minHeight: 126,
             transition: 'transform 180ms ease, box-shadow 180ms ease',
