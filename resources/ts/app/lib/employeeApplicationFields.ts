@@ -46,11 +46,6 @@ export function employeeApplicationFields(employee: RecordValues, applicant: Rec
   };
 
   return [
-    { title: 'Position Applied For', fields: [
-      ['Position Title', text(application.position_applied, details.positionApplied)],
-      ['How did you hear about this job opening?', text(details.hearAbout)],
-      ...(details.hearAbout === 'Other' ? [['Please specify', text(details.hearAboutOther)] as [string, string]] : []),
-    ] },
     { title: 'Personal Details', fields: [
       ['First Name', text(employee.first_name, application.first_name, details.firstName)],
       ['Middle Name', text(employee.middle_name, application.middle_name, details.middleName)],

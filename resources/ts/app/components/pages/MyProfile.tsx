@@ -11,6 +11,7 @@ import {
   AccountCircle, BusinessCenter, Phone, Email, LocationOn, CalendarMonth,
   Assignment, TaskAlt, CancelOutlined, HelpOutline, Badge,
   EditNote, Save, Close, CloudUpload, InsertDriveFile, LockReset,
+  Cake, Public, Height, Scale, School, AutoAwesome, WorkspacePremium, Draw, Favorite, Place,
   DeleteOutline as DeleteIcon, FileDownload, Visibility,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
@@ -52,6 +53,44 @@ const READONLY_FIELDS: { key: keyof Employee; label: string; icon: React.ReactNo
   { key: 'outlet',     label: 'Outlet / Branch',       icon: <LocationOn fontSize="small" /> },
   { key: 'dateHired',  label: 'Date Hired',            icon: <CalendarMonth fontSize="small" /> },
 ];
+
+const applicationFieldIcons: Record<string, typeof AccountCircle> = {
+  'Date of Birth': Cake,
+  Age: Cake,
+  'Civil Status': Favorite,
+  Nationality: Public,
+  Country: Public,
+  Birthplace: Place,
+  'Permanent Address': Place,
+  Region: Place,
+  Province: Place,
+  'City / Municipality': Place,
+  Barangay: Place,
+  'Street / House No. / Purok': Place,
+  'ZIP Code': Place,
+  'Height (cm)': Height,
+  'Weight (kg)': Scale,
+  'Highest Educational Level': School,
+  'Name of School': School,
+  'Course / Program': School,
+  'Year Graduated': CalendarMonth,
+  'Company / Organization': BusinessCenter,
+  'Position Held': BusinessCenter,
+  Position: BusinessCenter,
+  'Total Years of Work Experience': CalendarMonth,
+  'Employment Start Date': CalendarMonth,
+  'Employment End Date': CalendarMonth,
+  'Employment Period': CalendarMonth,
+  'Duties / Responsibilities': Assignment,
+  Skills: AutoAwesome,
+  'Other Skills': AutoAwesome,
+  'Certifications / Training': WorkspacePremium,
+  'Reference Contact Number': Phone,
+  'Emergency Contact Number': Phone,
+  'Emergency Contact Address': Place,
+  "Applicant's Signature / Full Name": Draw,
+  'Declaration Date': CalendarMonth,
+};
 
 const DOCS_KEY = 'my_profile_docs';
 
@@ -657,15 +696,27 @@ export default function MyProfile() {
                       {title}
                     </Typography>
                     <Grid container spacing={1.5}>
-                      {fields.map(([label, value]) => (
-                        <Grid key={label} size={{ xs: 12, sm: 6 }}>
-                          <TextField fullWidth size="small" label={label} value={value || '—'}
-                            multiline={value.length > 40 || value.includes('\n')}
-                            slotProps={{ input: { readOnly: true }, inputLabel: { shrink: true } }}
-                            sx={softTextFieldSx}
-                          />
-                        </Grid>
-                      ))}
+                      {fields.map(([label, value]) => {
+                        const Icon = applicationFieldIcons[label] ?? AccountCircle;
+                        const multiline = value.length > 40 || value.includes('\n');
+                        return (
+                          <Grid key={label} size={{ xs: 12, sm: 6 }}>
+                            <TextField fullWidth size="small" label={label} value={value || '—'}
+                              multiline={multiline}
+                              slotProps={{
+                                input: {
+                                  readOnly: true,
+                                  startAdornment: <Box aria-hidden="true" sx={{ mr: 1, color: GREEN_UI.greenDark, display: 'flex', alignSelf: multiline ? 'flex-start' : 'center' }}>
+                                    <Icon fontSize="small" />
+                                  </Box>,
+                                },
+                                inputLabel: { shrink: true },
+                              }}
+                              sx={softTextFieldSx}
+                            />
+                          </Grid>
+                        );
+                      })}
                     </Grid>
                   </Paper>
                 ))}
