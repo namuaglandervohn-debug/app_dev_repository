@@ -17,8 +17,8 @@ export default function ProfileSummary({ items }: { items: SummaryItem[] }) {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" sx={{ color: '#6c7d70', fontWeight: 600 }}>{label}</Typography>
-                <Typography variant="h5" fontWeight={700} title={String(value)}
-                  sx={{ color: '#1e2d24', mt: 0.5, letterSpacing: '-0.04em', maxWidth: 210 }} noWrap>
+                <Typography variant="h5" fontWeight={700}
+                  sx={{ color: '#1e2d24', mt: 0.5, letterSpacing: '-0.04em', overflowWrap: 'anywhere' }}>
                   {value}
                 </Typography>
               </Box>
