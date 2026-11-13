@@ -122,10 +122,10 @@ export default function LoginPage() {
 
     setSendingEmail(true);
     try {
-      const redirectTo = `${window.location.origin}/applicant`;
+      const redirectTo = applicantConfirmationRedirect(window.location.origin);
       const { error } = emailDialog.action === 'reset'
         ? await supabase.auth.resetPasswordForEmail(address, { redirectTo })
-        : await supabase.auth.resend({ type: 'signup', email: address, options: { emailRedirectTo: applicantConfirmationRedirect(window.location.origin) } });
+        : await supabase.auth.resend({ type: 'signup', email: address, options: { emailRedirectTo: redirectTo } });
       if (error) throw error;
       setEmailNotice(emailDialog.action === 'reset'
         ? 'If an account exists for that address, check your inbox or spam folder for a password reset link.'
