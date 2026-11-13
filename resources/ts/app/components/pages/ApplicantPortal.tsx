@@ -1,8 +1,8 @@
 import TextField from '../DateTextField';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, Typography } from '@mui/material';
-import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
+import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, IconButton, InputAdornment, MenuItem, Paper, Stack, Typography } from '@mui/material';
+import { AccountCircle, ArrowBackRounded, Assignment, BadgeOutlined, CakeOutlined, Close, EditNote, EmailOutlined, FavoriteBorder, HomeOutlined, LockOutlined, LocationCityOutlined, MapOutlined, PersonOutline, PhoneOutlined, PlaceOutlined, Public, Save, TrackChanges, Visibility, VisibilityOff, WcOutlined } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import { applicantConfirmationRedirect } from '../../lib/applicantConfirmationRedirect';
@@ -30,6 +30,19 @@ const addressDetails: ProfileField[] = [
   ['currentCity', 'City / Municipality', true], ['currentBarangay', 'Barangay', false], ['currentStreet', 'Street / House No. / Purok', true], ['currentZipCode', 'ZIP Code', false],
 ];
 const fields = [...personalDetails, ...addressDetails];
+const registrationIcons: Record<keyof typeof initial, typeof PersonOutline> = {
+  firstName: PersonOutline, middleName: PersonOutline, lastName: PersonOutline, suffix: BadgeOutlined,
+  birthdate: CakeOutlined, contactNumber: PhoneOutlined, gender: WcOutlined, civilStatus: FavoriteBorder,
+  nationality: Public, currentCountry: Public, currentRegion: MapOutlined, currentProvince: MapOutlined,
+  currentCity: LocationCityOutlined, currentBarangay: PlaceOutlined, currentStreet: HomeOutlined,
+  currentZipCode: PlaceOutlined,
+};
+
+function registrationAdornment(Icon: typeof PersonOutline) {
+  return <InputAdornment position="start" aria-hidden="true" sx={{ color: 'primary.main' }}>
+    <Icon fontSize="small" />
+  </InputAdornment>;
+}
 const requirementFileTypes: Record<string, string> = {
   pdf: 'application/pdf',
   doc: 'application/msword',
@@ -76,6 +89,7 @@ export default function ApplicantPortal() {
   const [profileBeforeEdit, setProfileBeforeEdit] = useState<Record<string, any> | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [ready, setReady] = useState(false);
@@ -142,6 +156,7 @@ export default function ApplicantPortal() {
                 value={profile[key] || (readOnly ? '—' : '')} type={isDate ? 'date' : 'text'}
                 size={inProfile ? 'small' : undefined} sx={inProfile ? profileFieldSx : undefined}
                 InputLabelProps={inProfile || isDate || options ? { shrink: true } : undefined}
+                InputProps={inProfile ? undefined : { startAdornment: registrationAdornment(registrationIcons[key]) }}
                 inputProps={readOnly ? { readOnly: true } : isDate ? { max: new Date().toISOString().slice(0, 10) } : { maxLength: 200 }}
                 disabled={busy} onChange={readOnly ? undefined : event => setProfileField(key, event.target.value)}
               >
@@ -359,8 +374,21 @@ export default function ApplicantPortal() {
     <Typography component="h1" variant="h5" fontWeight={700} sx={{ mb: 2 }}>Create an applicant account</Typography>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}{notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
     <Box component="form" onSubmit={submit}><Stack spacing={3}>
-      <TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy} />
-      <TextField label="Password" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy} />
+      <TextField label="Email" type="email" required value={email} onChange={e => setEmail(e.target.value)}
+        autoComplete="email" inputProps={{ maxLength: 120 }} disabled={busy}
+        InputProps={{ startAdornment: registrationAdornment(EmailOutlined) }} />
+      <TextField label="Password" type={showPassword ? 'text' : 'password'} required value={password}
+        onChange={e => setPassword(e.target.value)} autoComplete="new-password"
+        inputProps={{ minLength: 8, maxLength: 120 }} disabled={busy}
+        InputProps={{
+          startAdornment: registrationAdornment(LockOutlined),
+          endAdornment: <InputAdornment position="end">
+            <IconButton type="button" edge="end" disabled={busy} aria-label={showPassword ? 'Hide password' : 'Show password'}
+              onMouseDown={event => event.preventDefault()} onClick={() => setShowPassword(previous => !previous)}>
+              {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+            </IconButton>
+          </InputAdornment>,
+        }} />
       {renderFields(fields)}
       <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : 'Create applicant account'}</Button>
     </Stack></Box>
