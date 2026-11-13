@@ -4,6 +4,9 @@
   "functions": {
     "api/admin/user-accounts.js": {
       "includeFiles": "resources/views/emails/account-welcome.html"
+    },
+    "api/applications/hired-account.js": {
+      "includeFiles": "resources/views/emails/hired-welcome.html"
     }
   },
   "rewrites": [

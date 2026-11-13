@@ -1,11 +1,32 @@
+import { createHmac, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
 
 class AccountError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
+async function sendHiredWelcome({ env, fetcher, recipient, name, email, password, authId }) {
+  if (!env.RESEND_API_KEY?.trim()) return false;
+  const template = await readFile(new URL('../../resources/views/emails/hired-welcome.html', import.meta.url), 'utf8');
+  const values = { name, email, password };
+  const escape = value => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  const html = template.replace(/\[\[(name|email|password)\]\]/g, (_, field) => escape(values[field]));
+  const response = await fetcher('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY.trim(), 'Content-Type': 'application/json', 'Idempotency-Key': 'hired-welcome/' + authId },
+    signal: AbortSignal.timeout(8000),
+    body: JSON.stringify({
+      from: (env.RESEND_FROM_NAME || 'Buenaventura HRIS') + ' <' + (env.RESEND_FROM_ADDRESS || 'no-reply@buenaventura-hris.me') + '>',
+      to: [recipient], subject: 'You’re hired! Welcome to Buenaventura Estate', html,
+      text: ['Hello ' + name + '!', 'You’re hired! Here’s your employee account.', 'Email: ' + email, 'Temporary password: ' + password, 'Sign in at https://app-dev-repository.vercel.app/login and change your temporary password.'].join('\n\n'),
+    }),
+  });
+  return response.ok && Boolean((await response.json()).id);
+}
+
 const check = (result) => { if (result.error) throw result.error; return result.data; };
 
-export function createHiredAccountHandler({ env = process.env, clientFactory = createClient } = {}) {
+export function createHiredAccountHandler({ env = process.env, clientFactory = createClient, fetcher = fetch } = {}) {
   return async (request, response) => {
     const send = (status, payload) => {
       response.status(status).setHeader('Content-Type', 'application/json');
@@ -40,67 +61,78 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
           body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         }
       } catch { throw new AccountError(400, 'Invalid request body.'); }
-      const employeeId = String(body?.employee_id ?? '').trim();
-      const name = String(body?.name ?? '').trim();
-      const password = typeof body?.password === 'string' ? body.password : '';
-      const requestedEmail = String(body?.email ?? '').trim().toLowerCase();
-      if (!employeeId || employeeId.length > 40 || !name || name.length > 160 || password.length < 8 || password.length > 120 || requestedEmail.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestedEmail)) {
-        throw new AccountError(422, 'A valid employee ID, name, login email and password of at least 8 characters are required.');
+      const applicantId = String(body?.applicant_id ?? '').trim();
+      if (!applicantId || applicantId.length > 40) throw new AccountError(422, 'Select a hired applicant.');
+      const applicant = check(await admin.from('applicants')
+        .select('applicant_id,auth_user_id,status,is_archived,email,name,first_name,middle_name,last_name,suffix')
+        .eq('applicant_id', applicantId).maybeSingle());
+      if (applicant?.status !== 'Hired' || applicant.is_archived) throw new AccountError(409, 'Only an active hired application can receive an employee account.');
+      const recipient = applicant.email?.trim().toLowerCase();
+      if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new AccountError(422, 'The application needs a valid contact email.');
+      const employee = check(await admin.from('employees').select('employee_id,outlet').eq('applicant_id', applicantId).maybeSingle());
+      if (!employee) throw new AccountError(409, 'Save the employee record before preparing the login.');
+      const existing = check(await admin.from('user_accounts').select('user_id,auth_user_id,email,employee_id,role,outlet,applicant_id,is_active')
+        .eq('employee_id', employee.employee_id).maybeSingle());
+      if (existing && (existing.role !== 'employee' || !existing.is_active || (existing.applicant_id && existing.applicant_id !== applicantId))) {
+        throw new AccountError(409, 'Review the linked account in User Accounts before continuing.');
       }
-      const employee = check(await admin.from('employees').select('employee_id,applicant_id').eq('employee_id', employeeId).maybeSingle());
-      if (!employee) throw new AccountError(422, 'Save the employee record before creating the login account.');
-      if (employee.applicant_id) {
-        const applicant = check(await admin.from('applicants').select('auth_user_id').eq('applicant_id', employee.applicant_id).maybeSingle());
-        if (applicant?.auth_user_id) throw new AccountError(409, 'This employee has an applicant login. Convert the existing applicant account from Recruitment; its password must be retained.');
-      }
-      const existing = check(await admin.from('user_accounts').select('user_id,auth_user_id,email,employee_id,role,outlet').eq('employee_id', employeeId).maybeSingle());
-      if (existing && existing.role !== 'employee') throw new AccountError(409, 'This employee is linked to a different account role. Review it in User Accounts.');
-      const email = existing?.email || requestedEmail;
-      const emailProfile = check(await admin.from('user_accounts').select('user_id,employee_id,role').eq('email', email).maybeSingle());
-      if (emailProfile && (emailProfile.employee_id !== employeeId || emailProfile.role !== 'employee')) {
-        throw new AccountError(409, 'That login email belongs to another account. No account was reset.');
-      }
-
-      let authUser = null;
-      if (existing?.auth_user_id) {
-        const found = await admin.auth.admin.getUserById(existing.auth_user_id);
-        if (found.error && found.error.status !== 404) throw found.error;
-        authUser = found.data?.user ?? null;
-        if (authUser && authUser.email?.toLowerCase() !== email.toLowerCase()) throw new AccountError(409, 'The employee account has a conflicting login identity. Review it in User Accounts.');
-      }
-      if (!authUser) {
-        // Scan every page, including users created before an HRIS profile save failed.
-        for (let page = 1; ; page++) {
-          const data = check(await admin.auth.admin.listUsers({ page, perPage: 1000 }));
-          authUser = data.users.find((candidate) => candidate.email?.toLowerCase() === email.toLowerCase()) ?? null;
-          if (authUser || data.users.length < 1000) break;
+      const name = applicant.name || [applicant.first_name, applicant.last_name].filter(Boolean).join(' ') || 'Employee';
+      const passwordFor = nonce => 'Bv!' + createHmac('sha256', key).update('hired-welcome/' + nonce).digest('base64url').slice(0, 24);
+      let authUser;
+      let saved = existing;
+      const separate = existing?.auth_user_id && existing.auth_user_id !== applicant.auth_user_id && existing.email?.toLowerCase() !== recipient;
+      if (separate) {
+        authUser = check(await admin.auth.admin.getUserById(existing.auth_user_id)).user;
+        if (authUser?.email?.toLowerCase() !== existing.email?.toLowerCase()) throw new AccountError(409, 'The employee login could not be verified. Review it in User Accounts.');
+      } else {
+        const normalize = value => String(value ?? '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 25);
+        const base = [normalize(applicant.last_name), normalize(applicant.first_name)].filter(Boolean).join('.') || normalize(applicantId);
+        const nonce = randomUUID();
+        for (let suffix = 1; suffix <= 30; suffix++) {
+          const email = base + (suffix === 1 ? '' : '.' + suffix) + '@buenaventura.com';
+          if (email === recipient || check(await admin.from('user_accounts').select('user_id').eq('email', email).maybeSingle())) continue;
+          const created = await admin.auth.admin.createUser({
+            email, password: passwordFor(nonce), email_confirm: true,
+            app_metadata: { hris_temporary_password: true, hris_hired_welcome: nonce, hris_hired_application: applicantId },
+            user_metadata: { full_name: name, role: 'employee', employee_id: employee.employee_id },
+          });
+          if (['email_exists', 'user_already_exists'].includes(created.error?.code)) continue;
+          authUser = check(created)?.user;
+          break;
         }
-        if (authUser && authUser.user_metadata?.employee_id !== employeeId) {
-          throw new AccountError(409, 'That login email already exists for another identity. No account was reset.');
+        if (!authUser?.id) throw new AccountError(409, 'Could not assign an unused employee email.');
+        const profile = {
+          auth_user_id: authUser.id, employee_id: employee.employee_id, applicant_id: applicantId, full_name: name,
+          first_name: applicant.first_name, middle_name: applicant.middle_name, last_name: applicant.last_name, suffix: applicant.suffix,
+          email: authUser.email, password: null, role: 'employee', outlet: existing?.outlet || employee.outlet || null, is_active: true,
+        };
+        const accounts = admin.from('user_accounts');
+        const write = existing ? accounts.update(profile).eq('user_id', existing.user_id)
+          : accounts.insert(profile);
+        if (existing) {
+          if (existing.auth_user_id) write.eq('auth_user_id', existing.auth_user_id);
+          else write.is('auth_user_id', null);
         }
+        const result = await write.select('user_id,auth_user_id,email,employee_id,role').maybeSingle();
+        if (!result.data) {
+          const linked = await admin.from('user_accounts').select('user_id,auth_user_id,email,employee_id,role').eq('auth_user_id', authUser.id).maybeSingle();
+          if (linked.error) throw linked.error;
+          if (!linked.data) {
+            await admin.auth.admin.deleteUser(authUser.id);
+            throw new AccountError(409, 'Employee setup could not finish. Refresh and try again.');
+          }
+          saved = linked.data;
+        } else saved = result.data;
       }
-      if (authUser) {
-        const linked = check(await admin.from('user_accounts').select('employee_id,role').eq('auth_user_id', authUser.id).maybeSingle());
-        if (linked && (linked.employee_id !== employeeId || linked.role !== 'employee')) throw new AccountError(409, 'That login is linked to another account. No account was reset.');
+      const nonce = authUser.app_metadata?.hris_hired_welcome;
+      if (!nonce || authUser.app_metadata?.hris_hired_application !== applicantId || authUser.app_metadata?.hris_temporary_password !== true) {
+        return send(200, { message: 'The separate employee account is already ready.', user: saved, welcome_email_sent: false });
       }
-      const authPayload = {
-        email, password, email_confirm: true,
-        app_metadata: { hris_temporary_password: true },
-        user_metadata: { ...(authUser?.user_metadata ?? {}), full_name: name, role: 'employee', employee_id: employeeId },
-      };
-      const authResult = check(authUser
-        ? await admin.auth.admin.updateUserById(authUser.id, authPayload)
-        : await admin.auth.admin.createUser(authPayload));
-      if (!authResult?.user?.id) throw new AccountError(502, 'The authentication service did not return an account ID. Please retry.');
-      const profile = {
-        auth_user_id: authResult.user.id, employee_id: employeeId, full_name: name,
-        first_name: String(body.first_name ?? '').trim(), middle_name: String(body.middle_name ?? '').trim(), last_name: String(body.last_name ?? '').trim(), suffix: String(body.suffix ?? '').trim(),
-        email, password: null, role: 'employee', outlet: existing?.outlet || String(body.outlet ?? '').trim() || null, is_active: true,
-      };
-      const saved = check(existing
-        ? await admin.from('user_accounts').update(profile).eq('user_id', existing.user_id).select('user_id,email,employee_id,role,auth_user_id').single()
-        : await admin.from('user_accounts').insert(profile).select('user_id,email,employee_id,role,auth_user_id').single());
-      return send(200, { message: 'Employee login account is ready.', auth_user_id: authResult.user.id, user: saved });
+      const password = passwordFor(nonce);
+      const sent = await sendHiredWelcome({ env, fetcher, recipient, name, email: authUser.email, password, authId: authUser.id }).catch(() => false);
+      return send(200, { user: saved, welcome_email_sent: sent, message: sent
+        ? 'Employee account ready. The welcome email was accepted for delivery.'
+        : 'Employee account ready. The welcome email could not be sent. Select Complete Employee Account Setup to retry.' });
     } catch (error) {
       const status = error instanceof AccountError ? error.status : 502;
       return send(status, { message: error.message || 'Employee account creation failed. Please retry.' });

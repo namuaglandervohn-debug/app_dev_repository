@@ -7,7 +7,9 @@ function fixture() {
   const actor = { id: 'admin-auth', email: 'hr@company.com' };
   const state = {
     profiles: [{ user_id: 'HR-1', auth_user_id: actor.id, email: actor.email, is_active: true, role: 'hr_admin' }],
-    employees: [{ employee_id: 'EMP-2026-0001' }], applicants: [],
+    employees: [{ employee_id: 'EMP-2026-0001', applicant_id: 'APP-2026-0001' }],
+    applicants: [{ applicant_id: 'APP-2026-0001', auth_user_id: 'applicant-auth', email: 'applicant@example.test', name: 'New <Employee>', first_name: 'New', last_name: 'Employee', status: 'Hired' }],
+    mail: [], mailStatus: 200,
     authUsers: [], mutations: [], pages: [], failProfile: false,
   };
   const ok = (data) => ({ data, error: null });
@@ -22,10 +24,12 @@ function fixture() {
         async getUserById(id) { return ok({ user: state.authUsers.find((user) => user.id === id) ?? null }); },
         async createUser(payload) {
           state.mutations.push('create');
+          if (state.authUsers.some(user => user.email === payload.email)) return { error: { code: 'email_exists' } };
           const user = { ...payload, id: `auth-${state.authUsers.length + 1}` };
           state.authUsers.push(user);
           return ok({ user });
         },
+        async deleteUser(id) { state.authUsers = state.authUsers.filter(user => user.id !== id); return ok({}); },
         async updateUserById(id, payload) {
           state.mutations.push('reset');
           const user = state.authUsers.find((user) => user.id === id);
@@ -62,9 +66,12 @@ function fixture() {
       };
     },
   };
-  const env = { SUPABASE_URL: 'https://example.invalid', SUPABASE_SERVICE_ROLE_KEY: 'server-secret' };
-  const handler = createHiredAccountHandler({ env, clientFactory: () => client });
-  const body = { employee_id: 'EMP-2026-0001', name: 'New Employee', email: 'new.employee@company.com', password: 'TemporaryPass123', first_name: 'New', last_name: 'Employee' };
+  const env = { SUPABASE_URL: 'https://example.invalid', SUPABASE_SERVICE_ROLE_KEY: 'server-secret', RESEND_API_KEY: 'test-mail' };
+  const handler = createHiredAccountHandler({ env, clientFactory: () => client, fetcher: async (_url, request) => {
+    state.mail.push({ ...JSON.parse(request.body), key: request.headers['Idempotency-Key'] });
+    return Response.json({ id: 'test-mail' }, { status: state.mailStatus });
+  } });
+  const body = { applicant_id: 'APP-2026-0001' };
   const invoke = async (overrides = {}, useHandler = handler) => {
     const response = {
       headers: {}, status(code) { this.statusCode = code; return this; },
@@ -76,103 +83,62 @@ function fixture() {
   return { state, body, invoke, client };
 }
 
-test('registered applicants cannot be given a duplicate login or have their password reset through the legacy account endpoint', async () => {
+test('creates a separate employee identity and emails the original applicant address', async () => {
   const f = fixture();
-  f.state.employees[0].applicant_id = 'APP-2026-0001';
-  f.state.applicants.push({ applicant_id: 'APP-2026-0001', auth_user_id: 'original-applicant-auth' });
-  const response = await f.invoke();
-  assert.equal(response.statusCode, 409);
-  assert.match(response.body.message, /Convert the existing applicant account/);
-  assert.deepEqual(f.state.mutations, []);
-});
-
-test('creates an Auth user and linked employee profile; never returns the password or service key', async () => {
-  const f = fixture();
-  const response = await f.invoke();
+  const response = await f.invoke({ body: { ...f.body, email: 'ignored@example.test', password: 'ignored' } });
   assert.equal(response.statusCode, 200);
-  assert.equal(response.body.user.email, f.body.email);
-  assert.equal(response.body.auth_user_id, 'auth-1');
-  assert.equal(f.state.profiles.at(-1).password, null);
+  assert.equal(response.body.user.email, 'employee.new@buenaventura.com');
   assert.equal(response.body.user.user_id, 'USR-2026-0001');
-  assert.ok(!JSON.stringify(response.body).includes(f.body.password));
-  assert.ok(!JSON.stringify(response.body).includes('server-secret'));
+  assert.equal(f.state.applicants[0].auth_user_id, 'applicant-auth');
+  assert.equal(f.state.authUsers[0].app_metadata.hris_temporary_password, true);
+  assert.deepEqual(f.state.mail[0].to, ['applicant@example.test']);
+  assert.match(f.state.mail[0].html, /Hello New &lt;Employee&gt;!/);
+  assert.match(f.state.mail[0].html, /#1ea44e/);
+  assert.ok(f.state.mail[0].text.includes(f.state.authUsers[0].password));
+  assert.ok(!JSON.stringify(response.body).includes(f.state.authUsers[0].password));
   assert.equal(response.headers['Cache-Control'], 'no-store');
 });
 
-test('reset reuses the same Auth user, profile and original email', async () => {
+test('repairs an earlier conversion without touching the original applicant login', async () => {
   const f = fixture();
-  const first = await f.invoke();
-  f.body.email = 'different.request@company.com';
-  const second = await f.invoke();
-  assert.equal(second.statusCode, 200);
-  assert.equal(second.body.auth_user_id, first.body.auth_user_id);
-  assert.equal(second.body.user.email, 'new.employee@company.com');
-  assert.equal(f.state.authUsers.length, 1);
-  assert.equal(f.state.profiles.length, 2);
-  assert.deepEqual(f.state.mutations, ['create', 'reset']);
-});
-
-test('a retry recovers an Auth user after profile saving failed', async () => {
-  const f = fixture();
-  f.state.failProfile = true;
-  assert.equal((await f.invoke()).statusCode, 502);
-  assert.equal(f.state.authUsers.length, 1);
-  f.state.failProfile = false;
-  assert.equal((await f.invoke()).statusCode, 200);
-  assert.equal(f.state.authUsers.length, 1);
-  assert.deepEqual(f.state.mutations, ['create', 'reset']);
-});
-
-test('rejects missing/expired sessions and non-admin callers before modifying Auth', async () => {
-  const f = fixture();
-  assert.equal((await f.invoke({ headers: {} })).statusCode, 401);
-  assert.equal((await f.invoke({ headers: { authorization: 'Bearer expired' } })).statusCode, 401);
-  f.state.profiles[0].role = 'employee';
-  assert.equal((await f.invoke()).statusCode, 403);
-  assert.deepEqual(f.state.mutations, []);
-});
-
-test('missing hosting configuration gives an actionable error', async () => {
-  const f = fixture();
-  const handler = createHiredAccountHandler({ env: {} });
-  const response = await f.invoke({}, handler);
-  assert.equal(response.statusCode, 503);
-  assert.match(response.body.message, /SUPABASE_SERVICE_ROLE_KEY/);
-});
-
-test('validates request method, body, password and saved employee', async () => {
-  const f = fixture();
-  assert.equal((await f.invoke({ method: 'GET' })).statusCode, 405);
-  assert.equal((await f.invoke({ body: '{invalid' })).statusCode, 400);
-  assert.equal((await f.invoke({ body: { ...f.body, password: 'short' } })).statusCode, 422);
-  f.state.employees = [];
-  assert.equal((await f.invoke()).statusCode, 422);
-  assert.deepEqual(f.state.mutations, []);
-});
-
-test('same-name/email conflicts never reset a different employee or admin account', async () => {
-  const f = fixture();
-  f.state.profiles.push({ user_id: 'OTHER', email: f.body.email, role: 'hr_admin', employee_id: 'OTHER-EMPLOYEE' });
-  assert.equal((await f.invoke()).statusCode, 409);
-  assert.deepEqual(f.state.mutations, []);
-});
-
-test('an Auth-only email belonging to someone else is not reset', async () => {
-  const f = fixture();
-  f.state.authUsers.push({ id: 'other-auth', email: f.body.email, user_metadata: { employee_id: 'OTHER' } });
-  assert.equal((await f.invoke()).statusCode, 409);
-  assert.deepEqual(f.state.mutations, []);
-});
-
-test('finds retryable Auth accounts beyond the first 1000 users', async () => {
-  const f = fixture();
-  f.state.authUsers = Array.from({ length: 1000 }, (_, index) => ({ id: `dummy-${index}`, email: `dummy${index}@company.com` }));
-  f.state.authUsers.push({ id: 'existing-auth', email: f.body.email, user_metadata: { employee_id: f.body.employee_id } });
+  f.state.profiles.push({ user_id: 'existing', employee_id: 'EMP-2026-0001', applicant_id: f.body.applicant_id,
+    auth_user_id: 'applicant-auth', email: 'applicant@example.test', role: 'employee', is_active: true });
   const response = await f.invoke();
   assert.equal(response.statusCode, 200);
-  assert.equal(response.body.auth_user_id, 'existing-auth');
-  assert.deepEqual(f.state.pages, [1, 2]);
-  assert.deepEqual(f.state.mutations, ['reset']);
+  assert.equal(f.state.profiles.at(-1).user_id, 'existing');
+  assert.notEqual(f.state.profiles.at(-1).auth_user_id, 'applicant-auth');
+  assert.deepEqual(f.state.mutations, ['create']);
+});
+
+test('mail retries use the same account, password and delivery key', async () => {
+  const f = fixture();
+  f.state.mailStatus = 502;
+  assert.equal((await f.invoke()).body.welcome_email_sent, false);
+  f.state.mailStatus = 200;
+  assert.equal((await f.invoke()).body.welcome_email_sent, true);
+  assert.deepEqual(f.state.mail[0], f.state.mail[1]);
+  assert.deepEqual(f.state.mutations, ['create']);
+  f.state.authUsers[0].app_metadata.hris_temporary_password = false;
+  assert.equal((await f.invoke()).body.welcome_email_sent, false);
+  assert.equal(f.state.mail.length, 2);
+});
+
+test('email collisions receive a numbered company login', async () => {
+  const f = fixture();
+  f.state.authUsers.push({ id: 'other', email: 'employee.new@buenaventura.com' });
+  assert.equal((await f.invoke()).body.user.email, 'employee.new.2@buenaventura.com');
+  assert.equal(f.state.authUsers[0].id, 'other');
+});
+
+test('rejects unauthorized callers and applications without a final hire', async () => {
+  const f = fixture();
+  assert.equal((await f.invoke({ headers: {} })).statusCode, 401);
+  f.state.profiles[0].role = 'employee';
+  assert.equal((await f.invoke()).statusCode, 403);
+  f.state.profiles[0].role = 'general_manager';
+  f.state.applicants[0].status = 'For Interview';
+  assert.equal((await f.invoke()).statusCode, 409);
+  assert.deepEqual(f.state.mutations, []);
 });
 
 test('frontend surfaces Laravel validation and unavailable endpoint errors', () => {

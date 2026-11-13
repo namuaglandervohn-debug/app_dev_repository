@@ -27,28 +27,39 @@ do $$ declare app_id text; second_id text; affected integer; begin
   begin
     perform public.convert_applicant_account(app_id,'EMP-TEST-PROFILE');
     raise exception 'Applicant was allowed to convert their own account';
-  exception when raise_exception then
-    if sqlerrm not like 'Only HR/Admin%' then raise; end if;
+  exception when insufficient_privilege then null;
   end;
   perform set_config('test.applicant_id',app_id,true);
 end; $$;
 reset role;
 update public.applicants set status='Hired' where applicant_id=current_setting('test.applicant_id');
-insert into public.employees(employee_id,applicant_id,first_name,last_name,email,status)
-values('EMP-TEST-PROFILE',current_setting('test.applicant_id'),'Test','Applicant','profile-fixture@example.invalid','Active');
+select set_config('test.employee_id', (select employee_id from public.employees
+  where applicant_id=current_setting('test.applicant_id')),true);
 select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('test.hr_auth'),'role','authenticated')::text,true);
 set local role authenticated;
-do $$ declare result jsonb; begin
-  result := public.convert_applicant_account(current_setting('test.applicant_id'),'EMP-TEST-PROFILE');
-  if result->>'auth_user_id' <> 'c0010000-0000-4000-8000-000000000001' then raise exception 'Conversion replaced the applicant identity'; end if;
-  perform public.convert_applicant_account(current_setting('test.applicant_id'),'EMP-TEST-PROFILE');
-  if (select count(*) from public.user_accounts where employee_id='EMP-TEST-PROFILE') <> 1 then raise exception 'Conversion created a duplicate account'; end if;
+do $$ begin
+  begin
+    perform public.convert_applicant_account(current_setting('test.applicant_id'),current_setting('test.employee_id'));
+    raise exception 'Legacy conversion is still callable';
+  exception when insufficient_privilege then null; end;
   insert into public.leave_types(name) values('__Wellness fixture__');
 end; $$;
+reset role;
+insert into auth.users(id,aud,role,email)
+values ('c0010000-0000-4000-8000-000000000003','authenticated','authenticated','applicant.test@buenaventura.com');
+insert into public.user_accounts(auth_user_id,employee_id,applicant_id,email,full_name,role,is_active)
+values ('c0010000-0000-4000-8000-000000000003',current_setting('test.employee_id'),current_setting('test.applicant_id'),
+  'applicant.test@buenaventura.com','Test Applicant','employee',true);
+set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"c0010000-0000-4000-8000-000000000001","role":"authenticated","email":"profile-fixture@example.invalid"}',true);
 do $$ begin
+  if (select count(*) from public.applicants) <> 2 then raise exception 'Applicant lost application history'; end if;
+  if exists(select 1 from public.user_accounts) then raise exception 'Applicant has staff access'; end if;
+end; $$;
+select set_config('request.jwt.claims','{"sub":"c0010000-0000-4000-8000-000000000003","role":"authenticated","email":"applicant.test@buenaventura.com"}',true);
+do $$ begin
   insert into public.employee_requests(employee_id,request_type,leave_type,start_date,end_date,reason)
-  values('EMP-TEST-PROFILE','Leave','__Wellness fixture__',current_date,current_date,'Database fixture');
+  values(current_setting('test.employee_id'),'Leave','__Wellness fixture__',current_date,current_date,'Database fixture');
   begin
     insert into public.leave_types(name) values('__EMPLOYEE_UNAUTHORIZED_TEST__');
     raise exception 'Employee was allowed to manage leave types';
@@ -57,12 +68,12 @@ end; $$;
 select set_config('request.jwt.claims',jsonb_build_object('sub',current_setting('test.hr_auth'),'role','authenticated')::text,true);
 update public.leave_types set is_active=false where name='__Wellness fixture__';
 -- Existing requests still support normal review after a type is deactivated.
-update public.employee_requests set status='Approved' where employee_id='EMP-TEST-PROFILE';
-select set_config('request.jwt.claims','{"sub":"c0010000-0000-4000-8000-000000000001","role":"authenticated","email":"profile-fixture@example.invalid"}',true);
+update public.employee_requests set status='Approved' where employee_id=current_setting('test.employee_id');
+select set_config('request.jwt.claims','{"sub":"c0010000-0000-4000-8000-000000000003","role":"authenticated","email":"applicant.test@buenaventura.com"}',true);
 do $$ begin
   begin
     insert into public.employee_requests(employee_id,request_type,leave_type,start_date,end_date,reason)
-    values('EMP-TEST-PROFILE','Leave','__Wellness fixture__',current_date,current_date,'Must fail');
+    values(current_setting('test.employee_id'),'Leave','__Wellness fixture__',current_date,current_date,'Must fail');
     raise exception 'A deactivated leave type was accepted';
   exception when raise_exception then
     if sqlerrm not like 'This leave type is no longer available%' then raise; end if;
@@ -72,4 +83,4 @@ reset role;
 do $$ begin
   if (select encrypted_password from auth.users where id='c0010000-0000-4000-8000-000000000001') <> 'unchanged-fixture-hash' then raise exception 'Conversion changed the password'; end if;
 end; $$;
-select 'PASS: profile isolation, application snapshots, sequential IDs, conversion, leave permissions and deactivation' as verification;
+select 'PASS: profile isolation, application snapshots, sequential IDs, separate logins, leave permissions and deactivation' as verification;

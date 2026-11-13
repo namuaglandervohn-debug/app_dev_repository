@@ -366,158 +366,136 @@ function sendAccountWelcomeEmail(string $name, string $email, string $password, 
 
 Route::post('/applications/hired-account', function (Request $request) {
     requireSupabaseAdmin($request);
-
-    $data = $request->validate([
-        'employee_id' => ['required', 'string', 'max:40'],
-        'name' => ['required', 'string', 'max:160'],
-        'email' => ['required', 'email', 'max:160'],
-        'password' => ['required', 'string', 'min:8', 'max:120'],
-        'first_name' => ['nullable', 'string', 'max:80'],
-        'middle_name' => ['nullable', 'string', 'max:80'],
-        'last_name' => ['nullable', 'string', 'max:80'],
-        'suffix' => ['nullable', 'string', 'max:40'],
-        'outlet' => ['nullable', 'string', 'max:160'],
-    ]);
-
-    $email = validateRecipientEmailAddress($data['email']);
-    $employeeId = trim($data['employee_id']);
-    $name = trim($data['name']);
-    $outlet = trim((string) ($data['outlet'] ?? ''));
-    $serviceKey = supabaseServiceRoleKey();
-
-    $existingProfiles = supabaseRest('GET', '/rest/v1/user_accounts', null, [
-        'select' => 'user_id,auth_user_id,email,employee_id,role,outlet',
-        'employee_id' => 'eq.'.$employeeId,
-    ]);
-    if (count($existingProfiles) > 1) {
-        throw ValidationException::withMessages(['email' => 'Multiple accounts are linked to this employee. Review them in User Accounts.']);
+    $data = $request->validate(['applicant_id' => ['required', 'string', 'max:40']]);
+    $id = $data['applicant_id'];
+    $app = supabaseRest('GET', '/rest/v1/applicants', null, [
+        'select' => 'applicant_id,auth_user_id,status,is_archived,email,name,first_name,middle_name,last_name,suffix',
+        'applicant_id' => "eq.{$id}",
+    ])[0] ?? null;
+    if (($app['status'] ?? null) !== 'Hired' || ! empty($app['is_archived'])) {
+        return response()->json(['message' => 'Only an active hired application can receive an employee account.'], 409);
     }
-    $existingProfile = $existingProfiles[0] ?? null;
-    if ($existingProfile && $existingProfile['role'] !== 'employee') {
-        throw ValidationException::withMessages(['email' => 'This employee is linked to a different account role. No account was reset.']);
+
+    $recipient = validateRecipientEmailAddress($app['email'] ?? '');
+    $employee = supabaseRest('GET', '/rest/v1/employees', null, [
+        'select' => 'employee_id,outlet', 'applicant_id' => "eq.{$id}",
+    ])[0] ?? null;
+    if (! $employee) {
+        return response()->json(['message' => 'Save the employee record before preparing the login.'], 409);
     }
-    $email = $existingProfile['email'] ?? $email;
-    $emailProfiles = supabaseRest('GET', '/rest/v1/user_accounts', null, [
-        'select' => 'employee_id,role', 'email' => 'eq.'.$email,
+    $employeeId = $employee['employee_id'];
+    $profiles = supabaseRest('GET', '/rest/v1/user_accounts', null, [
+        'select' => 'user_id,auth_user_id,email,employee_id,role,outlet,applicant_id,is_active',
+        'employee_id' => "eq.{$employeeId}",
     ]);
-    foreach ($emailProfiles as $profile) {
-        if (($profile['employee_id'] ?? null) !== $employeeId || $profile['role'] !== 'employee') {
-            throw ValidationException::withMessages(['email' => 'That login email belongs to another account. No account was reset.']);
+    $existing = $profiles[0] ?? null;
+    if (count($profiles) > 1 || ($existing && ($existing['role'] !== 'employee' || ! $existing['is_active']
+        || (! empty($existing['applicant_id']) && $existing['applicant_id'] !== $id)))) {
+        return response()->json(['message' => 'Review the linked account in User Accounts before continuing.'], 409);
+    }
+
+    $name = $app['name'] ?: trim(($app['first_name'] ?? '').' '.($app['last_name'] ?? '')) ?: 'Employee';
+    $key = supabaseServiceRoleKey();
+    $authApi = fn () => Http::withToken($key)->withHeader('apikey', $key)->acceptJson()->timeout(10);
+    $authUrl = supabaseBaseUrl().'/auth/v1/admin/users';
+    $passwordFor = fn (string $nonce) => 'Bv!'.substr(strtr(base64_encode(hash_hmac('sha256', 'hired-welcome/'.$nonce, $key, true)), '+/', '-_'), 0, 24);
+    $separate = ! empty($existing['auth_user_id']) && $existing['auth_user_id'] !== ($app['auth_user_id'] ?? null)
+        && strtolower($existing['email']) !== $recipient;
+    $saved = $existing;
+    if ($separate) {
+        $auth = $authApi()->get($authUrl.'/'.$existing['auth_user_id']);
+        $user = $auth->json('user') ?? $auth->json();
+        if ($auth->failed() || strtolower($user['email'] ?? '') !== strtolower($existing['email'])) {
+            return response()->json(['message' => 'The employee login could not be verified. Review it in User Accounts.'], 409);
         }
-    }
-
-    $authUserId = null;
-    for ($page = 1; ; $page++) {
-        $usersResponse = Http::withHeaders([
-            'apikey' => $serviceKey,
-            'Authorization' => 'Bearer '.$serviceKey,
-        ])->acceptJson()->get(supabaseBaseUrl().'/auth/v1/admin/users', [
-            'page' => $page,
-            'per_page' => 1000,
-        ]);
-
-        if ($usersResponse->failed()) {
-            throw ValidationException::withMessages([
-                'supabase' => $usersResponse->json('message') ?? $usersResponse->body(),
-            ]);
-        }
-
-        $users = $usersResponse->json('users') ?? [];
-        foreach ($users as $authUser) {
-            if (strtolower((string) ($authUser['email'] ?? '')) === strtolower($email)) {
-                $authUserId = $authUser['id'] ?? null;
-                if (($existingProfile['auth_user_id'] ?? null) !== $authUserId && ($authUser['user_metadata']['employee_id'] ?? null) !== $employeeId) {
-                    throw ValidationException::withMessages(['email' => 'That login email already exists for another identity. No account was reset.']);
-                }
-                break;
+    } else {
+        $normalize = fn (?string $value) => substr(preg_replace('/[^a-z0-9]/', '', strtolower(\Illuminate\Support\Str::ascii($value ?? ''))), 0, 25);
+        $base = implode('.', array_filter([$normalize($app['last_name']), $normalize($app['first_name'])])) ?: $normalize($id);
+        $nonce = (string) \Illuminate\Support\Str::uuid();
+        $user = null;
+        for ($suffix = 1; $suffix <= 30; $suffix++) {
+            $email = $base.($suffix === 1 ? '' : '.'.$suffix).'@buenaventura.com';
+            if ($email === $recipient || supabaseRest('GET', '/rest/v1/user_accounts', null, ['select' => 'user_id', 'email' => "eq.{$email}"])) {
+                continue;
             }
-        }
-        if ($authUserId || count($users) < 1000) {
+            $created = $authApi()->post($authUrl, [
+                'email' => $email, 'password' => $passwordFor($nonce), 'email_confirm' => true,
+                'app_metadata' => ['hris_temporary_password' => true, 'hris_hired_welcome' => $nonce, 'hris_hired_application' => $id],
+                'user_metadata' => ['full_name' => $name, 'role' => 'employee', 'employee_id' => $employeeId],
+            ]);
+            if (in_array($created->json('error_code'), ['email_exists', 'user_already_exists'], true)) {
+                continue;
+            }
+            if ($created->failed()) {
+                return response()->json(['message' => 'Employee login creation failed. Please retry.'], 502);
+            }
+            $user = $created->json('user') ?? $created->json();
             break;
         }
-    }
-    if ($authUserId) {
-        $linkedProfiles = supabaseRest('GET', '/rest/v1/user_accounts', null, [
-            'select' => 'employee_id,role', 'auth_user_id' => 'eq.'.$authUserId,
-        ]);
-        foreach ($linkedProfiles as $profile) {
-            if (($profile['employee_id'] ?? null) !== $employeeId || $profile['role'] !== 'employee') {
-                throw ValidationException::withMessages(['email' => 'That login is linked to another account. No account was reset.']);
+        if (empty($user['id'])) {
+            return response()->json(['message' => 'Could not assign an unused employee email.'], 409);
+        }
+        $profile = [
+            'auth_user_id' => $user['id'], 'employee_id' => $employeeId, 'applicant_id' => $id, 'full_name' => $name,
+            'first_name' => $app['first_name'], 'middle_name' => $app['middle_name'], 'last_name' => $app['last_name'],
+            'suffix' => $app['suffix'], 'email' => $user['email'], 'role' => 'employee', 'password' => null,
+            'outlet' => ($existing['outlet'] ?? null) ?: ($employee['outlet'] ?? null), 'is_active' => true,
+        ];
+        try {
+            $saved = $existing
+                ? (supabaseRest('PATCH', '/rest/v1/user_accounts', $profile, [
+                    'user_id' => 'eq.'.$existing['user_id'],
+                    'auth_user_id' => empty($existing['auth_user_id']) ? 'is.null' : 'eq.'.$existing['auth_user_id'],
+                ])[0] ?? null)
+                : (supabaseRest('POST', '/rest/v1/user_accounts', $profile)[0] ?? null);
+        } catch (Throwable) {
+            $saved = null;
+        }
+        if (! $saved) {
+            $saved = supabaseRest('GET', '/rest/v1/user_accounts', null, [
+                'auth_user_id' => 'eq.'.$user['id'],
+            ])[0] ?? null;
+            if (! $saved) {
+                $authApi()->delete($authUrl.'/'.$user['id']);
+                return response()->json(['message' => 'Employee setup could not finish. Refresh and try again.'], 409);
             }
         }
     }
 
-    $authPayload = [
-        'email' => $email,
-        'password' => $data['password'],
-        'email_confirm' => true,
-        'app_metadata' => ['hris_temporary_password' => true],
-        'user_metadata' => [
-            'full_name' => $name,
-            'role' => 'employee',
-            'employee_id' => $employeeId,
-        ],
-    ];
-
-    if ($authUserId) {
-        $authResponse = Http::withHeaders([
-            'apikey' => $serviceKey,
-            'Authorization' => 'Bearer '.$serviceKey,
-            'Content-Type' => 'application/json',
-        ])->acceptJson()->put(supabaseBaseUrl()."/auth/v1/admin/users/{$authUserId}", $authPayload);
-    } else {
-        $authResponse = Http::withHeaders([
-            'apikey' => $serviceKey,
-            'Authorization' => 'Bearer '.$serviceKey,
-            'Content-Type' => 'application/json',
-        ])->acceptJson()->post(supabaseBaseUrl().'/auth/v1/admin/users', $authPayload);
+    $nonce = $user['app_metadata']['hris_hired_welcome'] ?? null;
+    if (! $nonce || ($user['app_metadata']['hris_hired_application'] ?? null) !== $id
+        || ($user['app_metadata']['hris_temporary_password'] ?? null) !== true) {
+        return response()->json(['message' => 'The separate employee account is already ready.', 'welcome_email_sent' => false]);
     }
-
-    if ($authResponse->failed()) {
-        throw ValidationException::withMessages([
-            'email' => $authResponse->json('message') ?? $authResponse->body(),
-        ]);
-    }
-
-    $authUser = $authResponse->json('user') ?? $authResponse->json();
-    $authUserId = $authUser['id'] ?? $authUserId;
-
-    if (! $authUserId) {
-        throw ValidationException::withMessages([
-            'supabase' => 'Supabase Auth did not return a user id.',
-        ]);
-    }
-
-    $profilePayload = [
-        'auth_user_id' => $authUserId,
-        'employee_id' => $employeeId,
-        'first_name' => trim((string) ($data['first_name'] ?? '')),
-        'middle_name' => trim((string) ($data['middle_name'] ?? '')),
-        'last_name' => trim((string) ($data['last_name'] ?? '')),
-        'full_name' => $name,
-        'suffix' => trim((string) ($data['suffix'] ?? '')),
-        'email' => $email,
-        'password' => null,
-        'role' => 'employee',
-        'outlet' => ($existingProfile['outlet'] ?? null) ?: ($outlet ?: null),
-        'is_active' => true,
-    ];
-
-    if ($existingProfile) {
-        $profiles = supabaseRest('PATCH', '/rest/v1/user_accounts', $profilePayload, [
-            'user_id' => 'eq.'.$existingProfile['user_id'],
-        ]);
-    } else {
-        $profiles = supabaseRest('POST', '/rest/v1/user_accounts', array_merge([
-        ], $profilePayload));
-    }
-
-    return response()->json([
-        'message' => 'Supabase Auth user and employee account are ready.',
-        'auth_user_id' => $authUserId,
-        'user' => $profiles[0] ?? null,
-    ]);
+    $sent = sendHiredWelcomeEmail($name, $recipient, $user['email'], $passwordFor($nonce), $user['id']);
+    return response()->json(['welcome_email_sent' => $sent, 'message' => $sent
+        ? 'Employee account ready. The welcome email was accepted for delivery.'
+        : 'Employee account ready. The welcome email could not be sent. Select Complete Employee Account Setup to retry.']);
 });
+
+function sendHiredWelcomeEmail(string $name, string $recipient, string $email, string $password, string $authId): bool
+{
+    $key = trim((string) config('services.resend.key'));
+    if ($key === '') {
+        return false;
+    }
+    try {
+        $template = \Illuminate\Support\Facades\File::get(resource_path('views/emails/hired-welcome.html'));
+        $values = ['name' => $name, 'email' => $email, 'password' => $password];
+        $html = preg_replace_callback('/\[\[(name|email|password)\]\]/', fn ($match) => e($values[$match[1]]), $template);
+        $response = Http::withToken($key)->withHeader('Idempotency-Key', 'hired-welcome/'.$authId)
+            ->acceptJson()->timeout(8)->post('https://api.resend.com/emails', [
+                'from' => sprintf('%s <%s>', config('services.resend.from_name'), config('services.resend.from_address')),
+                'to' => [$recipient],
+                'subject' => 'You’re hired! Welcome to Buenaventura Estate',
+                'html' => $html,
+                'text' => "Hello {$name}!\n\nYou’re hired! Here’s your employee account.\n\nEmail: {$email}\n\nTemporary password: {$password}\n\nSign in at https://app-dev-repository.vercel.app/login and change your temporary password.",
+            ]);
+        return $response->successful() && ! empty($response->json('id'));
+    } catch (Throwable) {
+        return false;
+    }
+}
 
 Route::post('/applications/send-applicant-id-email', function (Request $request) {
     $data = $request->validate([
@@ -703,85 +681,6 @@ Route::post('/applications/send-status-email', function (Request $request) {
     return response()->json([
         'sent' => true,
         'message' => 'Application status email sent.',
-        'resend' => $response->json(),
-    ]);
-});
-
-Route::post('/applications/send-hired-credentials-email', function (Request $request) {
-    $data = $request->validate([
-        'applicant_id' => ['nullable', 'string', 'max:40'],
-        'employee_id' => ['required', 'string', 'max:40'],
-        'recipient_email' => ['required', 'email', 'max:120'],
-        'name' => ['nullable', 'string', 'max:160'],
-        'position' => ['nullable', 'string', 'max:160'],
-        'login_email' => ['required', 'string', 'max:120'],
-        'temporary_password' => ['required', 'string', 'max:120'],
-    ]);
-    $data['recipient_email'] = validateRecipientEmailAddress($data['recipient_email'], 'recipient_email');
-
-    $apiKey = config('services.resend.key');
-    if (! $apiKey) {
-        Log::warning('Hired credentials email skipped: RESEND_API_KEY is not configured.', [
-            'applicant_id' => $data['applicant_id'] ?? null,
-            'employee_id' => $data['employee_id'],
-            'recipient_email' => $data['recipient_email'],
-        ]);
-
-        return response()->json(['message' => 'Resend is not configured.'], 500);
-    }
-
-    $appName = config('app.name', 'Buenaventura HRIS');
-    $fromAddress = env('RESEND_FROM_ADDRESS', config('mail.from.address'));
-    $fromName = env('RESEND_FROM_NAME', config('mail.from.name', $appName));
-    $from = sprintf('%s <%s>', $fromName, $fromAddress);
-    $employeeName = trim($data['name'] ?? '') ?: 'Employee';
-    $position = trim($data['position'] ?? '');
-
-    $html = view('emails.hired-credentials', [
-        'appName' => $appName,
-        'employeeName' => $employeeName,
-        'applicantId' => $data['applicant_id'] ?? '',
-        'employeeId' => $data['employee_id'],
-        'position' => $position,
-        'loginEmail' => $data['login_email'],
-        'temporaryPassword' => $data['temporary_password'],
-    ])->render();
-
-    $response = Http::withToken($apiKey)
-        ->acceptJson()
-        ->asJson()
-        ->post('https://api.resend.com/emails', [
-            'from' => $from,
-            'to' => [$data['recipient_email']],
-            'subject' => "You are hired - {$appName} employee login details",
-            'html' => $html,
-            'text' => "Hello {$employeeName},\n\nCongratulations! You have been hired."
-                . ($position ? "\nPosition: {$position}" : '')
-                . "\nEmployee ID: {$data['employee_id']}"
-                . "\nEmployee Login Email: {$data['login_email']}"
-                . "\nTemporary Password: {$data['temporary_password']}"
-                . "\n\nPlease sign in and change your password after your first login.\n\n{$appName}",
-        ]);
-
-    if ($response->failed()) {
-        $responseBody = $response->json() ?? $response->body();
-        Log::warning('Hired credentials email failed via Resend.', [
-            'applicant_id' => $data['applicant_id'] ?? null,
-            'employee_id' => $data['employee_id'],
-            'recipient_email' => $data['recipient_email'],
-            'status' => $response->status(),
-            'body' => $responseBody,
-        ]);
-
-        return response()->json(resendFailurePayload(
-            $responseBody,
-            $response->status(),
-            'Employee credentials could not be sent.'
-        ), 502);
-    }
-
-    return response()->json([
-        'message' => 'Hired credentials email sent.',
         'resend' => $response->json(),
     ]);
 });

@@ -594,18 +594,6 @@ const getFileTypeFromName = (name?: string) => {
   return '';
 };
 
-const generateTemporaryPassword = (base: string) => {
-  const cleanBase = base.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'employee';
-
-  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
-    const values = new Uint32Array(1);
-    window.crypto.getRandomValues(values);
-    return `${cleanBase}@${values[0].toString(36).slice(0, 6)}!`;
-  }
-
-  return `${cleanBase}@${Math.random().toString(36).slice(2, 8)}!`;
-};
-
 const buildDocumentsForApplication = (app: Application | null, submittedDocuments: string[] = []): DocumentItem[] => {
   if (!app) return [];
   const docs = new Map<string, DocumentItem>();
@@ -985,80 +973,6 @@ export default function RecruitmentManagement() {
       const middleName = app.middleName ?? '';
       const lastName = app.lastName ?? '';
       const suffix = app.suffix ?? '';
-      const fullName = [firstName, middleName, lastName, suffix].filter(Boolean).join(' ') || app.name;
-      const loginName = `${firstName}${lastName}`.replace(/\s+/g, '').toLowerCase() || app.id.toLowerCase();
-      const sendHiredCredentialsEmail = async (payload: {
-        applicantId: string;
-        employeeId: string;
-        recipientEmail: string;
-        name: string;
-        position: string;
-        loginEmail: string;
-        temporaryPassword: string;
-      }) => {
-        const response = await fetch('/api/applications/send-hired-credentials-email', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            applicant_id: payload.applicantId,
-            employee_id: payload.employeeId,
-            recipient_email: payload.recipientEmail,
-            name: payload.name,
-            position: payload.position,
-            login_email: payload.loginEmail,
-            temporary_password: payload.temporaryPassword,
-          }),
-        });
-
-        if (!response.ok) {
-          const body = await response.json().catch(() => null);
-          throw new Error(body?.message || 'Unable to send hired credentials email.');
-        }
-      };
-
-      const createOrResetHiredAccount = async (payload: {
-        employeeId: string;
-        name: string;
-        email: string;
-        password: string;
-      }) => {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-        const accessToken = sessionData.session?.access_token;
-        if (!accessToken) throw new Error('Your admin session has expired. Please sign in again.');
-
-        const response = await fetch('/api/applications/hired-account', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            employee_id: payload.employeeId,
-            name: payload.name,
-            email: payload.email,
-            password: payload.password,
-            first_name: firstName,
-            middle_name: middleName,
-            last_name: lastName,
-            suffix,
-            outlet: '',
-          }),
-        });
-
-        const body = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(apiErrorMessage(body, response.status, 'Employee account creation failed. Please try again.'));
-        }
-        if (!body?.auth_user_id || !body?.user?.email) throw new Error('The account service returned an incomplete response. Please try again.');
-
-        return body;
-      };
-
       const { data: existingEmployee, error: existingEmployeeError } = await supabase
         .from('employees')
         .select('employee_id')
@@ -1104,57 +1018,25 @@ export default function RecruitmentManagement() {
         ? { error: null }
         : await supabase.from('employees').insert(employeePayload);
 
-      if (employeeSaveError) throw employeeSaveError;
-
-      const { data: applicantIdentity, error: identityError } = await supabase.from('applicants').select('auth_user_id').eq('applicant_id', app.id).single();
-      if (identityError) throw identityError;
-      if (applicantIdentity.auth_user_id) {
-        const { error: conversionError } = await supabase.rpc('convert_applicant_account', { p_applicant_id: app.id, p_employee_id: employeeId });
-        if (conversionError) throw conversionError;
-        setSnackbar({ open: true, message: 'Applicant account converted to an employee account. The existing login and profile are retained.', severity: 'success' });
-        try { await sendApplicantStatusEmail(app, 'Hired'); }
-        catch { setSnackbar({ open: true, message: 'Account converted successfully. The hiring email could not be sent; the existing login remains valid.', severity: 'warning' }); }
-        setViewDialog(false);
-        return;
+      if (employeeSaveError) {
+        if (employeeSaveError.code !== '23505') throw employeeSaveError;
+        const { data: concurrentlySaved, error: lookupError } = await supabase.from('employees')
+          .select('employee_id').eq('applicant_id', app.id).maybeSingle();
+        if (lookupError || !concurrentlySaved) throw employeeSaveError;
       }
 
-      const { data: linkedAccount, error: linkedAccountError } = await supabase.from('user_accounts').select('email').eq('employee_id', employeeId).maybeSingle();
-      if (linkedAccountError) throw linkedAccountError;
-      let loginEmail = linkedAccount?.email || `${loginName}@buenaventura-hris.me`;
-      const temporaryPassword = generateTemporaryPassword(loginName);
-      const accountResult = await createOrResetHiredAccount({
-        employeeId,
-        name: fullName,
-        email: loginEmail,
-        password: temporaryPassword,
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Sign in again to prepare the employee account.');
+      const response = await fetch('/api/applications/hired-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ applicant_id: app.id }),
       });
-      loginEmail = accountResult.user.email;
-
-      setSnackbar({
-        open: true,
-        message: `Applicant hired and employee Supabase Auth account is ready. Temporary password: ${temporaryPassword}`,
-        severity: 'success',
-      });
-
-      try {
-        await sendHiredCredentialsEmail({
-          applicantId: app.id,
-          employeeId,
-          recipientEmail: app.email ?? '',
-          name: fullName,
-          position: app.position ?? '',
-          loginEmail,
-          temporaryPassword,
-        });
-      } catch (emailError: any) {
-        console.warn('Hired credentials email failed:', emailError);
-        setSnackbar({
-          open: true,
-          message: `Applicant hired, but the credentials email could not be sent. Login: ${loginEmail} | Temporary password: ${temporaryPassword}`,
-          severity: 'error',
-        });
-      }
-
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(apiErrorMessage(result, response.status, 'Employee account setup failed. Please retry.'));
+      setSnackbar({ open: true, message: result.message, severity: result.welcome_email_sent ? 'success' : 'warning' });
       setViewDialog(false);
       void fetchApplications({ silent: true });
     } catch (e: any) {
@@ -2704,7 +2586,7 @@ export default function RecruitmentManagement() {
               disabled={saving || creatingAccount}
               sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, '&:hover': { bgcolor: GREEN_UI.greenDark } }}
             >
-              {creatingAccount ? 'Preparing Employee Account…' : 'Create / Reset Employee Account'}
+              {creatingAccount ? 'Preparing Employee Account…' : 'Complete Employee Account Setup'}
             </Button>
           )}
         </DialogActions>
