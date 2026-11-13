@@ -658,7 +658,7 @@ Route::post('/applications/send-status-email', function (Request $request) {
     $position = trim($data['position'] ?? '');
     $status = trim($data['status']);
     $note = trim($data['note'] ?? '');
-    $interviewDate = trim($data['interview_date'] ?? '');
+    $interviewDate = preg_replace('/^(\d{4})-(\d{2})-(\d{2})$/', '$2/$3/$1', trim($data['interview_date'] ?? ''));
     $interviewTime = trim($data['interview_time'] ?? '');
     $interviewLocation = trim($data['interview_location'] ?? '');
 

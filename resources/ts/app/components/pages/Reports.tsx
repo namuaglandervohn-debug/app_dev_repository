@@ -1,3 +1,5 @@
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
@@ -6,7 +8,6 @@ import {
   Button,
   Card,
   CardContent,
-  TextField,
   MenuItem,
   Grid,
   CircularProgress,
@@ -110,6 +111,7 @@ const COLUMNS: Record<string, string[]> = {
   systemLogs: ['id', 'userName', 'userRole', 'action', 'module', 'recordTable', 'description', 'date'],
 };
 
+const reportDateColumns = new Set(['date', 'dateHired', 'dateApplied', 'createdAt', 'submittedDate', 'periodStart', 'periodEnd']);
 const currencyColumns = new Set(['salary', 'grossPay', 'deductions', 'netPay']);
 const percentColumns = new Set(['finalScore', 'rawScore', 'weight', 'maxScore']);
 const statusColumns = new Set(['status', 'validationStatus', 'finalized', 'active']);
@@ -542,6 +544,8 @@ export default function Reports() {
 
   const formatValue = (key: string, value: any) => {
     if (value === null || value === undefined || value === '') return '—';
+    if (key === 'week' || key === 'period') return formatDisplayDateRange(String(value));
+    if (reportDateColumns.has(key)) return formatDisplayDateRange(String(value));
     if (currencyColumns.has(key)) return money(value);
     if (percentColumns.has(key)) return `${Number(value).toFixed(2)}${key === 'weight' || key === 'finalScore' || key === 'rawScore' ? '%' : ''}`;
     return String(value);
@@ -606,9 +610,9 @@ export default function Reports() {
         .footer { color: #777; font-size: 10px; text-align: center; margin-top: 20px; }
       </style></head><body>
       <h2>Buenaventura Estate HRIS — ${selected.label} Report</h2>
-      <p>Period: ${dateFrom} to ${dateTo} &nbsp;|&nbsp; Total records: ${filtered.length} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString()}</p>
+      <p>Period: ${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)} &nbsp;|&nbsp; Total records: ${filtered.length} &nbsp;|&nbsp; Generated: ${formatDisplayDateTime(new Date())}</p>
       ${content}
-      <div class="footer">Buenaventura Estate HRIS &nbsp;·&nbsp; Printed: ${new Date().toLocaleString()} &nbsp;·&nbsp; Confidential</div>
+      <div class="footer">Buenaventura Estate HRIS &nbsp;·&nbsp; Printed: ${formatDisplayDateTime(new Date())} &nbsp;·&nbsp; Confidential</div>
       </body></html>
     `);
 
@@ -617,7 +621,7 @@ export default function Reports() {
   };
 
   const handlePrintAllReports = () => {
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatDisplayDateTime(new Date());
     const reportSections = REPORT_TYPES.map(rt => {
       const rows = getFilteredRowsForType(rt.value);
       const sectionCols = getPrintableColumns(rt.value, rows);
@@ -673,7 +677,7 @@ export default function Reports() {
       </style></head><body>
       <div class="cover">
         <h1>Buenaventura Estate HRIS - All Reports</h1>
-        <p>Period: ${escapeHtml(dateFrom)} to ${escapeHtml(dateTo)} | Generated: ${escapeHtml(generatedAt)}</p>
+        <p>Period: ${escapeHtml(formatDisplayDate(dateFrom))} to ${escapeHtml(formatDisplayDate(dateTo))} | Generated: ${escapeHtml(generatedAt)}</p>
       </div>
       ${reportSections}
       <div class="footer">Buenaventura Estate HRIS | Generated: ${escapeHtml(generatedAt)} | Confidential</div>
@@ -705,7 +709,7 @@ export default function Reports() {
     },
     {
       label: 'Period Filter',
-      value: `${dateFrom.slice(5)} → ${dateTo.slice(5)}`,
+      value: `${formatDisplayDate(dateFrom)} → ${formatDisplayDate(dateTo)}`,
       icon: <CalendarMonth fontSize="small" />,
     },
   ];

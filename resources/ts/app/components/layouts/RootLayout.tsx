@@ -1,3 +1,4 @@
+import { formatDisplayDateTime } from '../../lib/displayDate';
 import { Outlet, useNavigate, useLocation, Navigate } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -354,7 +355,7 @@ export default function RootLayout({ children, applicant }: {
                           </Typography>
                           {notif.created_at && (
                             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                              {new Date(notif.created_at).toLocaleString()}
+                              {formatDisplayDateTime(notif.created_at)}
                             </Typography>
                           )}
                         </Box>

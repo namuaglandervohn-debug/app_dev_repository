@@ -1,3 +1,4 @@
+import { formatDisplayDate } from '../../lib/displayDate';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -173,17 +174,7 @@ function formatSalary(salary?: string | null) {
 }
 
 function formatDate(date?: string | null) {
-  if (!date) return "Recently added";
-
-  try {
-    return new Intl.DateTimeFormat("en-PH", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    }).format(new Date(date));
-  } catch {
-    return "Recently added";
-  }
+  return formatDisplayDate(date, 'Recently added');
 }
 
 const GREEN_UI = {

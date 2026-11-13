@@ -1,7 +1,9 @@
+import { formatDisplayDate, formatDisplayDateRange, formatDisplayDateTime } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
-  Box, Typography, Button, Paper, TextField, Divider, Chip, Grid,
+  Box, Typography, Button, Paper, Divider, Chip, Grid,
   CircularProgress, Alert, MenuItem, Dialog, DialogTitle,
   DialogContent, DialogActions, IconButton, Tooltip,
   Checkbox, FormControlLabel, FormGroup, type TextFieldProps,
@@ -998,7 +1000,7 @@ export default function EmployeeProfile() {
                 {detailItem('Position applied for', application.positionApplied || employee.position)}
                 {detailItem('Application status', application.status)}
                 {detailItem('How applicant heard about opening', application.hearAbout === 'Other' ? application.hearAboutOther : application.hearAbout)}
-                {detailItem('Date hired', employee.dateHired)}
+                {detailItem('Date hired', formatDisplayDate(employee.dateHired))}
               </>
             ))}
 
@@ -1008,7 +1010,7 @@ export default function EmployeeProfile() {
                 {detailItem('Middle name', application.middleName || employee.middle_name)}
                 {detailItem('Last name', application.lastName || employee.last_name)}
                 {detailItem('Suffix', application.suffix || employee.suffix)}
-                {detailItem('Date of birth', application.birthdate || employee.birthdate)}
+                {detailItem('Date of birth', formatDisplayDate(application.birthdate || employee.birthdate))}
                 {detailItem('Age', application.age)}
                 {detailItem('Gender', application.gender || employee.gender)}
                 {detailItem('Civil status', application.civilStatus || employee.civilStatus)}
@@ -1051,7 +1053,7 @@ export default function EmployeeProfile() {
                         {detailItem('Company / Organization', work.companyOrganization)}
                         {detailItem('Position held', work.positionHeld)}
                         {detailItem('Total years of experience', work.totalYearsExperience)}
-                        {detailItem('Employment period', work.employmentPeriod || [work.employmentStartDate, work.employmentEndDate].filter(Boolean).join(' to '))}
+                        {detailItem('Employment period', formatDisplayDateRange(work.employmentPeriod || [work.employmentStartDate, work.employmentEndDate].filter(Boolean).join(' to ')))}
                         {detailItem('Duties / Responsibilities', work.dutiesResponsibilities, { xs: 12 })}
                       </Grid>
                     </Box>
@@ -1181,7 +1183,7 @@ export default function EmployeeProfile() {
 
         {employee.updatedAt && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-            Last updated: {new Date(employee.updatedAt).toLocaleString()}
+            Last updated: {formatDisplayDateTime(employee.updatedAt)}
           </Typography>
         )}
       </Paper>

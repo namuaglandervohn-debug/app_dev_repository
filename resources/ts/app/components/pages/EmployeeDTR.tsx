@@ -1,3 +1,4 @@
+import { formatDisplayDateRange } from '../../lib/displayDate';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
@@ -1180,7 +1181,7 @@ export default function EmployeeDTR() {
                       },
                     }}
                   >
-                    <TableCell sx={{ whiteSpace: "nowrap", fontWeight: 800 }}>{schedule.week || "—"}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap", fontWeight: 800 }}>{formatDisplayDateRange(schedule.week) || "—"}</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>{schedule.position || employeeProfile?.position || "—"}</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>{schedule.outlet || employeeProfile?.outlet || "—"}</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>{schedule.breakTime || "—"}</TableCell>

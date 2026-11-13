@@ -1,3 +1,4 @@
+import { formatDisplayDate } from '../../lib/displayDate';
 import { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Grid, Chip, Divider, CircularProgress,
@@ -575,7 +576,7 @@ export default function MyProfile() {
                         <TextField
                           fullWidth
                           label={label}
-                          value={(employee as any)[key] ?? '—'}
+                          value={key === 'dateHired' ? formatDisplayDate(employee.dateHired, '—') : employee[key] ?? '—'}
                           disabled
                           size="small"
                           sx={softTextFieldSx}
@@ -785,7 +786,7 @@ export default function MyProfile() {
                         {doc.name}
                       </Typography>
                       <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                        {formatBytes(doc.size)} · {new Date(doc.uploadedAt).toLocaleDateString()}
+                        {formatBytes(doc.size)} · {formatDisplayDate(doc.uploadedAt)}
                       </Typography>
                     </Box>
                     <Tooltip title={doc.dataUrl ? "View" : "Preview unavailable"}>
@@ -840,7 +841,7 @@ export default function MyProfile() {
                     Application: {application.id}
                   </Typography>
                   <Typography variant="caption" sx={{ color: GREEN_UI.text, display: 'block', fontWeight: 700 }}>
-                    Applied {application.dateApplied}
+                    Applied {formatDisplayDate(application.dateApplied)}
                   </Typography>
                 </Paper>
                 {applicationDocs.length > 0 && (

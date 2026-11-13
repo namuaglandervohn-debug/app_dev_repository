@@ -1,7 +1,9 @@
+import { formatDisplayDate, formatDisplayDateTime } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import React, { useRef, useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, TextField, Chip, Dialog,
+  TableContainer, TableHead, TableRow, Chip, Dialog,
   DialogTitle, DialogContent, DialogActions, Grid, CircularProgress,
   Alert, Tooltip, IconButton, MenuItem, InputAdornment,
 } from '@mui/material';
@@ -1536,13 +1538,13 @@ export default function PayrollComputation() {
         I acknowledge to have received the amount of <b>${fmtAmt(netAmt)}</b> and have no further claim for services rendered.
       </div>
       <div class="sig">
-        <div class="sig-line">Date: ${p.payslipDate ? new Date(p.payslipDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : '___________'}</div>
+        <div class="sig-line">Date: ${p.payslipDate ? formatDisplayDate(p.payslipDate) : '___________'}</div>
         <div style="width:42%; text-align:center;">
           <div style="padding-bottom:4px; border-bottom:1px solid #333; font-size:10px;">${p.employee.toUpperCase()}</div>
           <div style="font-size:9px; margin-top:3px;">${p.position || '—'}</div>
         </div>
       </div>
-      <div class="footer">Generated: ${new Date().toLocaleString()} &nbsp;·&nbsp; Payroll ID: ${p.displayId ?? p.payrollId ?? p.id} &nbsp;·&nbsp; Electronically generated payslip.</div>
+      <div class="footer">Generated: ${formatDisplayDateTime(new Date())} &nbsp;·&nbsp; Payroll ID: ${p.displayId ?? p.payrollId ?? p.id} &nbsp;·&nbsp; Electronically generated payslip.</div>
       </body></html>`);
     win.document.close();
     win.print();
@@ -2444,7 +2446,7 @@ export default function PayrollComputation() {
                           Date:{' '}
                           <strong>
                             {selectedPayroll.payslipDate
-                              ? new Date(selectedPayroll.payslipDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+                              ? formatDisplayDate(selectedPayroll.payslipDate)
                               : '___________'}
                           </strong>
                         </Box>

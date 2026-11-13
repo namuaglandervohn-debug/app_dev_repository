@@ -1,8 +1,10 @@
+import { formatDisplayDate, formatDisplayDateRange, parseDisplayDate } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, MenuItem, Chip, Grid,
+  DialogContent, DialogActions, MenuItem, Chip, Grid,
   CircularProgress, Alert, Tooltip, InputAdornment,
   Checkbox,
   Autocomplete,
@@ -366,6 +368,17 @@ const formatWeekRangeFromDate = (value: string) => {
   const year = sunday.getFullYear();
   if (mMonth === sMonth) return `${MONTHS[mMonth]} ${mDay}–${sDay}, ${year}`;
   return `${MONTHS[mMonth]} ${mDay} – ${MONTHS[sMonth]} ${sDay}, ${year}`;
+};
+
+const normalizeWeekInput = (value: string) => {
+  const match = /^(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–—]\s*(\d{1,2}\/\d{1,2}\/\d{4})$/.exec(value);
+  if (!match) return value;
+  const start = parseDateInput(parseDisplayDate(match[1]));
+  const end = parseDateInput(parseDisplayDate(match[2]));
+  if (!start || !end || start > end) return value;
+  const startLabel = MONTHS[start.getMonth()] + ' ' + start.getDate();
+  const endLabel = start.getMonth() === end.getMonth() ? end.getDate() : MONTHS[end.getMonth()] + ' ' + end.getDate();
+  return startLabel + ' – ' + endLabel + ', ' + end.getFullYear();
 };
 
 const parseWeekRange = (week: string) => {
@@ -849,7 +862,7 @@ export default function ScheduleManagement() {
       const conflictEmployee = selectedEmployees.find(employee => employee.employeeId === conflict.employeeId);
       setSnackbar({
         open: true,
-        message: `Conflict found: ${conflictEmployee?.name ?? conflict.employee} already has ${conflict[dayKey as keyof Schedule]} on ${dutyDate} in ${stripSpecialDutyReason(conflict.week)}.`,
+        message: `Conflict found: ${conflictEmployee?.name ?? conflict.employee} already has ${conflict[dayKey as keyof Schedule]} on ${formatDisplayDate(dutyDate)} in ${formatDisplayDateRange(stripSpecialDutyReason(conflict.week))}.`,
         severity: 'error',
       });
       return;
@@ -904,7 +917,7 @@ export default function ScheduleManagement() {
     await pushNotification(
       s.employeeId,
       "New Schedule Published",
-      `Your schedule for ${s.week} has been published.`,
+      `Your schedule for ${formatDisplayDateRange(stripSpecialDutyReason(s.week))} has been published.`,
       "schedule"
     );
 
@@ -1113,7 +1126,7 @@ export default function ScheduleManagement() {
     await pushNotification(
     editRecord.employeeId,
     "Schedule Updated",
-    `Your schedule for ${editForm.week} has been updated.`,
+    `Your schedule for ${formatDisplayDateRange(editForm.week)} has been updated.`,
     "schedule"
   );
 
@@ -1207,7 +1220,7 @@ export default function ScheduleManagement() {
         pushNotification(
           schedule.employeeId,
           'New Schedule Published',
-          `Your schedule for ${schedule.week} has been published.`,
+          `Your schedule for ${formatDisplayDateRange(stripSpecialDutyReason(schedule.week))} has been published.`,
           'schedule'
         )
       ));
@@ -1913,7 +1926,7 @@ export default function ScheduleManagement() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                       <CalendarMonth sx={{ fontSize: 17, color: GREEN_UI.greenDark }} />
                       <Typography variant="body2" fontWeight={700} sx={{ color: GREEN_UI.text }}>
-                        {stripSpecialDutyReason(s.week) || '—'}
+                        {formatDisplayDateRange(stripSpecialDutyReason(s.week)) || '—'}
                       </Typography>
                       {getSpecialDutyReason(s.week) && (
                         <Chip
@@ -2186,9 +2199,9 @@ export default function ScheduleManagement() {
                   fullWidth
                   label="Week Period"
                   required
-                  value={form.week}
-                  onChange={e => setForm({ ...form, week: e.target.value })}
-                  placeholder="e.g. May 12–18, 2026"
+                  value={formatDisplayDateRange(form.week)}
+                  onChange={e => setForm({ ...form, week: normalizeWeekInput(e.target.value) })}
+                  placeholder="MM/DD/YYYY – MM/DD/YYYY"
                   size="small"
                   sx={softTextFieldSx}
                 />
@@ -2358,7 +2371,7 @@ export default function ScheduleManagement() {
                   InputLabelProps={{ shrink: true }}
                   size="small"
                   sx={softTextFieldSx}
-                  helperText={specialDutyForm.dutyDate ? formatWeekRangeFromDate(specialDutyForm.dutyDate) : 'Select the added duty date.'}
+                  helperText={specialDutyForm.dutyDate ? formatDisplayDateRange(formatWeekRangeFromDate(specialDutyForm.dutyDate)) : 'Select the added duty date.'}
                 />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
@@ -2582,9 +2595,9 @@ export default function ScheduleManagement() {
                   fullWidth
                   label="Week Period"
                   required
-                  value={editForm.week}
-                  onChange={e => setEditForm({ ...editForm, week: e.target.value })}
-                  placeholder="e.g. May 12–18, 2026"
+                  value={formatDisplayDateRange(editForm.week)}
+                  onChange={e => setEditForm({ ...editForm, week: normalizeWeekInput(e.target.value) })}
+                  placeholder="MM/DD/YYYY – MM/DD/YYYY"
                   size="small"
                   sx={softTextFieldSx}
                 />

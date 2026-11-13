@@ -1,3 +1,4 @@
+import { formatDisplayDate, formatDisplayDateTime } from '../../lib/displayDate';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
@@ -511,13 +512,13 @@ export default function EmployeePayslips() {
         I acknowledge to have received the amount of <b>${slip.netPay}</b> and have no further claim for services rendered.
       </div>
       <div class="sig">
-        <div class="sig-line">Date: ${slip.payslipDate ? new Date(slip.payslipDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : '___________'}</div>
+        <div class="sig-line">Date: ${slip.payslipDate ? formatDisplayDate(slip.payslipDate) : '___________'}</div>
         <div style="width:42%; text-align:center;">
           <div style="padding-bottom:4px; border-bottom:1px solid #333; font-size:10px;">${slip.employee.toUpperCase()}</div>
           <div style="font-size:9px; margin-top:3px;">${slip.position || '—'}</div>
         </div>
       </div>
-      <div class="footer">Generated: ${new Date().toLocaleString()} &nbsp;·&nbsp; Payroll ID: ${slip.displayId ?? slip.id} &nbsp;·&nbsp; Electronically generated payslip.</div>
+      <div class="footer">Generated: ${formatDisplayDateTime(new Date())} &nbsp;·&nbsp; Payroll ID: ${slip.displayId ?? slip.id} &nbsp;·&nbsp; Electronically generated payslip.</div>
       </body></html>`);
     win.document.close();
     win.print();
@@ -1099,7 +1100,7 @@ export default function EmployeePayslips() {
                       <Typography variant="caption" fontWeight={600}>
                         Date:{' '}
                         {selected.payslipDate
-                          ? new Date(selected.payslipDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+                          ? formatDisplayDate(selected.payslipDate)
                           : '___________'}
                       </Typography>
                     </Box>

@@ -1,3 +1,4 @@
+import { formatDisplayDate } from '../../lib/displayDate';
 import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -247,7 +248,7 @@ export default function GMDashboard() {
                           {a.name || 'Unnamed Applicant'}
                         </Typography>
                         <Typography variant="caption" sx={{ color: GREEN_UI.muted }} noWrap>
-                          {a.position} · {a.interviewDate || 'Date TBD'} {a.interviewTime || ''}
+                          {a.position} · {formatDisplayDate(a.interviewDate, 'Date TBD')} {a.interviewTime || ''}
                         </Typography>
                       </Box>
                     </Box>

@@ -1,3 +1,4 @@
+import { formatDisplayDate } from '../../lib/displayDate';
 import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -270,7 +271,7 @@ export default function EmployeeDashboard() {
                       >
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, mb: 1 }}>
                           <Typography variant="body2" fontWeight={700} sx={{ color: GREEN_UI.text }}>
-                            {a.date}
+                            {formatDisplayDate(a.date)}
                           </Typography>
                           <Chip
                             label={a.status}
@@ -330,7 +331,7 @@ export default function EmployeeDashboard() {
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.25 }}>
                         <Box sx={{ minWidth: 0 }}>
                           <Typography variant="body2" fontWeight={700} sx={{ color: GREEN_UI.text }}>
-                            {r.type} — {r.date}
+                            {r.type} — {formatDisplayDate(r.date)}
                           </Typography>
                           <Typography
                             variant="caption"

@@ -1,3 +1,5 @@
+import { formatDisplayDate } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -15,7 +17,6 @@ import {
   Stack,
   useMediaQuery,
   useTheme,
-  TextField,
   InputAdornment,
   Grid,
   Dialog,
@@ -2407,7 +2408,7 @@ export default function AttendanceMonitoring() {
                         {att.employee}
                       </Typography>
                       <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                        {normalizeDateForFilter(att.date)}
+                        {formatDisplayDate(normalizeDateForFilter(att.date))}
                       </Typography>
                     </Box>
                     <Chip
@@ -2554,7 +2555,7 @@ export default function AttendanceMonitoring() {
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, color: GREEN_UI.text }}>
                         <CalendarMonthRounded sx={{ fontSize: 18, color: GREEN_UI.greenDark }} />
-                        <Typography variant="body2" fontWeight={700}>{normalizeDateForFilter(att.date)}</Typography>
+                        <Typography variant="body2" fontWeight={700}>{formatDisplayDate(normalizeDateForFilter(att.date))}</Typography>
                       </Box>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
@@ -3098,7 +3099,7 @@ export default function AttendanceMonitoring() {
                     {importPreviewRows.map((row, i) => (
                       <TableRow key={i}>
                         <TableCell>{row.employee}</TableCell>
-                        <TableCell>{row.date}</TableCell>
+                        <TableCell>{formatDisplayDate(row.date)}</TableCell>
                         <TableCell>{row.timeIn}</TableCell>
                         <TableCell>{row.timeOut}</TableCell>
                         <TableCell>{row.totalHours}</TableCell>
@@ -3227,7 +3228,7 @@ export default function AttendanceMonitoring() {
             }}
           >
             <EditNote color="warning" /> Correct & Reprocess Attendance —{" "}
-            {editRecord?.employee} ({editRecord?.date})
+            {editRecord?.employee} ({formatDisplayDate(editRecord?.date)})
           </Box>
         </DialogTitle>
         <DialogContent

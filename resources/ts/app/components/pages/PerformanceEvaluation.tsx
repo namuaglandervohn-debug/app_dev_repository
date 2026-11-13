@@ -1,3 +1,5 @@
+import { formatDisplayDateRange } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -21,7 +23,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -145,7 +146,7 @@ const fullName = (row: any) =>
   [row.first_name, row.middle_name, row.last_name, row.suffix].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 
 const formatPeriod = (r: Pick<EvaluationResult, "evaluation_period_start" | "evaluation_period_end" | "evaluation_period_label">) =>
-  r.evaluation_period_label || `${r.evaluation_period_start} — ${r.evaluation_period_end}`;
+  formatDisplayDateRange(r.evaluation_period_label || `${r.evaluation_period_start} — ${r.evaluation_period_end}`);
 
 const money = (n: number | null | undefined) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 

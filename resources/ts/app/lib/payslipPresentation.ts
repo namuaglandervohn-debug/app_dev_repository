@@ -1,3 +1,4 @@
+import { formatDisplayDate } from './displayDate';
 import { COMPANY } from './constants';
 
 export function payslipHeading(outlet?: string) {
@@ -11,13 +12,9 @@ export function payslipHeading(outlet?: string) {
 
 export function payslipPeriod(start?: string, end?: string, fallback = '—') {
   if (!start || !end) return fallback;
-  const first = new Date(`${start.slice(0, 10)}T00:00:00Z`);
-  const last = new Date(`${end.slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(first.getTime()) || !Number.isFinite(last.getTime())) return fallback;
-  const date = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-  const monthDay = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
-  const startLabel = first.getUTCFullYear() === last.getUTCFullYear() ? monthDay.format(first) : date.format(first);
-  return `${startLabel} - ${date.format(last)}`;
+  const first = formatDisplayDate(start.slice(0, 10));
+  const last = formatDisplayDate(end.slice(0, 10));
+  return first && last ? first + ' - ' + last : fallback;
 }
 
 export function escapePayslipText(value: string) {

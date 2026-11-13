@@ -34,7 +34,8 @@ test('renders missing requirements, interview details and terminal statuses safe
       assert.ok(mail.text.includes(status));
       assert.match(mail.html, /&lt;script&gt;/);
       assert.ok(!mail.html.includes('<script>'));
-      assert.match(mail.text, /2026-10-21/);
+      assert.match(mail.text, /Interview Date: 10\/21\/2026/);
+      assert.ok(mail.html.includes('10/21/2026'));
       assert.match(mail.text, /Main Office/);
       return Response.json({ id: 'mail-id' });
     }, { ...payload, status, note: '<script>Test & note</script>', interview_date: '2026-10-21', interview_time: '09:00', interview_location: 'Main Office' });

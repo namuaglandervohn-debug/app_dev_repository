@@ -1,3 +1,4 @@
+import { formatDisplayDate } from '../../lib/displayDate';
 import DashboardOverview, { DashboardHeader } from '../layouts/DashboardOverview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -147,14 +148,7 @@ const formatCurrency = (value: unknown): string =>
   })}`;
 
 const formatDate = (value?: string | null): string => {
-  if (!value) return '—';
-
-  const dateOnly = String(value).slice(0, 10);
-  const date = new Date(`${dateOnly}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) return dateOnly;
-
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+  return formatDisplayDate(value, '—');
 };
 
 const formatPeriod = (summary?: PayrollSummaryRow): string => {

@@ -79,14 +79,15 @@ export async function handleStatusEmail(request, response, { env = process.env, 
   const fromAddress = env.RESEND_FROM_ADDRESS || 'no-reply@buenaventura-hris.me';
   const fromName = env.RESEND_FROM_NAME || appName;
   const name = data.name || 'Applicant';
+  const interviewDate = data.interview_date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3/$1');
   const details = [
     data.position && `Position: ${data.position}`,
-    data.interview_date && `Interview Date: ${data.interview_date}`,
+    interviewDate && `Interview Date: ${interviewDate}`,
     data.interview_time && `Interview Time: ${data.interview_time}`,
     data.interview_location && `Location: ${data.interview_location}`,
     data.note && `Note: ${data.note}`,
   ].filter(Boolean);
-  const html = renderApplicationStatusEmail(data, appName);
+  const html = renderApplicationStatusEmail({ ...data, interview_date: interviewDate }, appName);
   try {
     const result = await fetcher('https://api.resend.com/emails', {
       method: 'POST',

@@ -1,6 +1,7 @@
+import TextField from '../DateTextField';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, MenuItem, Paper, Stack, Typography } from '@mui/material';
 import { AccountCircle, ArrowBackRounded, Assignment, Close, EditNote, Save, TrackChanges } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -133,7 +134,7 @@ export default function ApplicantPortal() {
       <Grid container spacing={inProfile ? 1.5 : 2}>
         {items.map(([key, label, required]) => {
           const options = readOnly ? undefined : choices[key];
-          const isDate = key === 'birthdate' && !readOnly;
+          const isDate = key === 'birthdate';
           return (
             <Grid key={key} size={{ xs: 12, sm: 6 }}>
               <TextField

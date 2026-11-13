@@ -1,3 +1,5 @@
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { loadApplicationFiles } from '../../lib/applicationFiles';
@@ -56,7 +58,6 @@ import {
   TableHead,
   TableRow,
   Tabs,
-  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -396,25 +397,7 @@ const ensureArray = <T,>(value: T[] | string | null | undefined): T[] => {
   return [];
 };
 
-const formatDateTime = (dateString?: string) => {
-  if (!dateString) return '—';
-
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return displayValue(dateString);
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-
-  let hours = date.getHours();
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-
-  hours = hours % 12;
-  hours = hours || 12;
-
-  return `${year}-${month}-${day} ${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
-};
+const formatDateTime = (value?: string) => formatDisplayDateTime(value, displayValue(value));
 
 const formatInterviewDateTime = (date?: string, time?: string) => {
   if (!date) return '—';
@@ -1192,7 +1175,7 @@ export default function RecruitmentManagement() {
             is_archived: true,
             requirements_note: [
               app.requirementsNote,
-              `Archived ${new Date().toLocaleString()} by ${user?.email ?? user?.name ?? 'HR/Admin'} for applicant record retention.`,
+              `Archived ${formatDisplayDateTime(new Date())} by ${user?.email ?? user?.name ?? 'HR/Admin'} for applicant record retention.`,
             ].filter(Boolean).join('\n'),
           }
         : {
@@ -2526,7 +2509,7 @@ export default function RecruitmentManagement() {
                   {renderProfileField('Total Years of Experience', selectedApp.experience ?? workExperience.totalYearsExperience, { xs: 12, sm: 6 }, 'experience')}
                   {renderProfileField('Company / Organization', raw.company_organization ?? workExperience.companyOrganization)}
                   {renderProfileField('Position Held', raw.position_held ?? workExperience.positionHeld)}
-                  {renderProfileField('Employment Period', raw.employment_period ?? workExperience.employmentPeriod)}
+                  {renderProfileField('Employment Period', formatDisplayDateRange(raw.employment_period ?? workExperience.employmentPeriod))}
                   {renderProfileField('Duties / Responsibilities', raw.duties_responsibilities ?? workExperience.dutiesResponsibilities, { xs: 12 })}
 
                   {renderProfileSectionTitle('V. SKILLS AND QUALIFICATIONS')}
@@ -2569,7 +2552,7 @@ export default function RecruitmentManagement() {
 
                   {renderProfileSectionTitle('VIII. APPLICANT DECLARATION')}
                   {renderProfileField('Applicant Signature / Full Name', raw.applicant_signature ?? extra.applicantSignature)}
-                  {renderProfileField('Declaration Date', raw.declaration_date ?? extra.declarationDate)}
+                  {renderProfileField('Declaration Date', formatDisplayDate(raw.declaration_date ?? extra.declarationDate))}
 
                   {renderProfileSectionTitle('IX. HR REQUIREMENTS VALIDATION')}
                   {renderRequirementChecklist()}
@@ -2577,7 +2560,7 @@ export default function RecruitmentManagement() {
                   {selectedApp.status === 'For Interview' && (
                     <>
                       {renderProfileSectionTitle('X. INTERVIEW DETAILS')}
-                      {renderProfileField('Interview Date', selectedApp.interviewDate, { xs: 12, sm: 6 })}
+                      {renderProfileField('Interview Date', formatDisplayDate(selectedApp.interviewDate), { xs: 12, sm: 6 })}
                       {renderProfileField('Interview Time', selectedApp.interviewTime, { xs: 12, sm: 6 })}
                       {renderProfileField('Interview Location', selectedApp.interviewLocation, { xs: 12 })}
                       {renderProfileField('Interview Notes', selectedApp.interviewNotes, { xs: 12 })}

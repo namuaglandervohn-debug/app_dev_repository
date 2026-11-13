@@ -1,3 +1,5 @@
+import { formatDisplayDate } from '../../lib/displayDate';
+import TextField from '../DateTextField';
 import { useState, useEffect } from 'react';
 import {
   Box,
@@ -15,7 +17,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   MenuItem,
   Grid,
   CircularProgress,
@@ -305,11 +306,7 @@ function getReviewerUserId(currentUser: any) {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '—';
-  const dateOnly = value.slice(0, 10);
-  const date = new Date(`${dateOnly}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return dateOnly;
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+  return formatDisplayDate(value, '—');
 }
 
 function formatTime(value?: string | null) {

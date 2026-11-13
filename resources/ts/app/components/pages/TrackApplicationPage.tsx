@@ -1,3 +1,4 @@
+import { formatDisplayDate } from '../../lib/displayDate';
 import { useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
@@ -194,7 +195,7 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
         email: data.email ?? '',
         phone: data.phone_number ?? '',
         status: data.is_archived ? 'Archived' : data.status ?? 'Submitted',
-        dateApplied: data.created_at ? new Date(data.created_at).toLocaleDateString() : '',
+        dateApplied: formatDisplayDate(data.created_at),
         interviewDate: data.interview_date ?? '',
         interviewTime: data.interview_time ?? '',
         interviewLocation: data.interview_location ?? '',
@@ -566,7 +567,7 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
                         <Divider sx={{ mb: 2.5, borderColor: 'rgba(2, 136, 209, 0.14)' }} />
                         <Grid container spacing={2}>
                           <Grid size={{ xs: 12, sm: 6 }}>
-                            <InfoCard icon={<Event />} label="Interview Date" value={applicationData.interviewDate} />
+                            <InfoCard icon={<Event />} label="Interview Date" value={formatDisplayDate(applicationData.interviewDate)} />
                           </Grid>
                           {applicationData.interviewTime && (
                             <Grid size={{ xs: 12, sm: 6 }}>
