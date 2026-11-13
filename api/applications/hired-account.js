@@ -86,6 +86,7 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
       }
       const authPayload = {
         email, password, email_confirm: true,
+        app_metadata: { hris_temporary_password: true },
         user_metadata: { ...(authUser?.user_metadata ?? {}), full_name: name, role: 'employee', employee_id: employeeId },
       };
       const authResult = check(authUser

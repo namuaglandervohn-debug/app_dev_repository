@@ -9,12 +9,13 @@ import {
 import {
   AccountCircle, BusinessCenter, Phone, Email, LocationOn, CalendarMonth,
   Assignment, TaskAlt, CancelOutlined, HelpOutline, Badge,
-  EditNote, Save, Close, CloudUpload, InsertDriveFile,
+  EditNote, Save, Close, CloudUpload, InsertDriveFile, LockReset,
   DeleteOutline as DeleteIcon, FileDownload, Visibility,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import ActionSnackbar from '../ActionSnackbar';
+import ChangePasswordDialog from '../ChangePasswordDialog';
 import { profileCardSx as softCardSx, profileDetailsSx as innerCardSx, profileFieldSx as softTextFieldSx, profileAvatarSx, profileHeroSx, profileIconSx as sectionIconSx } from '../layouts/profileStyles';
 import ProfileSummary from '../layouts/ProfileSummary';
 
@@ -173,6 +174,7 @@ export default function MyProfile() {
   const [application, setApplication] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Employee>>({});
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
@@ -485,6 +487,9 @@ export default function MyProfile() {
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button variant="outlined" startIcon={<LockReset />} onClick={() => setPasswordDialogOpen(true)} sx={pillButtonSx}>
+              Change Password
+            </Button>
             {employee && !editing && (
               <Button
                 variant="contained"
@@ -937,6 +942,13 @@ export default function MyProfile() {
         </Grid>
       </Grid>
 
+      {passwordDialogOpen && <ChangePasswordDialog
+        onClose={() => setPasswordDialogOpen(false)}
+        onSuccess={() => {
+          setPasswordDialogOpen(false);
+          setSnackbar({ open: true, message: 'Password updated.', severity: 'success' });
+        }}
+      />}
       <ActionSnackbar
         open={snackbar.open}
         message={snackbar.message}

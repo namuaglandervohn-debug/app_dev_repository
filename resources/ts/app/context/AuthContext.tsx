@@ -9,7 +9,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string, role?: UserRole) => Promise<void>;
   logout: () => void;
-  changePassword: (userId: string, newPassword: string) => Promise<void>;
+  changePassword: (newPassword: string, currentPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,11 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => session.stop();
   }, [session]);
 
-  const changePassword = async (userId: string, newPassword: string) => {
-    if (state.user?.id !== userId) throw new Error('Only the currently signed-in user can change their password.');
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw error;
-  };
+  const changePassword = (newPassword: string, currentPassword: string) =>
+    session.changePassword(newPassword, currentPassword, state.user?.mustChangePassword === true);
 
   return <AuthContext.Provider value={{ ...state, login: session.login, logout: session.logout, changePassword }}>{children}</AuthContext.Provider>;
 }

@@ -271,6 +271,7 @@ Route::post('/admin/user-accounts', function (Request $request) {
         'email' => $email,
         'password' => $data['password'],
         'email_confirm' => true,
+        ...($databaseRole === 'employee' ? ['app_metadata' => ['hris_temporary_password' => true]] : []),
         'user_metadata' => [
             'full_name' => $name,
             'role' => $databaseRole,
@@ -468,6 +469,7 @@ Route::post('/applications/hired-account', function (Request $request) {
         'email' => $email,
         'password' => $data['password'],
         'email_confirm' => true,
+        'app_metadata' => ['hris_temporary_password' => true],
         'user_metadata' => [
             'full_name' => $name,
             'role' => 'employee',

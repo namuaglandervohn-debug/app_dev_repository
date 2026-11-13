@@ -8,6 +8,7 @@ export interface AuthUser {
   role: UserRole;
   employeeId?: string | null;
   outlet?: string | null;
+  mustChangePassword?: boolean;
 }
 
 export function normalizeAppRole(role: unknown): UserRole {
@@ -21,7 +22,7 @@ export function normalizeAppRole(role: unknown): UserRole {
 }
 
 type Client = Pick<SupabaseClient, 'auth' | 'from' | 'rpc'>;
-type AuthIdentity = Pick<User, 'id' | 'email'> & Partial<Pick<User, 'user_metadata'>>;
+type AuthIdentity = Pick<User, 'id' | 'email'> & Partial<Pick<User, 'user_metadata' | 'app_metadata'>>;
 const PROFILE_COLUMNS = 'user_id, auth_user_id, full_name, email, role, employee_id, outlet';
 const missingProfileMessage = 'This login is not linked to an active matching HRIS account. Please contact HR.';
 
@@ -68,6 +69,7 @@ export async function loadAuthProfile(client: Client, authUser: AuthIdentity): P
     role: normalizeAppRole(account.role),
     employeeId: account.employee_id ?? null,
     outlet: account.outlet ?? null,
+    ...(authUser.app_metadata?.hris_temporary_password === true && { mustChangePassword: true }),
   };
 }
 
@@ -186,6 +188,30 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
       } finally {
         signingIn = false;
       }
+    },
+    async changePassword(newPassword: string, currentPassword: string, required: boolean) {
+      const ticket = revision;
+      const userId = identity;
+      if (!userId || !current(ticket)) throw new Error('Sign in again to change your password.');
+      await enqueue(async () => {
+        if (!current(ticket)) throw new Error('Sign in again to change your password.');
+        const { data, error } = await client.auth.updateUser({
+          password: newPassword,
+          ...(currentPassword && { current_password: currentPassword }),
+        });
+        if (error) throw error;
+        if (!required) return;
+        if (!current(ticket)) return;
+        const refreshed = await client.auth.refreshSession();
+        const user = refreshed.data.user;
+        if (refreshed.error || !user || user.id !== userId || user.id !== data.user?.id) {
+          throw new Error('Your password was saved. Sign out and sign in with your new password.');
+        }
+        if (user.app_metadata?.hris_temporary_password === true) {
+          throw new Error('Your password was saved, but access could not be activated. Contact HR.');
+        }
+        await resolveProfile(user, ticket);
+      });
     },
     logout,
   };

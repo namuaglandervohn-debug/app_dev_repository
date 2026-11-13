@@ -16,6 +16,25 @@ const deferred = () => {
 };
 const tick = () => new Promise((done) => setTimeout(done, 5));
 
+test('an employee stays gated until Auth saves the password and refreshes the session', async () => {
+  const employee = { id: 'employee-auth', email: 'employee@example.test', app_metadata: { hris_temporary_password: true } };
+  const updated = { ...employee, app_metadata: {} };
+  const h = harness({ restored: employee, rows: [profile(employee, 'employee')] });
+  h.client.auth.updateUser = async ({ password }) => password === 'temporary-fixture'
+    ? { error: new Error('Choose a different password') }
+    : { data: { user: updated }, error: null };
+  h.client.auth.refreshSession = async () => ({ data: { user: updated }, error: null });
+  h.session.start();
+  await tick();
+  assert.equal(h.latest().user.mustChangePassword, true);
+  await assert.rejects(h.session.changePassword('temporary-fixture', '', true), /different password/);
+  assert.equal(h.latest().user.mustChangePassword, true);
+  await h.session.changePassword('replacement-fixture', '', true);
+  assert.equal(h.latest().user.mustChangePassword, undefined);
+  assert.equal(h.latest().user.role, 'employee');
+  h.session.stop();
+});
+
 function harness({ restored = null, rows = [hrProfile, gmProfile], applicantRows = [], getSession, queryResult, restoreApplicant, signIn, signOut } = {}) {
   let listener = () => {};
   const states = [];

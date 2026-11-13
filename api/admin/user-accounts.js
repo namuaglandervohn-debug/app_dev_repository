@@ -113,6 +113,7 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         email,
         password,
         email_confirm: true,
+        ...(role === 'employee' && { app_metadata: { hris_temporary_password: true } }),
         user_metadata: { full_name: name, role, employee_id: employeeId || null },
       });
       if (created.error) {

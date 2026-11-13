@@ -16,6 +16,7 @@ import {
 import { useState, useEffect, type ReactNode } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import BrandLogo from '../BrandLogo';
+import ChangePasswordDialog from '../ChangePasswordDialog';
 import { accountColors } from './accountColors';
 
 const drawerWidth = 244;
@@ -58,7 +59,7 @@ export default function RootLayout({ children, applicant }: {
 
   // Fetch notifications based on role — must be before any early return
   useEffect(() => {
-  if (!user || user.role === 'applicant') return;
+  if (!user || user.role === 'applicant' || user.mustChangePassword) return;
 
   const fetchNotifications = async () => {
     try {
@@ -113,6 +114,11 @@ export default function RootLayout({ children, applicant }: {
 
   // Early return AFTER all hooks
   if (!user) return <Navigate to="/login" replace />;
+  if (user.mustChangePassword) {
+    return <Box sx={{ minHeight: '100vh', bgcolor: '#f2f7f3' }}>
+      <ChangePasswordDialog required onClose={logout} />
+    </Box>;
+  }
 
   if (user.role === 'applicant' && !applicant) return <Navigate to="/applicant" replace />;
   if (user.role !== 'applicant' && applicant) return <Navigate to="/dashboard" replace />;
