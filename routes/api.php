@@ -643,7 +643,11 @@ Route::post('/applications/send-status-email', function (Request $request) {
     if ($note) $details[] = "Note: {$note}";
 
     try {
-        $response = Http::withToken($apiKey)
+        $mailRequest = Http::withToken($apiKey);
+        if ($status === 'Hired') {
+            $mailRequest->withHeader('Idempotency-Key', 'hired-status/'.$data['applicant_id']);
+        }
+        $response = $mailRequest
             ->timeout(10)
             ->acceptJson()
             ->asJson()

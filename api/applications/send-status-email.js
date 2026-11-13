@@ -91,7 +91,10 @@ export async function handleStatusEmail(request, response, { env = process.env, 
   try {
     const result = await fetcher('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: {
+        Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json',
+        ...(data.status === 'Hired' && { 'Idempotency-Key': `hired-status/${data.applicant_id}` }),
+      },
       signal: AbortSignal.timeout(10000),
       body: JSON.stringify({
         from: `${fromName} <${fromAddress}>`, to: [data.email],

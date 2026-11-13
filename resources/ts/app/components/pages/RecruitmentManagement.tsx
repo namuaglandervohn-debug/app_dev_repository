@@ -946,6 +946,7 @@ export default function RecruitmentManagement() {
     if (!retryHandoff && !canDecide) return;
     hiringInProgress.current = true;
     setCreatingAccount(true);
+    let hiredStatusEmail: Promise<boolean> | undefined;
 
     try {
       if (!retryHandoff) await updateApplicantRecord(
@@ -968,6 +969,10 @@ export default function RecruitmentManagement() {
         setViewDialog(false);
         return;
       }
+
+      hiredStatusEmail = app.email
+        ? sendApplicantStatusEmail(app, 'Hired').then(() => true, () => false)
+        : Promise.resolve(false);
 
       const firstName = app.firstName ?? '';
       const middleName = app.middleName ?? '';
@@ -1036,11 +1041,21 @@ export default function RecruitmentManagement() {
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(apiErrorMessage(result, response.status, 'Employee account setup failed. Please retry.'));
-      setSnackbar({ open: true, message: result.message, severity: result.welcome_email_sent ? 'success' : 'warning' });
+      const statusSent = await hiredStatusEmail;
+      const statusMessage = statusSent
+        ? 'Hired status email accepted for delivery.'
+        : 'The Hired status email could not be sent. Use Complete Employee Account Setup to retry.';
+      setSnackbar({ open: true, message: `${result.message} ${statusMessage}`,
+        severity: result.welcome_email_sent && statusSent ? 'success' : 'warning' });
       setViewDialog(false);
       void fetchApplications({ silent: true });
     } catch (e: any) {
-      setSnackbar({ open: true, message: `Failed: ${e.message}`, severity: 'error' });
+      const statusMessage = hiredStatusEmail
+        ? await hiredStatusEmail
+          ? ' Hired status email accepted for delivery.'
+          : ' The Hired status email could not be sent.'
+        : '';
+      setSnackbar({ open: true, message: `Failed: ${e.message}${statusMessage}`, severity: 'error' });
     } finally {
       hiringInProgress.current = false;
       setCreatingAccount(false);
