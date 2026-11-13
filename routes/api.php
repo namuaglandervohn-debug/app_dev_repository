@@ -342,7 +342,7 @@ Route::post('/admin/user-accounts', function (Request $request) {
         }
     }
 
-    $welcomeEmailId = sendAccountWelcomeEmail($name, $email, $data['password'], $profile['user_id']);
+    $welcomeEmailId = sendAccountWelcomeEmail($name, $email, $data['password'], $authUserId);
 
     return response()->json([
         'message' => 'Supabase Auth user and HRIS account profile created.',
@@ -352,7 +352,7 @@ Route::post('/admin/user-accounts', function (Request $request) {
     ], 201);
 });
 
-function sendAccountWelcomeEmail(string $name, string $email, string $password, string $userId): ?string
+function sendAccountWelcomeEmail(string $name, string $email, string $password, string $authUserId): ?string
 {
     $key = trim((string) config('services.resend.key'));
     if ($key === '') {
@@ -363,7 +363,8 @@ function sendAccountWelcomeEmail(string $name, string $email, string $password, 
         $values = ['name' => $name, 'email' => $email, 'password' => $password];
         $template = \Illuminate\Support\Facades\File::get(resource_path('views/emails/account-welcome.html'));
         $html = preg_replace_callback('/\[\[(name|email|password)\]\]/', fn ($match) => e($values[$match[1]]), $template);
-        $response = Http::withToken($key)->withHeader('Idempotency-Key', 'account-welcome/'.$userId)
+        // Sequential HRIS IDs can be reused after deletion. The Auth ID is unique to this creation.
+        $response = Http::withToken($key)->withHeader('Idempotency-Key', 'account-welcome/'.$authUserId)
             ->acceptJson()->timeout(8)->post('https://api.resend.com/emails', [
                 'from' => sprintf('%s <%s>', config('services.resend.from_name'), config('services.resend.from_address')),
                 'to' => [$email],

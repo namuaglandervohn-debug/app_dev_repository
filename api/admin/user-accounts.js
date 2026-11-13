@@ -19,7 +19,7 @@ const unwrap = ({ data, error }) => {
   return data;
 };
 
-async function sendWelcomeEmail({ env, fetcher, name, email, password, userId }) {
+async function sendWelcomeEmail({ env, fetcher, name, email, password, authUserId }) {
   const key = clean(env.RESEND_API_KEY);
   if (!key) return null;
 
@@ -33,7 +33,7 @@ async function sendWelcomeEmail({ env, fetcher, name, email, password, userId })
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': `account-welcome/${userId}`,
+      'Idempotency-Key': `account-welcome/${authUserId}`,
     },
     signal: AbortSignal.timeout(8000),
     body: JSON.stringify({
@@ -161,7 +161,7 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         }
       }
 
-      const welcomeEmailId = await sendWelcomeEmail({ env, fetcher, name, email, password, userId: profile.user_id })
+      const welcomeEmailId = await sendWelcomeEmail({ env, fetcher, name, email, password, authUserId })
         .catch(() => null);
       return send(201, {
         message: 'Account created.',

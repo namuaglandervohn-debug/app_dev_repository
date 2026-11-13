@@ -11,7 +11,7 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
     const url = new URL(input);
     const method = init.method ?? 'GET';
     const body = init.body ? JSON.parse(init.body) : null;
-    calls.push({ path: url.pathname, method, body });
+    calls.push({ path: url.pathname, method, body, idempotencyKey: new Headers(init.headers).get('Idempotency-Key') });
     if (url.origin === 'https://api.resend.com' && url.pathname === '/emails') {
       return json(mailStatus === 200 ? { id: 'test-message' } : { message: 'Unavailable' }, mailStatus);
     }
@@ -63,6 +63,7 @@ test('creates the employee record before inserting the linked account', async ()
     ['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails']);
   assert.equal(calls.find(call => call.path === '/rest/v1/user_accounts' && call.method === 'POST').body.password, null);
   const mail = calls.at(-1).body;
+  assert.equal(calls.at(-1).idempotencyKey, `account-welcome/${employeeAuthId}`);
   assert.deepEqual(mail.to, ['employee@example.test']);
   assert.equal(mail.subject, 'Welcome to Buenaventura Estate');
   assert.match(mail.html, /Example&lt;&amp;&gt;123/);

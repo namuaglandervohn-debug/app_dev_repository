@@ -54,6 +54,7 @@ class UserAccountsTest extends TestCase
 
         $this->assertSame(['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails'], $writes);
         Http::assertSent(fn (Request $request) => $request->url() === 'https://api.resend.com/emails'
+            && $request->hasHeader('Idempotency-Key', 'account-welcome/new-auth')
             && $request['to'] === ['employee@example.test']
             && str_contains($request['html'], 'Welcome to Buenaventura Estate')
             && str_contains($request['html'], 'Example-Test123'));
