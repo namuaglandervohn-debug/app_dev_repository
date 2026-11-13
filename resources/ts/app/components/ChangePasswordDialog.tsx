@@ -1,6 +1,25 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Stack, TextField, type TextFieldProps } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+
+function PasswordField({ label, slotProps, ...props }: TextFieldProps & { label: string }) {
+  const [visible, setVisible] = useState(false);
+
+  return <TextField {...props} label={label} type={visible ? 'text' : 'password'}
+    slotProps={{
+      ...slotProps,
+      input: {
+        endAdornment: <InputAdornment position="end">
+          <IconButton type="button" edge="end" aria-label={`${visible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+            onMouseDown={event => event.preventDefault()} onClick={() => setVisible(value => !value)}>
+            {visible ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+          </IconButton>
+        </InputAdornment>,
+      },
+    }}
+  />;
+}
 
 export default function ChangePasswordDialog({ required = false, onClose, onSuccess }: {
   required?: boolean;
@@ -62,12 +81,12 @@ export default function ChangePasswordDialog({ required = false, onClose, onSucc
           <Stack spacing={2} sx={{ pt: 1 }}>
             {error && <Alert severity="error">{error}</Alert>}
             {askForCurrent && (
-              <TextField autoFocus required name="currentPassword" type="password" autoComplete="current-password"
+              <PasswordField autoFocus required name="currentPassword" autoComplete="current-password"
                 label={required ? 'Temporary password' : 'Current password'} />
             )}
-            <TextField autoFocus={!askForCurrent} required name="newPassword" type="password" autoComplete="new-password"
+            <PasswordField autoFocus={!askForCurrent} required name="newPassword" autoComplete="new-password"
               label="New password" helperText="Use at least 8 characters." slotProps={{ htmlInput: { minLength: 8 } }} />
-            <TextField required name="confirmPassword" type="password" autoComplete="new-password" label="Confirm new password" />
+            <PasswordField required name="confirmPassword" autoComplete="new-password" label="Confirm new password" />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
