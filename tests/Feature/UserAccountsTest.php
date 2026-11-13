@@ -18,6 +18,7 @@ class UserAccountsTest extends TestCase
             'services.supabase.url' => 'https://supabase.test',
             'services.supabase.anon_key' => 'test-anon',
             'services.supabase.service_role_key' => 'test-service',
+            'services.resend.key' => 'test-resend',
         ]);
         $writes = [];
         Http::preventStrayRequests();
@@ -38,6 +39,7 @@ class UserAccountsTest extends TestCase
             return match ($path) {
                 '/auth/v1/admin/users' => Http::response(['id' => 'new-auth'], 201),
                 '/rest/v1/employees', '/rest/v1/user_accounts' => Http::response([$request->data()], 201),
+                '/emails' => Http::response(['id' => 'test-message'], 200),
             };
         });
 
@@ -47,8 +49,12 @@ class UserAccountsTest extends TestCase
             'password' => 'Example-Test123',
             'role' => 'employee',
             'employee_id' => 'EMP001',
-        ])->assertCreated()->assertJsonPath('user.employee_id', 'EMP001');
+        ])->assertCreated()->assertJsonPath('user.employee_id', 'EMP001')->assertJsonPath('welcome_email_sent', true);
 
-        $this->assertSame(['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts'], $writes);
+        $this->assertSame(['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails'], $writes);
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://api.resend.com/emails'
+            && $request['to'] === ['employee@example.test']
+            && str_contains($request['html'], 'Welcome to Buenaventura Estate')
+            && str_contains($request['html'], 'Example-Test123'));
     }
 }

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
 
 const roles = new Map([
@@ -18,7 +19,35 @@ const unwrap = ({ data, error }) => {
   return data;
 };
 
-export function createUserAccountsHandler({ env = process.env, clientFactory = createClient } = {}) {
+async function sendWelcomeEmail({ env, fetcher, name, email, password, userId }) {
+  const key = clean(env.RESEND_API_KEY);
+  if (!key) return false;
+
+  const template = await readFile(new URL('../../resources/views/emails/account-welcome.html', import.meta.url), 'utf8');
+  const values = { name, email, password };
+  const escapeHtml = (value) => value.replace(/[&<>"']/g, char =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  const html = template.replace(/\[\[(name|email|password)\]\]/g, (_, field) => escapeHtml(values[field]));
+  const response = await fetcher('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': `account-welcome/${userId}`,
+    },
+    signal: AbortSignal.timeout(8000),
+    body: JSON.stringify({
+      from: `${clean(env.RESEND_FROM_NAME) || 'Buenaventura HRIS'} <${clean(env.RESEND_FROM_ADDRESS) || 'no-reply@buenaventura-hris.me'}>`,
+      to: [email],
+      subject: 'Welcome to Buenaventura Estate',
+      html,
+      text: `Hi ${name},\n\nYour HRIS account is ready.\nSign-in email: ${email}\nTemporary password: ${password}\n\nSign in: https://app-dev-repository.vercel.app/login\nChange your temporary password after signing in. If you weren’t expecting this email, contact HR.`,
+    }),
+  });
+  return response.ok && typeof (await response.json())?.id === 'string';
+}
+
+export function createUserAccountsHandler({ env = process.env, clientFactory = createClient, fetcher = fetch } = {}) {
   return async (request, response) => {
     const send = (status, payload) => {
       response.status(status).setHeader('Content-Type', 'application/json');
@@ -130,7 +159,9 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         }
       }
 
-      return send(201, { message: 'Account created.', user: profile });
+      const welcomeEmailSent = await sendWelcomeEmail({ env, fetcher, name, email, password, userId: profile.user_id })
+        .catch(() => false);
+      return send(201, { message: 'Account created.', user: profile, welcome_email_sent: welcomeEmailSent });
     } catch {
       return send(502, { message: 'The account could not be saved. Refresh User Accounts before retrying.' });
     }

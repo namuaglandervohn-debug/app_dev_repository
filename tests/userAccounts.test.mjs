@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
 import { createUserAccountsHandler } from '../api/admin/user-accounts.js';
 
-function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse = false } = {}) {
+function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse = false, mailStatus = 200 } = {}) {
   const calls = [];
   let savedProfile = null;
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -12,6 +12,9 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
     const method = init.method ?? 'GET';
     const body = init.body ? JSON.parse(init.body) : null;
     calls.push({ path: url.pathname, method, body });
+    if (url.origin === 'https://api.resend.com' && url.pathname === '/emails') {
+      return json(mailStatus === 200 ? { id: 'test-message' } : { message: 'Unavailable' }, mailStatus);
+    }
     if (url.pathname === '/auth/v1/user') return json({ id: 'admin-auth', email: 'admin@example.test' });
     if (url.pathname === '/auth/v1/admin/users') return json({ id: employeeAuthId }, 201);
     if (url.pathname === `/auth/v1/admin/users/${employeeAuthId}` && method === 'DELETE') return json({});
@@ -30,7 +33,8 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
     throw new Error('Unexpected request: ' + url.pathname);
   };
   const handler = createUserAccountsHandler({
-    env: { SUPABASE_URL: 'https://supabase.test', SUPABASE_SERVICE_ROLE_KEY: 'test-key' },
+    env: { SUPABASE_URL: 'https://supabase.test', SUPABASE_SERVICE_ROLE_KEY: 'test-key', RESEND_API_KEY: 'test-mail-key' },
+    fetcher: fetch,
     clientFactory: (url, key, options) => createClient(url, key, { ...options, global: { fetch } }),
   });
   const response = {
@@ -41,7 +45,7 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
   const run = () => handler({
     method: 'POST',
     headers: { authorization: 'Bearer test-token' },
-    body: { name: 'Test Employee', email: 'employee@example.test', password: 'Example-Test123', role: 'employee', employee_id: 'EMP001' },
+    body: { name: 'Test Employee', email: 'employee@example.test', password: 'Example<&>123', role: 'employee', employee_id: 'EMP001' },
   }, response);
   return { run, calls, response };
 }
@@ -53,9 +57,16 @@ test('creates the employee record before inserting the linked account', async ()
   await run();
   assert.equal(response.code, 201);
   assert.equal(response.body.user.employee_id, 'EMP001');
+  assert.equal(response.body.welcome_email_sent, true);
   assert.deepEqual(calls.filter(call => call.method === 'POST').map(call => call.path),
-    ['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts']);
-  assert.equal(calls.at(-1).body.password, null);
+    ['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails']);
+  assert.equal(calls.find(call => call.path === '/rest/v1/user_accounts' && call.method === 'POST').body.password, null);
+  const mail = calls.at(-1).body;
+  assert.deepEqual(mail.to, ['employee@example.test']);
+  assert.equal(mail.subject, 'Welcome to Buenaventura Estate');
+  assert.match(mail.html, /Example&lt;&amp;&gt;123/);
+  assert.match(mail.text, /Example<&>123/);
+  assert.doesNotMatch(JSON.stringify(response.body), /Example<&>123/);
 });
 
 test('rejects non-admins before creating a login', async () => {
@@ -70,6 +81,15 @@ test('removes only the newly created login when the profile insert fails', async
   await run();
   assert.equal(response.code, 502);
   assert.deepEqual(calls.filter(call => call.method === 'DELETE').map(call => call.path), [`/auth/v1/admin/users/${employeeAuthId}`]);
+  assert.ok(calls.every(call => call.path !== '/emails'));
+});
+
+test('keeps the account active when the mail provider fails', async () => {
+  const { run, calls, response } = fixture({ mailStatus: 503 });
+  await run();
+  assert.equal(response.code, 201);
+  assert.equal(response.body.welcome_email_sent, false);
+  assert.ok(calls.every(call => call.method !== 'DELETE'));
 });
 
 test('keeps a linked account when the insert succeeded and the response was lost', async () => {

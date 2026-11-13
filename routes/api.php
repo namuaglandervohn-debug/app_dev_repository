@@ -345,8 +345,35 @@ Route::post('/admin/user-accounts', function (Request $request) {
     return response()->json([
         'message' => 'Supabase Auth user and HRIS account profile created.',
         'user' => $profile,
+        'welcome_email_sent' => sendAccountWelcomeEmail($name, $email, $data['password'], $profile['user_id']),
     ], 201);
 });
+
+function sendAccountWelcomeEmail(string $name, string $email, string $password, string $userId): bool
+{
+    $key = trim((string) config('services.resend.key'));
+    if ($key === '') {
+        return false;
+    }
+
+    try {
+        $values = ['name' => $name, 'email' => $email, 'password' => $password];
+        $template = \Illuminate\Support\Facades\File::get(resource_path('views/emails/account-welcome.html'));
+        $html = preg_replace_callback('/\[\[(name|email|password)\]\]/', fn ($match) => e($values[$match[1]]), $template);
+        $response = Http::withToken($key)->withHeader('Idempotency-Key', 'account-welcome/'.$userId)
+            ->acceptJson()->timeout(8)->post('https://api.resend.com/emails', [
+                'from' => sprintf('%s <%s>', config('services.resend.from_name'), config('services.resend.from_address')),
+                'to' => [$email],
+                'subject' => 'Welcome to Buenaventura Estate',
+                'html' => $html,
+                'text' => "Hi {$name},\n\nYour HRIS account is ready.\nSign-in email: {$email}\nTemporary password: {$password}\n\nSign in: https://app-dev-repository.vercel.app/login\nChange your temporary password after signing in. If you weren’t expecting this email, contact HR.",
+            ]);
+
+        return $response->successful() && is_string($response->json('id'));
+    } catch (Throwable) {
+        return false;
+    }
+}
 
 Route::post('/applications/hired-account', function (Request $request) {
     requireSupabaseAdmin($request);

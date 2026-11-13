@@ -1,6 +1,11 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/admin/user-accounts.js": {
+      "includeFiles": "resources/views/emails/account-welcome.html"
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/).*)",

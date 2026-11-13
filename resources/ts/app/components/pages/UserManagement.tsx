@@ -171,7 +171,7 @@ export default function UserManagement() {
   const [showEditPwd, setShowEditPwd] = useState(false);
   const [saving, setSaving]         = useState(false);
   const [snackbar, setSnackbar]     = useState({
-    open: false, message: '', severity: 'success' as 'success' | 'error',
+    open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning',
   });
   // Tracks whether we're computing the next EMP ID before opening the dialog
   const [empIdLoading, setEmpIdLoading] = useState(false);
@@ -348,10 +348,13 @@ export default function UserManagement() {
     setOpenAdd(false);
     setForm(EMPTY_FORM);
 
+    const welcomeEmailSent = result.welcome_email_sent === true;
     setSnackbar({
       open: true,
-      message: `Account created and linked to Supabase Auth${userData.employee_id ? ` with Employee ID ${userData.employee_id}` : ''}.`,
-      severity: "success",
+      message: welcomeEmailSent
+        ? 'Account created and welcome email sent.'
+        : 'Account created. The welcome email could not be sent. Contact the new user with sign-in instructions.',
+      severity: welcomeEmailSent ? "success" : "warning",
     });
   } catch (e: any) {
     setSnackbar({
