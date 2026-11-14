@@ -31,6 +31,7 @@ import {
   Storefront,
   Sync,
   TaskAlt,
+  VisibilityOutlined,
   ViewWeek,
   WorkOutline,
 } from '@mui/icons-material';
@@ -385,7 +386,7 @@ const normalizeWeekInput = (value: string) => {
 };
 
 const parseWeekRange = (week: string) => {
-  const normalized = stripSpecialDutyReason(week).replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
+  const normalized = normalizeWeekInput(stripSpecialDutyReason(week)).replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
   const match = normalized.match(/^([A-Za-z]+)\s+(\d{1,2})\s*-\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})$/);
   if (!match) return null;
 
@@ -523,6 +524,106 @@ const getWeekRange = (offsetWeeks: number = 0): string => {
   return `${MONTHS[mMonth]} ${mDay} – ${MONTHS[sMonth]} ${sDay}, ${year}`;
 };
 
+function WeeklyScheduleDialog({ selected, schedules, onClose }: {
+  selected: Schedule;
+  schedules: Schedule[];
+  onClose: () => void;
+}) {
+  const week = stripSpecialDutyReason(selected.week);
+  const range = parseWeekRange(week);
+  const weekLabel = formatDisplayDateRange(normalizeWeekInput(week));
+  const groups = new Map<string, Schedule[]>();
+  for (const schedule of schedules) {
+    const otherRange = parseWeekRange(schedule.week);
+    const sameWeek = range && otherRange
+      ? +range.start === +otherRange.start && +range.end === +otherRange.end
+      : stripSpecialDutyReason(schedule.week) === week;
+    if (!sameWeek || (!week && schedule !== selected)) continue;
+    const outlet = displayWorkArea(schedule.outlet) || 'No Outlet';
+    const group = groups.get(outlet) ?? [];
+    group.push(schedule);
+    groups.set(outlet, group);
+  }
+  const weekDates = DAYS.map((_, index) => {
+    if (!range) return '';
+    const date = new Date(range.start);
+    date.setDate(date.getDate() + index);
+    return new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).format(date);
+  });
+
+  return (
+    <Dialog open onClose={onClose} aria-labelledby="weekly-schedule-title" maxWidth={false} fullWidth
+      PaperProps={{ sx: { maxWidth: 1500, borderRadius: { xs: 3, sm: 4 }, bgcolor: '#fbfff9' } }}>
+      <DialogTitle id="weekly-schedule-title" sx={{ bgcolor: GREEN_UI.greenDark, color: '#fff', fontWeight: 800 }}>
+        Weekly Employee Schedule
+        {weekLabel && <Typography variant="body2" component="span" sx={{ display: 'block', mt: 0.5 }}>{weekLabel}</Typography>}
+      </DialogTitle>
+      <DialogContent sx={{ p: { xs: 1.5, sm: 2.5 } }}>
+        <TableContainer tabIndex={0} role="region" aria-label="Weekly roster"
+          sx={{ border: `1px solid ${GREEN_UI.borderStrong}`, borderRadius: 2 }}>
+          <Table size="small" aria-label="Employee shifts by outlet and weekday" sx={{
+            minWidth: 990,
+            tableLayout: 'fixed',
+            '& .MuiTableCell-root': { py: 1, px: 1.25, borderBottom: `1px solid ${GREEN_UI.border}`, borderRight: `1px solid ${GREEN_UI.border}` },
+            '& .MuiTableCell-head': { bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontWeight: 800 },
+          }}>
+            <TableHead>
+              <TableRow>
+                <TableCell scope="col" sx={{ width: 160 }}>Name</TableCell>
+                <TableCell scope="col" sx={{ width: 116 }}>Position</TableCell>
+                {DAYS.map((day, index) => (
+                  <TableCell key={day} scope="col" align="center">
+                    {DAY_LABELS[index]}
+                    {weekDates[index] && <Typography variant="caption" component="span" sx={{ display: 'block' }}>{weekDates[index]}</Typography>}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            {[...groups].sort(([left], [right]) => left.localeCompare(right)).map(([outlet, rows]) => (
+              <TableBody key={outlet}>
+                <TableRow>
+                  <TableCell component="th" scope="rowgroup" colSpan={9}
+                    sx={{ bgcolor: GREEN_UI.greenDark, color: '#fff', fontWeight: 800 }}>{outlet}</TableCell>
+                </TableRow>
+                {rows.sort((left, right) => left.employee.localeCompare(right.employee)).map(schedule => {
+                  const specialDuty = getSpecialDutyReason(schedule.week);
+                  return (
+                    <TableRow key={schedule.id} sx={{ bgcolor: GREEN_UI.cardBg }}>
+                      <TableCell component="th" scope="row" sx={{ fontWeight: 700 }}>
+                        {schedule.employee}
+                        {specialDuty && <Typography variant="caption" component="span" sx={{ display: 'block', color: GREEN_UI.muted }}>Special Duty · {specialDuty}</Typography>}
+                      </TableCell>
+                      <TableCell>{schedule.position || '—'}</TableCell>
+                      {DAYS.map(day => {
+                        const shift = schedule[day].trim();
+                        const restDay = /^(rd|rest day)$/i.test(shift);
+                        return (
+                          <TableCell key={day} align="center" sx={{
+                            bgcolor: restDay ? GREEN_UI.greenSoft : GREEN_UI.cardBgSoft,
+                            color: restDay ? GREEN_UI.greenDark : GREEN_UI.text,
+                            fontWeight: restDay ? 700 : 500,
+                            whiteSpace: 'pre-line',
+                            fontSize: '0.75rem',
+                          }}>
+                            {restDay ? REST_DAY : shift.replace(/\s*\/\s*/g, '\n') || '—'}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            ))}
+          </Table>
+        </TableContainer>
+      </DialogContent>
+      <DialogActions sx={{ px: 2.5, pb: 2 }}>
+        <Button variant="outlined" onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export default function ScheduleManagement() {
   const { user } = useAuth();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -536,6 +637,7 @@ export default function ScheduleManagement() {
   const [search, setSearch] = useState('');
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
   const [editDialog, setEditDialog] = useState(false);
+  const [viewSchedule, setViewSchedule] = useState<Schedule | null>(null);
   const [editRecord, setEditRecord] = useState<Schedule | null>(null);
   const [editForm, setEditForm] = useState(EMPTY);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
@@ -2002,6 +2104,15 @@ export default function ScheduleManagement() {
                           />
                         )}
                         <Chip
+                          icon={<VisibilityOutlined sx={{ fontSize: '0.85rem !important' }} />}
+                          label="View"
+                          size="small"
+                          clickable
+                          variant="outlined"
+                          onClick={() => setViewSchedule(s)}
+                          sx={{ ...actionChipSx('primary'), '& .MuiChip-icon': { color: GREEN_UI.greenDark } }}
+                        />
+                        <Chip
                           icon={<EditIcon sx={{ fontSize: '0.85rem !important' }} />}
                           label="Edit Schedule"
                           size="small"
@@ -2061,6 +2172,10 @@ export default function ScheduleManagement() {
           </Table>
         )}
       </TableContainer>
+
+      {viewSchedule && canPublish && (
+        <WeeklyScheduleDialog selected={viewSchedule} schedules={schedules} onClose={() => setViewSchedule(null)} />
+      )}
 
       <Dialog
         open={openDialog}
