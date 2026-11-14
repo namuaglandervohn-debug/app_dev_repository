@@ -7,7 +7,7 @@ import {
   DialogTitle, DialogContent, DialogActions, Grid, CircularProgress,
   Alert, Tooltip, IconButton, MenuItem, InputAdornment,
 } from '@mui/material';
-import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings } from '@mui/icons-material';
+import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings, CalendarMonth } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { getAttendanceOvertimeMinutes } from '../../lib/attendanceOvertime';
@@ -366,6 +366,152 @@ const getPayrollPeriod = (start?: string, end?: string, savedCutoff?: string | n
   return { month, label: savedCutoff?.trim() || formatMonthLabel(month) };
 };
 
+const getWorkedMonthCutoffs = (month: string) => {
+  const { start, end, year } = getMonthRange(month);
+  const following = new Date(year, Number(month.slice(5)), 1);
+  const nextMonth = `${following.getFullYear()}-${String(following.getMonth() + 1).padStart(2, '0')}`;
+  return [
+    getSemiMonthlyCutoffRange(month, '5'),
+    getSemiMonthlyCutoffRange(month, '20'),
+    getSemiMonthlyCutoffRange(nextMonth, '5'),
+  ].map(cutoff => ({
+    ...cutoff,
+    workedStart: cutoff.start < start ? start : cutoff.start,
+    workedEnd: cutoff.end > end ? end : cutoff.end,
+  }));
+};
+
+function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; showDrafts: boolean }) {
+  const today = formatDisplayDate(new Date()).split('/');
+  const [month, setMonth] = useState(`${today[2]}-${today[0]}`);
+  const [employeeId, setEmployeeId] = useState('');
+  const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(true);
+  const [employeeError, setEmployeeError] = useState('');
+  const [report, setReport] = useState<{
+    key: string;
+    rows: { dates: string; hours: number; cutoff: string; status: string }[];
+    hasAttendance: boolean;
+    error?: string;
+  } | null>(null);
+  const reportKey = employeeId && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? `${employeeId}/${month}` : '';
+  const currentReport = reportKey && report?.key === reportKey ? report : null;
+
+  useEffect(() => {
+    let active = true;
+    void supabase.from('employees')
+      .select('employee_id, first_name, middle_name, last_name, suffix')
+      .order('last_name').order('first_name').order('employee_id')
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) setEmployeeError('Could not load employees. Close and reopen Monthly Hours to retry.');
+        else setEmployees((data ?? []).map(employee => ({
+          id: employee.employee_id,
+          name: fullNameFromEmployee(employee) || employee.employee_id,
+        })));
+        setEmployeesLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!reportKey) return;
+    let active = true;
+    const cutoffs = getWorkedMonthCutoffs(month);
+    const { start, end } = getMonthRange(month);
+
+    void Promise.all([
+      supabase.from('attendance_logs').select('attendance_date, total_hours')
+        .eq('employee_id', employeeId).gte('attendance_date', start).lte('attendance_date', end),
+      supabase.from('payroll_summaries').select('period_start, period_end, status, payroll_items!inner(employee_id)')
+        .in('period_start', cutoffs.map(cutoff => cutoff.start))
+        .eq('payroll_items.employee_id', employeeId),
+    ]).then(([attendance, payroll]) => {
+      if (!active) return;
+      if (attendance.error || payroll.error) {
+        setReport({ key: reportKey, rows: [], hasAttendance: false, error: 'Could not load monthly hours. Close and reopen Monthly Hours to retry.' });
+        return;
+      }
+      const logs = attendance.data ?? [];
+      const rows = cutoffs.map(cutoff => {
+        const hours = logs.reduce((total, log) => {
+          if (log.attendance_date < cutoff.workedStart || log.attendance_date > cutoff.workedEnd) return total;
+          // DTR adds each daily entry after rounding it to two decimal places.
+          return total + roundMoney(toNumber(log.total_hours));
+        }, 0);
+        const entry = payroll.data?.find(item => item.period_start === cutoff.start && item.period_end === cutoff.end);
+        const status = entry ? dbStatusToUi(entry.status) : 'Not generated';
+        return {
+          dates: payslipPeriod(cutoff.workedStart, cutoff.workedEnd),
+          hours: roundMoney(hours),
+          cutoff: getPayrollPeriod(cutoff.start, cutoff.end, cutoff.cutoffLabel).label,
+          status: !showDrafts && status === 'Draft' ? 'Not sent to Accounting' : status,
+        };
+      });
+      setReport({ key: reportKey, rows, hasAttendance: logs.length > 0 });
+    });
+    return () => { active = false; };
+  }, [employeeId, month, reportKey, showDrafts]);
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="md" aria-labelledby="monthly-hours-title">
+      <DialogTitle id="monthly-hours-title" fontWeight={700} sx={dialogTitleSx}>Monthly Hours</DialogTitle>
+      <DialogContent sx={{ display: 'grid', gap: 2, pt: '20px !important' }}>
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, sm: 7 }}>
+            <TextField fullWidth select label="Employee" value={employeeId} onChange={event => setEmployeeId(event.target.value)}
+              disabled={employeesLoading || employees.length === 0} InputLabelProps={{ shrink: true }}>
+              <MenuItem value="">Select employee…</MenuItem>
+              {employees.map(employee => <MenuItem key={employee.id} value={employee.id}>{employee.name} ({employee.id})</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 5 }}>
+            <TextField fullWidth type="month" label="Worked Month" value={month} onChange={event => setMonth(event.target.value)}
+              InputLabelProps={{ shrink: true }} />
+          </Grid>
+        </Grid>
+        {employeeError && <Alert severity="error">{employeeError}</Alert>}
+        {!employeeError && !employeesLoading && employees.length === 0 && <Alert severity="info">No employees found.</Alert>}
+        {reportKey && !currentReport && <Typography role="status">Loading monthly hours…</Typography>}
+        {currentReport?.error && <Alert severity="error">{currentReport.error}</Alert>}
+        {currentReport && !currentReport.error && (
+          <>
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: GREEN_UI.greenSoft }}>
+              <Typography variant="body2">DTR Total Hours · {formatMonthLabel(month)}</Typography>
+              <Typography variant="h5" fontWeight={700}>{currentReport.rows.reduce((sum, row) => sum + row.hours, 0).toFixed(2)} hours</Typography>
+            </Paper>
+            {!currentReport.hasAttendance && <Alert severity="info">No attendance records for this employee in the selected month.</Alert>}
+            <TableContainer>
+              <Table size="small" aria-label="Monthly hours by payroll cutoff">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Dates Worked</TableCell>
+                    <TableCell align="right">Hours incl. OT</TableCell>
+                    <TableCell>Payroll Cutoff</TableCell>
+                    <TableCell>Payroll Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {currentReport.rows.map(row => (
+                    <TableRow key={row.cutoff}>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.dates}</TableCell>
+                      <TableCell align="right">{row.hours.toFixed(2)}</TableCell>
+                      <TableCell>{row.cutoff}</TableCell>
+                      <TableCell>{row.status}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="body2" color="text.secondary">Hours are from the selected month’s DTR, including overtime.</Typography>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>
+    </Dialog>
+  );
+}
+
 const parsePayslipDetails = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== 'object') return {};
   return value as Record<string, string>;
@@ -416,6 +562,7 @@ export default function PayrollComputation() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [filterPeriod, setFilterPeriod] = useState('');
+  const [monthlyHoursOpen, setMonthlyHoursOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
   const { user } = useAuth();
@@ -1669,6 +1816,13 @@ export default function PayrollComputation() {
               </span>
             </Tooltip>
 
+            {(canManagePayroll || canReleasePayroll) && (
+              <Button variant="outlined" startIcon={<CalendarMonth />} onClick={() => setMonthlyHoursOpen(true)}
+                sx={{ ...pillButtonSx, py: 1.1, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark, bgcolor: '#ffffff' }}>
+                Monthly Hours
+              </Button>
+            )}
+
             {isHRAdmin && (
               <Button variant="outlined" startIcon={<Settings />} onClick={() => setRatesDialog(true)}
                 sx={{ ...pillButtonSx, py: 1.1, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark, bgcolor: '#ffffff' }}>
@@ -2140,6 +2294,10 @@ export default function PayrollComputation() {
             </DialogActions>
           </Box>
         </Dialog>
+      )}
+
+      {monthlyHoursOpen && (canManagePayroll || canReleasePayroll) && (
+        <MonthlyHoursDialog onClose={() => setMonthlyHoursOpen(false)} showDrafts={canManagePayroll} />
       )}
 
       {/* Generate Payroll Dialog */}
