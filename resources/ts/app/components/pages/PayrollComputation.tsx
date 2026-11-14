@@ -2239,8 +2239,9 @@ export default function PayrollComputation() {
                     onChange={e => { if (/^\d{0,6}(?:\.\d{0,2})?$/.test(e.target.value)) setForm({ ...form, [line.quantity]: e.target.value }); }} />
                 </Grid>
                 <Grid size={6}>
-                  <TextField fullWidth label={`${line.label} amount`} value={form.overrideAmounts[line.amount] ?? ''}
-                    placeholder={manualDailyRate ? money(line.calculated).replace('₱', '') : '—'} InputLabelProps={{ shrink: true }}
+                  <TextField fullWidth label={`${line.label} amount`}
+                    value={form.overrideAmounts[line.amount] ?? (manualDailyRate ? line.calculated.toFixed(2) : '')}
+                    InputLabelProps={{ shrink: true }}
                     helperText={form.overrideAmounts[line.amount] && line.calculated !== line.value ? `Calculated ${money(line.calculated)}` : undefined}
                     inputProps={{ inputMode: 'decimal' }}
                     InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
@@ -2248,7 +2249,12 @@ export default function PayrollComputation() {
                       if (/^\d{0,8}(?:\.\d{0,2})?$/.test(e.target.value)) {
                         setForm({ ...form, overrideAmounts: { ...form.overrideAmounts, [line.amount]: e.target.value } });
                       }
-                    }} />
+                    }}
+                    onBlur={() => setForm(prev => {
+                      const override = prev.overrideAmounts[line.amount];
+                      if (override !== '' && override !== '.') return prev;
+                      return { ...prev, overrideAmounts: { ...prev.overrideAmounts, [line.amount]: undefined } };
+                    })} />
                 </Grid>
               </React.Fragment>
             ))}
