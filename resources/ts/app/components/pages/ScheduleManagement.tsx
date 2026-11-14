@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Dialog, DialogTitle,
-  DialogContent, DialogActions, MenuItem, Chip, Grid,
+  DialogContent, DialogActions, Menu, MenuItem, Chip, Grid,
   CircularProgress, Alert, Tooltip, InputAdornment,
   Checkbox,
   Autocomplete,
@@ -57,6 +57,8 @@ const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 type ScheduleDay = (typeof DAYS)[number];
 const DEFAULT_WORKDAYS: ScheduleDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const REST_DAY = 'Rest Day';
+const REST_DAY_OPTIONS: readonly ScheduleDay[] = ['sunday', ...DAYS.slice(0, -1)];
 const DAY_NAMES: Record<string, string> = {
   monday: 'Monday',
   tuesday: 'Tuesday',
@@ -73,7 +75,8 @@ function scheduleDays(draft: Record<ScheduleDay, string>, existing?: Schedule) {
     const value = draft[day].trim();
     if (!value) return [day, ''];
     if (/^off$/i.test(value)) return [day, 'Off'];
-    if (/^(rd|flex|suspended)$/i.test(value)) return [day, value.toUpperCase()];
+    if (/^(rd|rest day)$/i.test(value)) return [day, REST_DAY];
+    if (/^(flex|suspended)$/i.test(value)) return [day, value.toUpperCase()];
 
     const shift = parseRegularScheduleShift(value);
     if (!shift) throw new Error(`${DAY_NAMES[day]} needs valid, non-overlapping times such as ${splitShiftExample}.`);
@@ -537,6 +540,7 @@ export default function ScheduleManagement() {
   const [editForm, setEditForm] = useState(EMPTY);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [applicableWorkdays, setApplicableWorkdays] = useState(DEFAULT_WORKDAYS);
+  const [restDayAnchor, setRestDayAnchor] = useState<HTMLElement | null>(null);
   const [scheduleType, setScheduleType] = useState<'regular' | 'special'>('regular');
   const [specialDutyForm, setSpecialDutyForm] = useState(EMPTY_SPECIAL_DUTY);
 
@@ -736,6 +740,12 @@ export default function ScheduleManagement() {
       return next;
     });
     setApplicableWorkdays([]);
+  };
+
+  const markRestDay = (day: ScheduleDay) => {
+    setForm(prev => ({ ...prev, [day]: REST_DAY }));
+    setApplicableWorkdays(prev => prev.filter(workday => workday !== day));
+    setRestDayAnchor(null);
   };
 
   const renderScheduleDays = (draft: typeof EMPTY, setDraft: typeof setForm) => (
@@ -1951,7 +1961,7 @@ export default function ScheduleManagement() {
                   </TableCell>
                   {DAYS.map(d => {
                     const shiftValue = (s[d as keyof Schedule] as string) || '—';
-                    const isOff = shiftValue === 'Off';
+                    const isOff = /^(off|rd|rest day)$/i.test(shiftValue);
                     return (
                       <TableCell key={d} sx={{ minWidth: 118 }}>
                         <Typography
@@ -2304,6 +2314,29 @@ export default function ScheduleManagement() {
                     onClick={applySelectedWorkdays}
                     sx={{ fontWeight: 700 }}
                   />
+                  <Chip
+                    id="rest-day-button"
+                    label="Rest Day (RD)"
+                    size="small"
+                    clickable
+                    color="primary"
+                    aria-haspopup="menu"
+                    aria-expanded={Boolean(restDayAnchor)}
+                    aria-controls={restDayAnchor ? 'rest-day-menu' : undefined}
+                    onClick={event => setRestDayAnchor(event.currentTarget)}
+                    sx={{ fontWeight: 700 }}
+                  />
+                  <Menu
+                    id="rest-day-menu"
+                    anchorEl={restDayAnchor}
+                    open={Boolean(restDayAnchor)}
+                    onClose={() => setRestDayAnchor(null)}
+                    MenuListProps={{ 'aria-labelledby': 'rest-day-button' }}
+                  >
+                    {REST_DAY_OPTIONS.map(day => (
+                      <MenuItem key={day} onClick={() => markRestDay(day)}>{DAY_NAMES[day]}</MenuItem>
+                    ))}
+                  </Menu>
                 </Box>
               </Grid>
             </Grid>
