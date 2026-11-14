@@ -36,7 +36,7 @@ import {
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
 import { supabase } from "../../lib/supabaseClient";
-import { OUTLETS, POSITIONS } from '../../lib/constants';
+import { NO_OUTLET, OUTLETS, POSITIONS } from '../../lib/constants';
 import { parseRegularScheduleShift, splitShiftExample } from '../../lib/regularScheduleShift';
 import ActionSnackbar from '../ActionSnackbar';
 
@@ -773,7 +773,7 @@ export default function ScheduleManagement() {
     const payload = employeeIds.map((employeeId, index) => {
       const selectedEmployee = getEmployeeById(employeeId);
       const employeePosition = selectedEmployee?.position || form.position || "";
-      const employeeOutlet = selectedEmployee?.outlet || form.outlet || "";
+      const employeeOutlet = selectedEmployee?.outlet || (form.outlet === NO_OUTLET ? "" : form.outlet || "");
 
       return {
         schedule_id: scheduleIds[index],
@@ -1085,7 +1085,7 @@ export default function ScheduleManagement() {
       employeeId: s.employeeId,
       employee: linkedEmployee?.name || s.employee,
       position: linkedEmployee?.position || s.position,
-      outlet: linkedEmployee?.outlet || s.outlet,
+      outlet: linkedEmployee?.outlet || s.outlet || NO_OUTLET,
       week: s.week,
       timeIn: s.timeIn, timeOut: s.timeOut, breakTime: s.breakTime,
       bulkTimes: EMPTY_BULK_TIMES,
@@ -1105,7 +1105,7 @@ export default function ScheduleManagement() {
   try {
     const linkedEmployee = getEmployeeById(editRecord.employeeId);
     const employeePosition = linkedEmployee?.position || editForm.position || "";
-    const employeeOutlet = linkedEmployee?.outlet || editForm.outlet || "";
+    const employeeOutlet = linkedEmployee?.outlet || (editForm.outlet === NO_OUTLET ? "" : editForm.outlet || "");
 
     const { error } = await supabase
       .from("schedule")
@@ -1158,7 +1158,8 @@ export default function ScheduleManagement() {
       }
     }
 
-    if (filterOutlet !== "all" && normalizeWorkArea(s.outlet) !== normalizeWorkArea(filterOutlet)) return false;
+    const selectedOutlet = filterOutlet === NO_OUTLET ? '' : normalizeWorkArea(filterOutlet);
+    if (filterOutlet !== "all" && normalizeWorkArea(s.outlet) !== selectedOutlet) return false;
 
     const query = search.trim().toLowerCase();
     if (!query) return true;
@@ -1655,7 +1656,7 @@ export default function ScheduleManagement() {
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
           <Chip
             icon={<Storefront sx={{ fontSize: '0.9rem !important' }} />}
-            label={filterOutlet === 'all' ? 'All Outlets' : displayWorkArea(filterOutlet)}
+            label={filterOutlet === 'all' ? 'All Outlets' : filterOutlet === NO_OUTLET ? 'No Outlet' : displayWorkArea(filterOutlet)}
             size="small"
             variant="outlined"
             sx={{ ...outletChipSx, '& .MuiChip-icon': { color: GREEN_UI.greenDark } }}
@@ -1694,6 +1695,7 @@ export default function ScheduleManagement() {
               sx={softTextFieldSx}
             >
               <MenuItem key="all" value="all">All Outlets</MenuItem>
+              <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
               {ASSIGNED_WORK_AREAS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
             </TextField>
           </Grid>
@@ -2182,6 +2184,7 @@ export default function ScheduleManagement() {
                   InputLabelProps={{ shrink: true }}
                 >
                   <MenuItem key="outlet-empty" value="">Select outlet</MenuItem>
+                  <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
                   {OUTLETS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
                 </TextField>
               </Grid>
@@ -2578,6 +2581,7 @@ export default function ScheduleManagement() {
                   sx={softTextFieldSx}
                 >
                   <MenuItem key="edit-outlet-empty" value="">Select outlet…</MenuItem>
+                  <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
                   {OUTLETS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
                 </TextField>
               </Grid>

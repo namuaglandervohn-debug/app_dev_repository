@@ -11,7 +11,7 @@ import {
   AdminPanelSettings, Badge, ManageSearch,
 } from '@mui/icons-material';
 import { supabase } from "../../lib/supabaseClient";
-import { OUTLETS } from '../../lib/constants';
+import { NO_OUTLET, OUTLETS } from '../../lib/constants';
 import ActionSnackbar from '../ActionSnackbar';
 
 type UserRole = 'hr' | 'employee' | 'supervisor' | 'gm' | 'accounting';
@@ -34,8 +34,6 @@ interface EmployeeOption {
   name: string;
   outlet: string;
 }
-
-const NO_OUTLET = '__no_outlet__';
 
 const EMPTY_FORM = {
   name: '',
@@ -378,7 +376,7 @@ export default function UserManagement() {
 
   try {
     const linkedEmployee = getEmployeeOption(editForm.employeeId);
-    const employeeOutlet = linkedEmployee?.outlet || editForm.outlet || "";
+    const employeeOutlet = linkedEmployee?.outlet || (editForm.outlet === NO_OUTLET ? "" : editForm.outlet || "");
 
     const updateData: any = {
       full_name: editForm.name,
@@ -950,7 +948,7 @@ export default function UserManagement() {
                               name: u.name,
                               email: u.email,
                               role: u.role,
-                              outlet: linkedEmployee?.outlet || u.outlet,
+                              outlet: linkedEmployee?.outlet || u.outlet || NO_OUTLET,
                               employeeId: u.employeeId,
                               applicantId: u.applicantId,
                               active: u.active,
@@ -1258,6 +1256,7 @@ export default function UserManagement() {
                 sx={softTextFieldSx}
               >
                 <MenuItem key="edit-outlet-empty" value="">Select Outlet…</MenuItem>
+                <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
                 {OUTLETS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
               </TextField>
             </Grid>

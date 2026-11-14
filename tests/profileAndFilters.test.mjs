@@ -4,6 +4,7 @@ import { filterEmployeeRecords, emptyEmployeeFilters } from '../resources/ts/app
 import { reusableApplicantProfile } from '../resources/ts/app/lib/applicantProfile.ts';
 import { submitApplicant } from '../resources/ts/app/lib/submitApplicant.ts';
 import { completeApplicantAddress } from '../resources/ts/app/lib/applicantAddress.ts';
+import { NO_OUTLET } from '../resources/ts/app/lib/constants.ts';
 
 const employees = [
   { id: 'EMP-1', name: 'Jane Smith', position: 'Cashier', outlet: 'Main', status: 'Active', contact: '09123456789' },
@@ -16,6 +17,13 @@ test('employee search field and independent column filters compose with AND', ()
   assert.equal(filterEmployeeRecords(employees, 'MAIN', 'all', emptyEmployeeFilters).length, 2);
   assert.deepEqual(filterEmployeeRecords(employees, '', 'all', { ...emptyEmployeeFilters, id: 'emp-3', contact: '5432' }).map(e => e.id), ['EMP-3']);
   assert.equal(filterEmployeeRecords(employees, '', 'all', emptyEmployeeFilters).length, 3);
+});
+
+test('No Outlet filters for employees without a branch', () => {
+  const unassigned = { ...employees[0], id: 'EMP-4', outlet: '' };
+  const records = [...employees, unassigned];
+  assert.deepEqual(filterEmployeeRecords(records, '', 'all', { ...emptyEmployeeFilters, outlet: NO_OUTLET }), [unassigned]);
+  assert.deepEqual(filterEmployeeRecords(records, '', 'all', emptyEmployeeFilters), records);
 });
 
 test('registered applications use the server-returned tracking ID without reading other applicants', async () => {

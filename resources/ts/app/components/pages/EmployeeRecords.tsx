@@ -52,6 +52,7 @@ import ActionSnackbar from "../ActionSnackbar";
 import { supabase } from "../../lib/supabaseClient";
 import { nextEmployeeId } from "../../lib/employeeIds";
 import {
+  NO_OUTLET,
   OUTLETS,
   POSITIONS,
   DEPARTMENTS,
@@ -313,7 +314,7 @@ export default function EmployeeRecords() {
         phone_number: form.contact,
         department: form.department,
         position: form.position,
-        outlet: form.outlet,
+        outlet: form.outlet === NO_OUTLET ? "" : form.outlet,
         status: form.status,
         hire_date: form.dateHired || null,
       })
@@ -640,7 +641,11 @@ export default function EmployeeRecords() {
               <TableRow>
                 {(Object.keys(emptyEmployeeFilters) as (keyof typeof emptyEmployeeFilters)[]).map(key => <TableCell key={key} sx={{ minWidth: 150 }}>
                   <TextField fullWidth size="small" InputLabelProps={{ shrink: true }} select={['position', 'outlet', 'status'].includes(key)} label={`Filter ${employeeSearchFields[key]}`} value={columnFilters[key]} onChange={e => setColumnFilters(prev => ({ ...prev, [key]: e.target.value }))}>
-                    {['position', 'outlet', 'status'].includes(key) ? [<MenuItem key="all" value="">All</MenuItem>, ...Array.from(new Set(employees.map(employee => employee[key]).filter(Boolean))).sort().map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)] : null}
+                    {['position', 'outlet', 'status'].includes(key) ? [
+                      <MenuItem key="all" value="">All</MenuItem>,
+                      ...(key === 'outlet' ? [<MenuItem key={NO_OUTLET} value={NO_OUTLET}>No Outlet</MenuItem>] : []),
+                      ...Array.from(new Set(employees.map(employee => employee[key]).filter(Boolean))).sort().map(value => <MenuItem key={value} value={value}>{value}</MenuItem>),
+                    ] : null}
                   </TextField>
                 </TableCell>)}
                 <TableCell><Typography variant="caption">{filtered.length} results</Typography></TableCell>
@@ -965,6 +970,7 @@ export default function EmployeeRecords() {
                   <MenuItem key="outlet-empty" value="">
                     Select Outlet / Branch…
                   </MenuItem>
+                  <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
                   {OUTLETS.map((o) => (
                     <MenuItem key={o} value={o}>
                       {o}

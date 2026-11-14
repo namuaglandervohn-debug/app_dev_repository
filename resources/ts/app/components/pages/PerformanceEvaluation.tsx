@@ -40,7 +40,7 @@ import {
   TaskAlt,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
-import { OUTLETS, POSITIONS } from "../../lib/constants";
+import { NO_OUTLET, OUTLETS, POSITIONS } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
 import ActionSnackbar from "../ActionSnackbar";
 
@@ -634,7 +634,7 @@ export default function PerformanceEvaluation() {
       employee_id: evaluation.employee_id,
       employee_name: evaluation.employee_name,
       position: evaluation.position,
-      outlet: evaluation.outlet,
+      outlet: evaluation.outlet || NO_OUTLET,
       periodStart: evaluation.evaluation_period_start,
       periodEnd: evaluation.evaluation_period_end,
       periodLabel: evaluation.evaluation_period_label || "",
@@ -756,7 +756,7 @@ export default function PerformanceEvaluation() {
     try {
       const linkedEmployee = employees.find((emp) => emp.employee_id === form.employee_id);
       const employeePosition = linkedEmployee?.position || form.position || "";
-      const employeeOutlet = linkedEmployee?.outlet || form.outlet || "";
+      const employeeOutlet = linkedEmployee?.outlet || (form.outlet === NO_OUTLET ? "" : form.outlet || "");
 
       let evaluationId = form.evaluation_id;
       if (!evaluationId) {
@@ -1703,6 +1703,7 @@ export default function PerformanceEvaluation() {
                 sx={softTextFieldSx}
               >
                 <MenuItem value="">Select outlet…</MenuItem>
+                <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
                 {OUTLETS.map((o) => <MenuItem key={o} value={o}>{o}</MenuItem>)}
               </TextField>
             </Grid>

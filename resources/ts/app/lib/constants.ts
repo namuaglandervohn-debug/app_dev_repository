@@ -7,6 +7,8 @@ export const COMPANY = {
   established: '1992',
 };
 
+export const NO_OUTLET = '__no_outlet__';
+
 export const OUTLETS = [
   'Maria Clara Restaurant',   // Daily 6:00 AM – 10:00 PM
   'Maria Clara Resort',        // Daily 9:00 AM – 11:00 PM
