@@ -31,7 +31,6 @@ import {
   Storefront,
   Sync,
   TaskAlt,
-  VisibilityOutlined,
   ViewWeek,
   WorkOutline,
 } from '@mui/icons-material';
@@ -539,41 +538,67 @@ const getWeekRange = (offsetWeeks: number = 0): string => {
   return `${MONTHS[mMonth]} ${mDay} – ${MONTHS[sMonth]} ${sDay}, ${year}`;
 };
 
-function WeeklyScheduleDialog({ selected, schedules, onClose }: {
-  selected: Schedule;
-  schedules: Schedule[];
-  onClose: () => void;
-}) {
-  const week = stripSpecialDutyReason(selected.week);
-  const range = parseWeekRange(week);
-  const weekLabel = formatDisplayDateRange(normalizeWeekInput(week));
-  const groups = new Map<string, Schedule[]>();
+function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const weeks = new Map<string, { label: string; start: Date | undefined; rows: Schedule[] }>();
   for (const schedule of schedules) {
-    const otherRange = parseWeekRange(schedule.week);
-    const sameWeek = range && otherRange
-      ? +range.start === +otherRange.start && +range.end === +otherRange.end
-      : stripSpecialDutyReason(schedule.week) === week;
-    if (!sameWeek || (!week && schedule !== selected)) continue;
+    const week = stripSpecialDutyReason(schedule.week);
+    const range = parseWeekRange(week);
+    const key = range ? `${+range.start}/${+range.end}` : `label:${week}`;
+    const existing = weeks.get(key);
+    if (existing) {
+      existing.rows.push(schedule);
+    } else {
+      weeks.set(key, {
+        label: formatDisplayDateRange(normalizeWeekInput(week)) || 'Unspecified week',
+        start: range?.start,
+        rows: [schedule],
+      });
+    }
+  }
+  const options = [...weeks].sort(([, left], [, right]) =>
+    (right.start?.getTime() ?? -Infinity) - (left.start?.getTime() ?? -Infinity)
+      || left.label.localeCompare(right.label));
+  const activeWeek = selectedWeek !== null && weeks.has(selectedWeek) ? selectedWeek : options[0]?.[0];
+  const roster = activeWeek === undefined ? undefined : weeks.get(activeWeek);
+  if (!roster) return null;
+
+  const groups = new Map<string, Schedule[]>();
+  for (const schedule of roster.rows) {
     const outlet = displayWorkArea(schedule.outlet) || 'No Outlet';
     const group = groups.get(outlet) ?? [];
     group.push(schedule);
     groups.set(outlet, group);
   }
   const weekDates = DAYS.map((_, index) => {
-    if (!range) return '';
-    const date = new Date(range.start);
+    if (!roster.start) return '';
+    const date = new Date(roster.start);
     date.setDate(date.getDate() + index);
     return new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).format(date);
   });
 
   return (
-    <Dialog open onClose={onClose} aria-labelledby="weekly-schedule-title" maxWidth={false} fullWidth
-      PaperProps={{ sx: { maxWidth: 1500, borderRadius: { xs: 3, sm: 4 }, bgcolor: '#fbfff9' } }}>
-      <DialogTitle id="weekly-schedule-title" sx={{ bgcolor: GREEN_UI.greenDark, color: '#fff', fontWeight: 800 }}>
-        Weekly Employee Schedule
-        {weekLabel && <Typography variant="body2" component="span" sx={{ display: 'block', mt: 0.5 }}>{weekLabel}</Typography>}
-      </DialogTitle>
-      <DialogContent sx={{ p: { xs: 1.5, sm: 2.5 } }}>
+    <Paper component="section" aria-labelledby="weekly-schedule-title" elevation={0}
+      sx={{ mt: 3, overflow: 'hidden', borderRadius: { xs: 3, sm: 4 }, border: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfff9' }}>
+      <Box sx={{
+        bgcolor: GREEN_UI.greenDark, color: '#fff', px: { xs: 1.5, sm: 2.5 }, py: 2,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2,
+      }}>
+        <Box>
+          <Typography id="weekly-schedule-title" component="h2" variant="h6" fontWeight={800}>
+            Weekly Employee Schedule
+          </Typography>
+          <Typography variant="body2">{roster.label}</Typography>
+        </Box>
+        {options.length > 1 && (
+          <TextField select size="small" label="Schedule week" value={activeWeek}
+            onChange={event => setSelectedWeek(event.target.value)}
+            sx={{ ...softTextFieldSx, minWidth: 230, '& .MuiInputLabel-root': { color: '#fff' } }}>
+            {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
+          </TextField>
+        )}
+      </Box>
+      <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
         <TableContainer tabIndex={0} role="region" aria-label="Weekly roster"
           sx={{ border: `1px solid ${GREEN_UI.borderStrong}`, borderRadius: 2 }}>
           <Table size="small" aria-label="Employee shifts by outlet and weekday" sx={{
@@ -631,11 +656,8 @@ function WeeklyScheduleDialog({ selected, schedules, onClose }: {
             ))}
           </Table>
         </TableContainer>
-      </DialogContent>
-      <DialogActions sx={{ px: 2.5, pb: 2 }}>
-        <Button variant="outlined" onClick={onClose}>Close</Button>
-      </DialogActions>
-    </Dialog>
+      </Box>
+    </Paper>
   );
 }
 
@@ -653,7 +675,6 @@ export default function ScheduleManagement() {
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
   const [editDialog, setEditDialog] = useState(false);
   const jobTitleOptions = useJobTitleOptions(openDialog || editDialog);
-  const [viewSchedule, setViewSchedule] = useState<Schedule | null>(null);
   const [editRecord, setEditRecord] = useState<Schedule | null>(null);
   const [editForm, setEditForm] = useState(EMPTY);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
@@ -2120,15 +2141,6 @@ export default function ScheduleManagement() {
                           />
                         )}
                         <Chip
-                          icon={<VisibilityOutlined sx={{ fontSize: '0.85rem !important' }} />}
-                          label="View"
-                          size="small"
-                          clickable
-                          variant="outlined"
-                          onClick={() => setViewSchedule(s)}
-                          sx={{ ...actionChipSx('primary'), '& .MuiChip-icon': { color: GREEN_UI.greenDark } }}
-                        />
-                        <Chip
                           icon={<EditIcon sx={{ fontSize: '0.85rem !important' }} />}
                           label="Edit Schedule"
                           size="small"
@@ -2189,9 +2201,7 @@ export default function ScheduleManagement() {
         )}
       </TableContainer>
 
-      {viewSchedule && canPublish && (
-        <WeeklyScheduleDialog selected={viewSchedule} schedules={schedules} onClose={() => setViewSchedule(null)} />
-      )}
+      {!loading && canPublish && <WeeklySchedule schedules={filtered} />}
 
       <Dialog
         open={openDialog}
