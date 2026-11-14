@@ -5,23 +5,36 @@ import { createClient } from '@supabase/supabase-js';
 class AccountError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
-async function sendHiredWelcome({ env, fetcher, recipient, name, email, password, authId }) {
+async function sendHiredWelcome({ env, fetcher, recipient, name, email, password, deliveryKey }) {
   if (!env.RESEND_API_KEY?.trim()) return false;
   const template = await readFile(new URL('../../resources/views/emails/hired-welcome.html', import.meta.url), 'utf8');
-  const values = { name, email, password };
   const escape = value => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-  const html = template.replace(/\[\[(name|email|password)\]\]/g, (_, field) => escape(values[field]));
-  const response = await fetcher('https://api.resend.com/emails', {
+  const instructions = password ? 'Change your temporary password on your first sign-in.' : 'Use your current employee password. If you need help signing in, contact HR.';
+  const values = {
+    name: escape(name),
+    email: escape(email),
+    passwordRow: password ? '<tr><td style="padding:8px 14px 12px;overflow-wrap:anywhere;"><strong>Temporary password</strong><br><span style="font-family:monospace;white-space:pre-wrap;">' + escape(password) + '</span></td></tr>' : '',
+    signInInstructions: instructions,
+  };
+  const html = template.replace(/\[\[(name|email|passwordRow|signInInstructions)\]\]/g, (_, field) => values[field]);
+  const request = {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY.trim(), 'Content-Type': 'application/json', 'Idempotency-Key': 'hired-welcome/' + authId },
-    signal: AbortSignal.timeout(8000),
+    headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY.trim(), 'Content-Type': 'application/json', 'Idempotency-Key': deliveryKey },
     body: JSON.stringify({
       from: (env.RESEND_FROM_NAME || 'Buenaventura HRIS') + ' <' + (env.RESEND_FROM_ADDRESS || 'no-reply@buenaventura-hris.me') + '>',
       to: [recipient], subject: 'You’re hired! Welcome to Buenaventura Estate', html,
-      text: ['Hello ' + name + '!', 'You’re hired! Here’s your employee account.', 'Email: ' + email, 'Temporary password: ' + password, 'Sign in at https://app-dev-repository.vercel.app/login and change your temporary password.'].join('\n\n'),
+      text: ['Hello ' + name + '!', 'You’re hired! Here’s your employee account.', 'Email: ' + email,
+        ...(password ? ['Temporary password: ' + password] : []),
+        password ? 'Sign in at https://app-dev-repository.vercel.app/login and change your temporary password.'
+          : 'Sign in at https://app-dev-repository.vercel.app/login. ' + instructions].join('\n\n'),
     }),
-  });
-  return response.ok && Boolean((await response.json()).id);
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetcher('https://api.resend.com/emails', { ...request, signal: AbortSignal.timeout(4000) }).catch(() => null);
+    if (response?.ok) return Boolean((await response.json()).id);
+    if (response && response.status < 500) return false;
+  }
+  return false;
 }
 
 const check = (result) => { if (result.error) throw result.error; return result.data; };
@@ -125,11 +138,10 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
         } else saved = result.data;
       }
       const nonce = authUser.app_metadata?.hris_hired_welcome;
-      if (!nonce || authUser.app_metadata?.hris_hired_application !== applicantId || authUser.app_metadata?.hris_temporary_password !== true) {
-        return send(200, { message: 'The separate employee account is already ready.', user: saved, welcome_email_sent: false, existing_login_ready: true });
-      }
-      const password = passwordFor(nonce);
-      const sent = await sendHiredWelcome({ env, fetcher, recipient, name, email: authUser.email, password, authId: authUser.id }).catch(() => false);
+      const password = nonce && authUser.app_metadata?.hris_hired_application === applicantId && authUser.app_metadata?.hris_temporary_password === true
+        ? passwordFor(nonce) : null;
+      const deliveryKey = password ? 'hired-welcome/' + authUser.id : 'hired-existing/' + applicantId + '/' + authUser.id;
+      const sent = await sendHiredWelcome({ env, fetcher, recipient, name, email: authUser.email, password, deliveryKey }).catch(() => false);
       return send(200, { user: saved, welcome_email_sent: sent, message: sent
         ? 'Employee account ready. The welcome email was accepted for delivery.'
         : 'Employee account ready. The welcome email could not be sent. Select Complete Employee Account Setup to retry.' });

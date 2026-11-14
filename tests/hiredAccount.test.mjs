@@ -110,7 +110,7 @@ test('repairs an earlier conversion without touching the original applicant logi
   assert.deepEqual(f.state.mutations, ['create']);
 });
 
-test('keeps an existing separate employee login after a repeat application', async () => {
+test('emails sign-in details to repeat hires without changing the existing login', async () => {
   const f = fixture();
   const email = 'employee.new@buenaventura.com';
   f.state.authUsers.push({ id: 'existing-auth', email, app_metadata: { hris_hired_application: 'APP-PRIOR' } });
@@ -118,23 +118,31 @@ test('keeps an existing separate employee login after a repeat application', asy
     auth_user_id: 'existing-auth', email, role: 'employee', is_active: true });
   const response = await f.invoke();
   assert.equal(response.statusCode, 200);
-  assert.equal(response.body.existing_login_ready, true);
+  assert.equal(response.body.welcome_email_sent, true);
   assert.equal(response.body.user.auth_user_id, 'existing-auth');
   assert.deepEqual(f.state.mutations, []);
-  assert.deepEqual(f.state.mail, []);
+  assert.equal(f.state.mail.length, 1);
+  assert.deepEqual(f.state.mail[0].to, ['applicant@example.test']);
+  assert.match(f.state.mail[0].html, /employee\.new@buenaventura\.com/);
+  assert.match(f.state.mail[0].html, /Use your current employee password/);
+  assert.doesNotMatch(f.state.mail[0].html, /Temporary password/);
+  assert.equal(f.state.mail[0].key, 'hired-existing/APP-2026-0001/existing-auth');
 });
 
 test('mail retries use the same account, password and delivery key', async () => {
   const f = fixture();
   f.state.mailStatus = 502;
   assert.equal((await f.invoke()).body.welcome_email_sent, false);
+  assert.equal(f.state.mail.length, 2);
   f.state.mailStatus = 200;
   assert.equal((await f.invoke()).body.welcome_email_sent, true);
   assert.deepEqual(f.state.mail[0], f.state.mail[1]);
+  assert.deepEqual(f.state.mail[1], f.state.mail[2]);
   assert.deepEqual(f.state.mutations, ['create']);
   f.state.authUsers[0].app_metadata.hris_temporary_password = false;
-  assert.equal((await f.invoke()).body.welcome_email_sent, false);
-  assert.equal(f.state.mail.length, 2);
+  assert.equal((await f.invoke()).body.welcome_email_sent, true);
+  assert.equal(f.state.mail.length, 4);
+  assert.doesNotMatch(f.state.mail[3].text, /Temporary password:/);
 });
 
 test('email collisions receive a numbered company login', async () => {

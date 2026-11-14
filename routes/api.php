@@ -463,17 +463,16 @@ Route::post('/applications/hired-account', function (Request $request) {
     }
 
     $nonce = $user['app_metadata']['hris_hired_welcome'] ?? null;
-    if (! $nonce || ($user['app_metadata']['hris_hired_application'] ?? null) !== $id
-        || ($user['app_metadata']['hris_temporary_password'] ?? null) !== true) {
-        return response()->json(['message' => 'The separate employee account is already ready.', 'welcome_email_sent' => false, 'existing_login_ready' => true]);
-    }
-    $sent = sendHiredWelcomeEmail($name, $recipient, $user['email'], $passwordFor($nonce), $user['id']);
+    $password = $nonce && ($user['app_metadata']['hris_hired_application'] ?? null) === $id
+        && ($user['app_metadata']['hris_temporary_password'] ?? null) === true ? $passwordFor($nonce) : null;
+    $deliveryKey = $password ? 'hired-welcome/'.$user['id'] : 'hired-existing/'.$id.'/'.$user['id'];
+    $sent = sendHiredWelcomeEmail($name, $recipient, $user['email'], $password, $deliveryKey);
     return response()->json(['welcome_email_sent' => $sent, 'message' => $sent
         ? 'Employee account ready. The welcome email was accepted for delivery.'
         : 'Employee account ready. The welcome email could not be sent. Select Complete Employee Account Setup to retry.']);
 });
 
-function sendHiredWelcomeEmail(string $name, string $recipient, string $email, string $password, string $authId): bool
+function sendHiredWelcomeEmail(string $name, string $recipient, string $email, ?string $password, string $deliveryKey): bool
 {
     $key = trim((string) config('services.resend.key'));
     if ($key === '') {
@@ -481,15 +480,26 @@ function sendHiredWelcomeEmail(string $name, string $recipient, string $email, s
     }
     try {
         $template = \Illuminate\Support\Facades\File::get(resource_path('views/emails/hired-welcome.html'));
-        $values = ['name' => $name, 'email' => $email, 'password' => $password];
-        $html = preg_replace_callback('/\[\[(name|email|password)\]\]/', fn ($match) => e($values[$match[1]]), $template);
-        $response = Http::withToken($key)->withHeader('Idempotency-Key', 'hired-welcome/'.$authId)
-            ->acceptJson()->timeout(8)->post('https://api.resend.com/emails', [
+        $instructions = $password ? 'Change your temporary password on your first sign-in.' : 'Use your current employee password. If you need help signing in, contact HR.';
+        $values = [
+            'name' => e($name), 'email' => e($email),
+            'passwordRow' => $password ? '<tr><td style="padding:8px 14px 12px;overflow-wrap:anywhere;"><strong>Temporary password</strong><br><span style="font-family:monospace;white-space:pre-wrap;">'.e($password).'</span></td></tr>' : '',
+            'signInInstructions' => $instructions,
+        ];
+        $html = preg_replace_callback('/\[\[(name|email|passwordRow|signInInstructions)\]\]/', fn ($match) => $values[$match[1]], $template);
+        $passwordText = $password ? "Temporary password: {$password}\n\n" : '';
+        $signInText = $password ? 'Sign in at https://app-dev-repository.vercel.app/login and change your temporary password.'
+            : "Sign in at https://app-dev-repository.vercel.app/login. {$instructions}";
+        $response = Http::withToken($key)->withHeader('Idempotency-Key', $deliveryKey)
+            ->acceptJson()->timeout(4)->retry(2, 150, function ($exception) {
+                return $exception instanceof \Illuminate\Http\Client\ConnectionException
+                    || ($exception instanceof \Illuminate\Http\Client\RequestException && $exception->response->serverError());
+            }, throw: false)->post('https://api.resend.com/emails', [
                 'from' => sprintf('%s <%s>', config('services.resend.from_name'), config('services.resend.from_address')),
                 'to' => [$recipient],
                 'subject' => 'You’re hired! Welcome to Buenaventura Estate',
                 'html' => $html,
-                'text' => "Hello {$name}!\n\nYou’re hired! Here’s your employee account.\n\nEmail: {$email}\n\nTemporary password: {$password}\n\nSign in at https://app-dev-repository.vercel.app/login and change your temporary password.",
+                'text' => "Hello {$name}!\n\nYou’re hired! Here’s your employee account.\n\nEmail: {$email}\n\n{$passwordText}{$signInText}",
             ]);
         return $response->successful() && ! empty($response->json('id'));
     } catch (Throwable) {

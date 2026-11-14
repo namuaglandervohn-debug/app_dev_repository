@@ -1002,7 +1002,7 @@ export default function RecruitmentManagement() {
         ? 'Hired status email accepted for delivery.'
         : 'The Hired status email could not be sent. Use Complete Employee Account Setup to retry.';
       setSnackbar({ open: true, message: `${result.message} ${statusMessage}`,
-        severity: (result.welcome_email_sent || result.existing_login_ready) && statusSent ? 'success' : 'warning' });
+        severity: result.welcome_email_sent && statusSent ? 'success' : 'warning' });
       setViewDialog(false);
       void fetchApplications({ silent: true });
     } catch (e: any) {

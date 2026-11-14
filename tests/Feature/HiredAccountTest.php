@@ -12,7 +12,7 @@ use Tests\TestCase;
 #[PreserveGlobalState(false)]
 class HiredAccountTest extends TestCase
 {
-    private function fakeApi(string $status = 'Hired'): void
+    private function fakeApi(string $status = 'Hired', bool $existingLogin = false): void
     {
         config([
             'services.supabase.url' => 'https://supabase.test',
@@ -21,7 +21,7 @@ class HiredAccountTest extends TestCase
             'services.resend.key' => 'test-mail',
         ]);
         Http::preventStrayRequests();
-        Http::fake(function (Request $request) use ($status) {
+        Http::fake(function (Request $request) use ($status, $existingLogin) {
             $path = parse_url($request->url(), PHP_URL_PATH);
             parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
             return match ($path) {
@@ -35,10 +35,15 @@ class HiredAccountTest extends TestCase
                 '/rest/v1/employees' => Http::response([['employee_id' => 'EMP-2026-0001']]),
                 '/rest/v1/user_accounts' => Http::response(match (true) {
                     isset($query['or']) => [['role' => 'general_manager']],
+                    $existingLogin && isset($query['employee_id']) => [[
+                        'user_id' => 'USR-2026-0001', 'auth_user_id' => 'employee-auth',
+                        'email' => 'employee.new@buenaventura.com', 'role' => 'employee', 'is_active' => true,
+                    ]],
                     $request->method() === 'POST' => [$request->data() + ['user_id' => 'USR-2026-0001']],
                     default => [],
                 }),
                 '/auth/v1/admin/users' => Http::response(['id' => 'employee-auth'] + $request->data(), 201),
+                '/auth/v1/admin/users/employee-auth' => Http::response(['id' => 'employee-auth', 'email' => 'employee.new@buenaventura.com']),
                 '/emails' => Http::response(['id' => 'mail-fixture']),
             };
         });
@@ -67,5 +72,19 @@ class HiredAccountTest extends TestCase
             'applicant_id' => 'APP-2026-0001',
         ])->assertConflict();
         Http::assertNotSent(fn (Request $request) => $request->method() !== 'GET');
+    }
+
+    public function test_existing_employee_receives_sign_in_instructions(): void
+    {
+        $this->fakeApi(existingLogin: true);
+        $this->withToken('admin-token')->postJson('/api/applications/hired-account', [
+            'applicant_id' => 'APP-2026-0001',
+        ])->assertOk()->assertJsonPath('welcome_email_sent', true);
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/emails')
+            && $request['to'] === ['applicant@example.test']
+            && str_contains($request['html'], 'Use your current employee password')
+            && ! str_contains($request['html'], 'Temporary password')
+            && $request->hasHeader('Idempotency-Key', 'hired-existing/APP-2026-0001/employee-auth'));
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/auth/v1/admin/users') && $request->method() !== 'GET');
     }
 }
