@@ -1,5 +1,5 @@
 import { formatDisplayDate } from '../../lib/displayDate';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -140,12 +140,12 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
   inDialog?: boolean;
 }) {
   const [applicantId, setApplicantId] = useState(initialApplicantId);
+  const selectedApplicationId = inDialog ? initialApplicantId.trim() : '';
   const [applicationData, setApplicationData] = useState<ApplicationStatus | null>(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(selectedApplicationId));
 
-  const handleTrack = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const loadApplication = useCallback(async (applicantId: string, signal?: AbortSignal) => {
     setError('');
     setApplicationData(null);
     setLoading(true);
@@ -153,36 +153,37 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
     try {
       const id = applicantId.trim().toUpperCase();
 
-      const { data, error } = await supabase
+      const query = supabase
         .from('applicants')
         .select('*')
-        .eq('applicant_id', id)
-        .single();
+        .eq('applicant_id', id);
+      const { data, error } = await (signal ? query.abortSignal(signal) : query).single();
+      if (signal?.aborted) return;
 
       if (error || !data) {
-        setError('Applicant ID not found. Please check your ID and try again.');
+        setError(selectedApplicationId
+          ? 'Application status could not be loaded. Please try again.'
+          : 'Applicant ID not found. Please check your ID and try again.');
         return;
       }
 
       let accountEmail = '';
 
-      if (data.status === 'Hired') {
-        const { data: employeeData, error: employeeError } = await supabase
+      if (data.status === 'Hired' && !data.is_archived) {
+        const employeeQuery = supabase
           .from('employees')
           .select('employee_id')
-          .eq('applicant_id', data.applicant_id)
-          .maybeSingle();
-
-        if (employeeError) throw employeeError;
+          .eq('applicant_id', data.applicant_id);
+        const { data: employeeData } = await (signal ? employeeQuery.abortSignal(signal) : employeeQuery).maybeSingle();
+        if (signal?.aborted) return;
 
         if (employeeData?.employee_id) {
-          const { data: accountData, error: accountError } = await supabase
+          const accountQuery = supabase
             .from('user_accounts')
             .select('email')
-            .eq('employee_id', employeeData.employee_id)
-            .maybeSingle();
-
-          if (accountError) throw accountError;
+            .eq('employee_id', employeeData.employee_id);
+          const { data: accountData } = await (signal ? accountQuery.abortSignal(signal) : accountQuery).maybeSingle();
+          if (signal?.aborted) return;
 
           accountEmail = accountData?.email ?? '';
         }
@@ -204,11 +205,23 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
         notes: data.notes ?? '',
         accountEmail,
       });
-    } catch (e: any) {
-      setError(`Could not retrieve application: ${e.message}`);
+    } catch {
+      if (!signal?.aborted) setError('Application status could not be loaded. Please try again.');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
+  }, [selectedApplicationId]);
+
+  useEffect(() => {
+    if (!selectedApplicationId) return;
+    const controller = new AbortController();
+    void loadApplication(selectedApplicationId, controller.signal);
+    return () => controller.abort();
+  }, [selectedApplicationId, loadApplication]);
+
+  const handleTrack = (event: React.FormEvent) => {
+    event.preventDefault();
+    void loadApplication(applicantId);
   };
 
   const InfoCard = ({
@@ -323,7 +336,7 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
             </Typography>
           </Stack>}
 
-          <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 2.25, md: 3 }, mb: 3 }}>
+          {!selectedApplicationId && <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 2.25, md: 3 }, mb: 3 }}>
             <form onSubmit={handleTrack}>
               <Grid container spacing={2} alignItems="flex-start">
                 <Grid size={{ xs: 12, md: 8 }}>
@@ -376,11 +389,21 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
                 </Grid>
               </Grid>
             </form>
-          </Paper>
+          </Paper>}
+
+          {selectedApplicationId && loading && (
+            <Stack direction="row" spacing={1.5} alignItems="center" role="status" sx={{ p: 2 }}>
+              <CircularProgress size={20} />
+              <Typography>Loading application status…</Typography>
+            </Stack>
+          )}
 
           {error && (
             <Alert
               severity="error"
+              action={selectedApplicationId ? (
+                <Button color="inherit" size="small" onClick={() => void loadApplication(selectedApplicationId)}>Try again</Button>
+              ) : undefined}
               sx={{
                 mb: 3,
                 borderRadius: '18px',
@@ -396,7 +419,7 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
             <Card
               elevation={0}
               sx={{
-                mt: 3,
+                mt: selectedApplicationId ? 0 : 3,
                 borderRadius: '26px',
                 background: 'rgba(255,255,255,0.95)',
                 border: '1px solid rgba(123, 161, 131, 0.18)',
@@ -647,7 +670,7 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
             </Card>
           )}
 
-          <Paper
+          {!selectedApplicationId && <Paper
             elevation={0}
             sx={{
               ...softCardSx,
@@ -682,7 +705,7 @@ export function ApplicationTracker({ initialApplicantId = '', inDialog = false }
                 </Typography>
               </Box>
             </Stack>
-          </Paper>
+          </Paper>}
         </Box>
       </Box>
     </Paper>
