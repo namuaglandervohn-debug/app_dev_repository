@@ -116,7 +116,6 @@ const EMPTY = {
   employee: '', period: new Date().toISOString().slice(0, 7), cutoff: '5',
   regularHours: '', overtime: '', nsdHours: '', regularHolidayDays: '', specialHolidayDays: '',
   allowanceAmt: '', sssAmt: '', phicAmt: '', hdmfAmt: '', cashAdvance: '', otherCharges: '',
-  overrideAmounts: {} as Partial<Record<PayslipAmountField, string>>, reason: '',
 };
 
 const money = (value: number | string | null | undefined) => {
@@ -386,12 +385,10 @@ export default function PayrollComputation() {
   const [manualRateError, setManualRateError] = useState('');
   const manualDailyRate = manualRates?.dailyRate ?? 0;
   const manualHourlyRate = manualDailyRate / payrollHoursPerDay;
-  const manualEarnings = MANUAL_CALCULATED_FIELDS.map(line => {
-    const calculated = calculatePayslipLineAmount({ hourlyRate: manualHourlyRate }, line.quantity, form[line.quantity], manualRates?.premiums) ?? 0;
-    const override = form.overrideAmounts[line.amount];
-    return { ...line, calculated, value: override && Number.isFinite(Number(override)) ? roundMoney(Number(override)) : calculated };
-  });
-  const hasManualOverride = manualEarnings.some(line => line.calculated !== line.value);
+  const manualEarnings = MANUAL_CALCULATED_FIELDS.map(line => ({
+    ...line,
+    value: calculatePayslipLineAmount({ hourlyRate: manualHourlyRate }, line.quantity, form[line.quantity], manualRates?.premiums) ?? 0,
+  }));
   const manualGross = roundMoney(manualEarnings.reduce((total, line) => total + line.value, roundMoney(toNumber(form.allowanceAmt))));
   const manualDeductions = roundMoney(MANUAL_DEDUCTIONS.reduce((total, [field]) => total + roundMoney(toNumber(form[field])), 0));
   const manualNetPay = netPayAfterDeductions(manualGross, manualDeductions);
@@ -876,9 +873,8 @@ export default function PayrollComputation() {
   }, [generateDialog, generatePosition]);
 
   const handleAdd = async () => {
-    if (!manualEmployee || !manualDailyRate || !/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)
-      || (hasManualOverride && !form.reason.trim())) {
-      setSnackbar({ open: true, message: 'Select an employee with a daily rate and a payroll period. Enter a reason for any override.', severity: 'error' });
+    if (!manualEmployee || !manualDailyRate || !/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)) {
+      setSnackbar({ open: true, message: 'Select an employee with a daily rate and a payroll period.', severity: 'error' });
       return;
     }
 
@@ -892,11 +888,6 @@ export default function PayrollComputation() {
         ])),
         ...Object.fromEntries(MANUAL_DEDUCTIONS.map(([field]) => [field, money(toNumber(form[field]))])),
         allowanceAmt: money(toNumber(form.allowanceAmt)),
-        ...(hasManualOverride ? {
-          manualAdjustmentReason: form.reason.trim(),
-          manualAdjustments: manualEarnings.filter(line => line.calculated !== line.value)
-            .map(({ label, calculated, value }) => ({ label, calculated, value })),
-        } : {}),
       };
       const { error: itemError } = await supabase.rpc('save_manual_payroll_draft', {
         p_start: start, p_end: end, p_cutoff: cutoffLabel, p_prepared_by: preparedByUserId,
@@ -2240,21 +2231,9 @@ export default function PayrollComputation() {
                 </Grid>
                 <Grid size={6}>
                   <TextField fullWidth label={`${line.label} amount`}
-                    value={form.overrideAmounts[line.amount] ?? (manualDailyRate ? line.calculated.toFixed(2) : '')}
+                    value={manualDailyRate ? line.value.toFixed(2) : '—'}
                     InputLabelProps={{ shrink: true }}
-                    helperText={form.overrideAmounts[line.amount] && line.calculated !== line.value ? `Calculated ${money(line.calculated)}` : undefined}
-                    inputProps={{ inputMode: 'decimal' }}
-                    InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
-                    onChange={e => {
-                      if (/^\d{0,8}(?:\.\d{0,2})?$/.test(e.target.value)) {
-                        setForm({ ...form, overrideAmounts: { ...form.overrideAmounts, [line.amount]: e.target.value } });
-                      }
-                    }}
-                    onBlur={() => setForm(prev => {
-                      const override = prev.overrideAmounts[line.amount];
-                      if (override !== '' && override !== '.') return prev;
-                      return { ...prev, overrideAmounts: { ...prev.overrideAmounts, [line.amount]: undefined } };
-                    })} />
+                    InputProps={{ readOnly: true, startAdornment: <InputAdornment position="start">₱</InputAdornment> }} />
                 </Grid>
               </React.Fragment>
             ))}
@@ -2264,8 +2243,6 @@ export default function PayrollComputation() {
                 onChange={e => { if (/^\d{0,8}(?:\.\d{0,2})?$/.test(e.target.value)) setForm({ ...form, allowanceAmt: e.target.value }); }} />
             </Grid>
           </Grid>
-          {hasManualOverride && <TextField label="Reason for adjustment" required fullWidth multiline minRows={2}
-            value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} inputProps={{ maxLength: 500 }} />}
           <Typography fontWeight={700}>Deductions</Typography>
           <Grid container spacing={2}>
             {MANUAL_DEDUCTIONS.map(([field, label]) => (
@@ -2285,7 +2262,7 @@ export default function PayrollComputation() {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfff9' }}>
           <Button onClick={() => setAddDialog(false)} disabled={saving}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdd} disabled={saving || !manualDailyRate || !form.period || (hasManualOverride && !form.reason.trim())}
+          <Button variant="contained" onClick={handleAdd} disabled={saving || !manualDailyRate || !form.period}
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}>
             {saving ? 'Saving…' : 'Save as Draft'}
           </Button>
