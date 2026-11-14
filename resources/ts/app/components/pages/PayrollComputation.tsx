@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { getAttendanceOvertimeMinutes } from '../../lib/attendanceOvertime';
 import { getJobTitleOptions, jobTitleKey } from '../../lib/jobTitles';
+import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import {
   calculatePayslipLineAmount, calculatePayslipTotals, netPayAfterDeductions,
   payrollHoursPerDay, payrollPremiumFields, payslipAmountFields, payslipQuantityAmounts, regularOvertimeMultiplier,
@@ -170,40 +171,10 @@ const formatPayrollDisplayIdFromEmployee = (employeeId?: string | null, periodSt
   return formatPayrollDisplayId(fallbackPayrollId, periodStart);
 };
 
-const parseSalaryRate = (value: unknown) => {
-  if (typeof value === 'number') return value;
-  const cleaned = String(value ?? '').replace(/,/g, '');
-  const matches = cleaned.match(/\d+(?:\.\d+)?/g);
-  if (!matches?.length) return 0;
-  return Number(matches[0]) || 0;
-};
-
 const defaultDailyRateForPosition = (position: string) => {
   if (!position) return 0;
   return jobTitleKey(position) === 'service crew' ? 525 : 510;
 };
-
-async function loadJobSalaryRates(positions: string[]) {
-  const rates = new Map<string, number>();
-  if (!positions.length) return rates;
-
-  const { data, error } = await supabase
-    .from('job_postings')
-    .select('title, salary_range')
-    .in('title', positions)
-    .order('is_active', { ascending: false, nullsFirst: false })
-    .order('updated_at', { ascending: false, nullsFirst: false })
-    .order('id');
-
-  if (error) throw error;
-
-  for (const job of data ?? []) {
-    const rate = parseSalaryRate(job.salary_range);
-    const key = jobTitleKey(job.title ?? '');
-    if (key && rate > 0 && !rates.has(key)) rates.set(key, rate);
-  }
-  return rates;
-}
 
 const roundMoney = (value: number) => Number((Number.isFinite(value) ? value : 0).toFixed(2));
 

@@ -1,4 +1,6 @@
 import { formatDisplayDate } from '../../lib/displayDate';
+import { jobTitleKey } from '../../lib/jobTitles';
+import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import TextField from '../DateTextField';
 import { useState, useEffect } from 'react';
 import {
@@ -247,12 +249,6 @@ const requestTypeChipSx = (type: RequestType) => {
   };
 };
 
-const parseDailyRate = (value: unknown) => {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const match = String(value ?? '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
-  return match ? Number(match[0]) || 0 : 0;
-};
-
 const formatMoney = (value: number) =>
   `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -486,7 +482,8 @@ export default function RequestManagement() {
   const isEmployee = role === 'employee' || role.includes('employee');
 
   const resolveCurrentEmployeeId = async () => {
-    if (currentUser?.employee_id) return currentUser.employee_id as string;
+    const linkedEmployeeId = currentUser?.employeeId || currentUser?.employee_id;
+    if (linkedEmployeeId) return linkedEmployeeId as string;
 
     if (currentUser?.email) {
       const { data: account } = await supabase
@@ -547,23 +544,34 @@ export default function RequestManagement() {
     return buildSequentialRequestId(year, nextSequence);
   };
 
-  const fetchEmployeeLeaveDirectory = async () => {
-    const { data, error: employeeError } = await supabase
+  const fetchEmployeeLeaveDirectory = async (employeeId: string | null) => {
+    if (isEmployee && !employeeId) return [];
+    let query = supabase
       .from('employees')
       .select('employee_id, first_name, middle_name, last_name, suffix, position, department, salary')
       .order('first_name', { ascending: true });
+    if (isEmployee && employeeId) query = query.eq('employee_id', employeeId);
+    const { data, error: employeeError } = await query;
 
     if (employeeError) throw employeeError;
+    const employees = data ?? [];
+    const dailyRates = await loadJobSalaryRates(employees.map(row => row.position ?? ''));
 
-    setEmployeeLeaveDirectory(
-      (data ?? []).map((row: any) => ({
+    return employees.map(row => ({
         employeeId: row.employee_id ?? '',
         name: formatEmployeeName(row) || row.employee_id || 'Unnamed Employee',
         position: row.position ?? '',
         department: row.department ?? '',
-        dailyRate: parseDailyRate(row.salary),
-      }))
-    );
+        dailyRate: dailyRates.get(jobTitleKey(row.position ?? '')) || parseSalaryRate(row.salary),
+      }));
+  };
+
+  const refreshEmployeeLeaveDirectory = async (employeeId: string | null) => {
+    try {
+      setEmployeeLeaveDirectory(await fetchEmployeeLeaveDirectory(employeeId));
+    } catch {
+      setSnackbar({ open: true, severity: 'warning', message: 'Could not refresh employee daily rates.' });
+    }
   };
 
   const fetchEmployeeLeaveBalances = async (employeeIdOverride?: string | null) => {
@@ -646,13 +654,12 @@ export default function RequestManagement() {
         const employeeId = await resolveCurrentEmployeeId();
         if (!active) return;
         setCurrentEmployeeId(employeeId);
-        if (!isEmployee) {
-          await fetchEmployeeLeaveDirectory();
-        } else {
-          setEmployeeLeaveDirectory([]);
-        }
-        await fetchEmployeeLeaveBalances(employeeId);
-        await fetchRequests(employeeId);
+        const [directory] = await Promise.all([
+          fetchEmployeeLeaveDirectory(employeeId),
+          fetchEmployeeLeaveBalances(employeeId),
+          fetchRequests(employeeId),
+        ]);
+        if (active) setEmployeeLeaveDirectory(directory);
       } catch (e: any) {
         if (!active) return;
         setError(`Could not initialize requests: ${e.message ?? 'Unknown error'}`);
@@ -666,7 +673,7 @@ export default function RequestManagement() {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.email, currentUser?.employee_id, currentUser?.role]);
+  }, [currentUser?.email, currentUser?.employee_id, currentUser?.employeeId, currentUser?.role]);
 
   const handleSubmit = async () => {
     const startDate = newRequest.startDate;
@@ -944,13 +951,16 @@ export default function RequestManagement() {
   const currentEmployeeAnnualAllowance = getAnnualLeaveAllowance(currentEmployeeId);
   const currentEmployeeUsedLeave = getApprovedLeaveDays(currentEmployeeId);
   const currentEmployeeRecord = employeeLeaveDirectory.find(employee => employee.employeeId === currentEmployeeId);
-  const currentEmployeeDailyRate = currentEmployeeRecord?.dailyRate ?? parseDailyRate((user as any)?.salary);
+  const currentEmployeeDailyRate = currentEmployeeRecord?.dailyRate || parseSalaryRate(currentUser?.salary);
+  const remainingLeave = Math.max(currentEmployeeAnnualAllowance - currentEmployeeUsedLeave, 0);
+  const formatConversion = (remaining: number, rate: number) =>
+    remaining > 0 && !rate ? 'Daily rate unavailable' : formatMoney(remaining * rate);
   const leaveBalances = [{
     leaveType: COMPANY_PAID_LEAVE_TYPE,
     available: currentEmployeeAnnualAllowance,
     used: currentEmployeeUsedLeave,
-    remaining: Math.max(currentEmployeeAnnualAllowance - currentEmployeeUsedLeave, 0),
-    estimatedConversion: Math.max(currentEmployeeAnnualAllowance - currentEmployeeUsedLeave, 0) * currentEmployeeDailyRate,
+    remaining: remainingLeave,
+    estimatedConversion: formatConversion(remainingLeave, currentEmployeeDailyRate),
   }];
 
   const employeeLeaveBalanceRows = employeeLeaveDirectory.map(employee => {
@@ -963,7 +973,7 @@ export default function RequestManagement() {
       annualAllowance,
       usedLeave,
       remaining,
-      estimatedConversion: remaining * employee.dailyRate,
+      estimatedConversion: formatConversion(remaining, employee.dailyRate),
     };
   });
   const normalizedLeaveBalanceSearch = leaveBalanceSearch.trim().toLowerCase();
@@ -1059,7 +1069,7 @@ export default function RequestManagement() {
           ['Annual Allowance', formatCreditValue(leaveBalances[0].available)],
           ['Used Leave', formatCreditValue(leaveBalances[0].used)],
           ['Remaining Balance', formatCreditValue(leaveBalances[0].remaining)],
-          ['Estimated Conversion', formatMoney(leaveBalances[0].estimatedConversion)],
+          ['Estimated Conversion', leaveBalances[0].estimatedConversion],
         ].map(([label, value]) => (
           <Grid key={label} size={{ xs: 12, sm: 6 }}>
             <Paper
@@ -1283,7 +1293,7 @@ export default function RequestManagement() {
             ['Annual Allowance', leaveBalances[0].available],
             ['Used Leave', leaveBalances[0].used],
             ['Remaining Balance', leaveBalances[0].remaining],
-            ['Estimated Conversion', formatMoney(leaveBalances[0].estimatedConversion)],
+            ['Estimated Conversion', leaveBalances[0].estimatedConversion],
           ].map(([label, value]) => (
             <Grid key={label} size={{ xs: 12, sm: 6, md: 3 }}>
               <Paper elevation={0} sx={{ ...innerCardSx, p: 1.5, minHeight: 112 }}>
@@ -1394,8 +1404,8 @@ export default function RequestManagement() {
                         {formatCreditValue(employee.remaining)}
                       </Typography>
                     </TableCell>
-                    <TableCell align="center">{formatMoney(employee.dailyRate)}</TableCell>
-                    <TableCell align="center">{formatMoney(employee.estimatedConversion)}</TableCell>
+                    <TableCell align="center">{employee.dailyRate ? formatMoney(employee.dailyRate) : '—'}</TableCell>
+                    <TableCell align="center">{employee.estimatedConversion}</TableCell>
                     <TableCell align="center">
                       <Button
                         size="small"
@@ -1517,7 +1527,10 @@ export default function RequestManagement() {
                 <Button
                   variant="contained"
                   startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <Sync />}
-                  onClick={() => fetchRequests(currentEmployeeId)}
+                  onClick={() => {
+                    void fetchRequests(currentEmployeeId);
+                    void refreshEmployeeLeaveDirectory(currentEmployeeId);
+                  }}
                   disabled={loading}
                   sx={{
                     ...pillButtonSx,
