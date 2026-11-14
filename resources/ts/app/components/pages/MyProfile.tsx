@@ -1,4 +1,6 @@
 import { formatDisplayDate } from '../../lib/displayDate';
+import MobileNumberField from '../MobileNumberField';
+import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { employeeApplicationFields } from '../../lib/employeeApplicationFields';
 import { useState, useEffect, useRef } from 'react';
 import {
@@ -357,6 +359,10 @@ export default function MyProfile() {
 
   const handleSave = async () => {
     if (!employee || !user?.employeeId) return;
+    if (editForm.contact && editForm.contact !== employee.contact && !isPhilippineMobileNumber(editForm.contact)) {
+      setSnackbar({ open: true, message: 'Enter a valid Philippine mobile number.', severity: 'error' });
+      return;
+    }
     setSaving(true);
     try {
       const { error } = await supabase
@@ -638,24 +644,23 @@ export default function MyProfile() {
                   <Grid container spacing={1.5}>
                     {EDITABLE_FIELDS.map(({ key, label, icon }) => (
                       <Grid key={key} size={{ xs: 12, sm: 6 }}>
+                        {key === 'contact' && editing ? (
+                          <MobileNumberField fullWidth label={label} size="small" value={editForm.contact}
+                            onNumberChange={digits => setEditForm({ ...editForm, contact: formatMobileNumber(digits) })}
+                            sx={softTextFieldSx}
+                            InputProps={{ startAdornment: <Box sx={{ mr: 1, color: GREEN_UI.greenDark, display: 'flex' }}>{icon}</Box> }} />
+                        ) : (
                         <TextField
                           fullWidth
                           label={label}
                           size="small"
                           value={editing ? (editForm as any)[key] ?? '' : (employee as any)[key] ?? '—'}
-                          onChange={editing ? e => {
-                            const v = key === 'contact'
-                              ? e.target.value.replace(/\D/g, '').slice(0, 11)
-                              : e.target.value;
-                            setEditForm({ ...editForm, [key]: v });
-                          } : undefined}
+                          onChange={editing ? e => setEditForm({ ...editForm, [key]: e.target.value }) : undefined}
                           disabled={!editing}
-                          inputProps={key === 'contact' ? { maxLength: 11, inputMode: 'numeric' } : undefined}
-                          placeholder={key === 'contact' && editing ? '09XXXXXXXXX' : undefined}
-                          helperText={key === 'contact' && editing ? `${((editForm as any)[key] ?? '').length}/11` : undefined}
                           sx={softTextFieldSx}
                           InputProps={{ startAdornment: <Box sx={{ mr: 1, color: GREEN_UI.greenDark, display: 'flex' }}>{icon}</Box> }}
                         />
+                        )}
                       </Grid>
                     ))}
                   </Grid>

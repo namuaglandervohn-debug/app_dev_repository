@@ -36,7 +36,7 @@ function FormattedDateField({ value, onChange, onBlur, inputProps, InputProps, I
         placeholder="MM/DD/YYYY"
         inputRef={textInput}
         InputLabelProps={{ ...InputLabelProps, shrink: true }}
-        inputProps={{ ...inputProps, min: undefined, max: undefined, inputMode: 'numeric', maxLength: 10 }}
+        inputProps={{ ...inputProps, min: undefined, max: undefined, inputMode: 'numeric' }}
         InputProps={{
           ...InputProps,
           endAdornment: !props.disabled && !InputProps?.readOnly && !inputProps?.readOnly ? (
@@ -58,8 +58,12 @@ function FormattedDateField({ value, onChange, onBlur, inputProps, InputProps, I
         }}
         onChange={event => {
           const input = event.target.value;
-          const text = /^\d{4}-\d{2}-\d{2}$/.test(input) ? formatDisplayDate(input) : input;
-          if (!/^[\d/]*$/.test(text)) return;
+          let text = /^\d{4}-\d{2}-\d{2}$/.test(input) ? formatDisplayDate(input) : input;
+          if (!/^[\d/]{0,10}$/.test(text) || text.replace(/\//g, '').length > 8) return;
+          if (!text.includes('/') || (text.length > 5 && /^\d{2}\/\d{3,6}$/.test(text))) {
+            const digits = text.replace(/\//g, '');
+            text = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join('/');
+          }
           const iso = parseDisplayDate(text);
           setDraft(text);
           const nextValue = iso && isAllowed(iso) ? iso : '';

@@ -1,4 +1,6 @@
 import TextField from '../DateTextField';
+import MobileNumberField from '../MobileNumberField';
+import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, IconButton, InputAdornment, MenuItem, Paper, Stack, Typography } from '@mui/material';
@@ -149,6 +151,14 @@ export default function ApplicantPortal() {
         {items.map(([key, label, required]) => {
           const options = readOnly ? undefined : choices[key];
           const isDate = key === 'birthdate';
+          if (key === 'contactNumber' && !readOnly) return (
+            <Grid key={key} size={{ xs: 12, sm: 6 }}>
+              <MobileNumberField fullWidth required={required} label={label} value={profile[key]}
+                size={inProfile ? 'small' : undefined} sx={inProfile ? profileFieldSx : undefined}
+                InputProps={inProfile ? undefined : { startAdornment: registrationAdornment(registrationIcons[key]) }}
+                disabled={busy} onNumberChange={digits => setProfileField(key, formatMobileNumber(digits))} />
+            </Grid>
+          );
           return (
             <Grid key={key} size={{ xs: 12, sm: 6 }}>
               <TextField
@@ -174,7 +184,7 @@ export default function ApplicantPortal() {
   const validateProfile = () => {
     if (fields.some(([key,, required]) => required && !String(profile[key] || '').trim())) throw new Error('Complete all required personal information.');
     if (!profile.birthdate || profile.birthdate > new Date().toISOString().slice(0,10)) throw new Error('Enter a valid date of birth.');
-    if (!/^(?:\+?63|0)?9\d{9}$/.test(String(profile.contactNumber).replace(/[\s()-]/g,''))) throw new Error('Enter a valid Philippine mobile number.');
+    if (!isPhilippineMobileNumber(String(profile.contactNumber))) throw new Error('Enter a valid Philippine mobile number.');
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); if (busy) return; setBusy(true); setError(''); setNotice('');

@@ -1,4 +1,6 @@
 import TextField from '../DateTextField';
+import MobileNumberField from '../MobileNumberField';
+import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -285,8 +287,8 @@ export default function EmployeeRecords() {
       errs.position = "Position is required";
     if (!form.outlet.trim())
       errs.outlet = "Outlet / Branch is required";
-    if (!form.contact.trim())
-      errs.contact = "Contact number is required";
+    if (!isPhilippineMobileNumber(form.contact))
+      errs.contact = form.contact ? "Enter 10 digits starting with 9." : "Contact number is required";
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -1016,18 +1018,16 @@ export default function EmployeeRecords() {
             </Box>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
+                <MobileNumberField
                   label="Contact Number"
                   fullWidth
                   required
                   value={form.contact}
-                  onChange={(e) =>
-                    setForm({ ...form, contact: e.target.value.replace(/\D/g, '').slice(0, 11) })
+                  onNumberChange={(digits) =>
+                    setForm({ ...form, contact: formatMobileNumber(digits) })
                   }
                   error={!!formErrors.contact}
-                  helperText={formErrors.contact || `${form.contact.length}/11`}
-                  placeholder="09XXXXXXXXX"
-                  inputProps={{ maxLength: 11, inputMode: 'numeric' }}
+                  helperText={formErrors.contact}
                   sx={softTextFieldSx}
                   InputProps={{
                     startAdornment: (

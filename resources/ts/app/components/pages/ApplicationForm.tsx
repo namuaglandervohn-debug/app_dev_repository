@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import MobileNumberField from '../MobileNumberField';
+import { formatMobileNumber } from '../../lib/mobileNumber';
 import {
   Box, Typography, Paper, TextField, Button, MenuItem, Alert,
   Grid, CircularProgress, Dialog, DialogContent, DialogActions,
@@ -116,12 +118,6 @@ export default function ApplicationForm() {
   const set = (key: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setFormData({ ...formData, [key]: e.target.value });
 
-  /** Phone: digits only, max 11 characters */
-  const setPhone = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value.replace(/\D/g, '').slice(0, 11);
-    setFormData(prev => ({ ...prev, phone: v }));
-  };
-
   const EDUCATIONAL_ATTAINMENT = [
     'High School Graduate',
     'Vocational / Technical Course',
@@ -158,8 +154,8 @@ export default function ApplicationForm() {
               <TextField fullWidth label="Email Address" type="email" value={f.email} onChange={set('email')} required />
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>
-              <TextField fullWidth label="Phone Number" value={f.phone} onChange={setPhone} required placeholder="09XXXXXXXXX"
-                inputProps={{ maxLength: 11 }} helperText={`${f.phone.length}/11`} />
+              <MobileNumberField fullWidth label="Phone Number" value={f.phone}
+                onNumberChange={digits => setFormData(prev => ({ ...prev, phone: formatMobileNumber(digits) }))} required />
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>
               <TextField fullWidth select label="Position Applied For" value={f.position} onChange={set('position')} required

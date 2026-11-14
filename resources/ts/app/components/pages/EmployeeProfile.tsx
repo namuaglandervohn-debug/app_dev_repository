@@ -1,5 +1,7 @@
 import { formatDisplayDate, formatDisplayDateRange, formatDisplayDateTime } from '../../lib/displayDate';
 import TextField from '../DateTextField';
+import MobileNumberField from '../MobileNumberField';
+import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
@@ -449,6 +451,17 @@ export default function EmployeeProfile() {
 
   const handleSave = async () => {
   if (!editForm || !id) return;
+    const original = employee?.applicationForm;
+    const updated = editForm.applicationForm;
+    const changedNumbers = [
+      [editForm.contact, employee?.contact],
+      ...(updated?.characterReferences ?? []).map((reference, index) => [reference.contact, original?.characterReferences?.[index]?.contact]),
+      ...(updated?.emergencyContacts ?? []).map((contact, index) => [contact.phone, original?.emergencyContacts?.[index]?.phone]),
+    ];
+    if (changedNumbers.some(([value, previous]) => value && value !== previous && !isPhilippineMobileNumber(value))) {
+      setSnackbar({ open: true, message: 'Enter a valid Philippine mobile number.', severity: 'error' });
+      return;
+    }
 
   setSaving(true);
 
@@ -1280,6 +1293,13 @@ export default function EmployeeProfile() {
                   <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Civil status', editApplication.civilStatus ?? editForm.civilStatus, (value) => setEditForm({ ...editForm, civilStatus: value, applicationForm: { ...editApplication, civilStatus: value } }), CIVIL_STATUS)}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Nationality', editApplication.nationality, (value) => updateApplicationForm({ nationality: value }), APPLICANT_NATIONALITIES)}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Birthplace', editApplication.birthplace || editForm.birthplace, (value) => updateApplicationForm({ birthplace: value }))}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <MobileNumberField fullWidth label="Mobile number" value={editForm.contact || editApplication.phone}
+                      onNumberChange={digits => {
+                        const phone = formatMobileNumber(digits);
+                        setEditForm({ ...editForm, contact: phone, applicationForm: { ...editApplication, phone } });
+                      }} sx={applicationTextFieldSx} />
+                  </Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Height (cm)', editApplication.height, (value) => updateApplicationForm({ height: value }))}</Grid>
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Weight(kg)', editApplication.weight, (value) => updateApplicationForm({ weight: value }))}</Grid>
                   <Grid size={12}>{editAppField('Current address', editApplication.currentAddress || editForm.address, (value) => { setEditForm({ ...editForm, address: value, applicationForm: { ...(editForm.applicationForm ?? {}), currentAddress: value } }); }, { multiline: true, rows: 2 })}</Grid>
@@ -1373,7 +1393,10 @@ export default function EmployeeProfile() {
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Name', reference.name, (value) => updateCharacterReference(index, { name: value }))}</Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Position / Relationship', reference.position, (value) => updateCharacterReference(index, { position: value }))}</Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Company / Organization', reference.company, (value) => updateCharacterReference(index, { company: value }))}</Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>{editAppField('Contact number', reference.contact, (value) => updateCharacterReference(index, { contact: value }))}</Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <MobileNumberField fullWidth label="Contact number" value={reference.contact}
+                        onNumberChange={digits => updateCharacterReference(index, { contact: formatMobileNumber(digits) })} sx={applicationTextFieldSx} />
+                    </Grid>
                   </Grid>
                 ))}
               </Paper>
@@ -1383,7 +1406,10 @@ export default function EmployeeProfile() {
                   <Grid key={'edit-emergency-' + index} container spacing={2} sx={{ mb: 2 }}>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Name', contact.name, (value) => updateEmergencyContact(index, { name: value }))}</Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('Relationship', contact.relation, (value) => updateEmergencyContact(index, { relation: value }), RELATIONSHIPS)}</Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>{editAppField('Phone number', contact.phone, (value) => updateEmergencyContact(index, { phone: value }))}</Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <MobileNumberField fullWidth label="Phone number" value={contact.phone}
+                        onNumberChange={digits => updateEmergencyContact(index, { phone: formatMobileNumber(digits) })} sx={applicationTextFieldSx} />
+                    </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>{editAppField('Address', contact.address, (value) => updateEmergencyContact(index, { address: value }))}</Grid>
                   </Grid>
                 ))}

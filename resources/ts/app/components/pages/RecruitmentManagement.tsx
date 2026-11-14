@@ -1,5 +1,7 @@
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange } from '../../lib/displayDate';
 import TextField from '../DateTextField';
+import MobileNumberField from '../MobileNumberField';
+import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { loadApplicationFiles } from '../../lib/applicationFiles';
@@ -923,6 +925,10 @@ export default function RecruitmentManagement() {
 
   const saveEditedApplication = async () => {
     if (!selectedApp) return;
+    if (editAppForm.phone && editAppForm.phone !== selectedApp.phone && !isPhilippineMobileNumber(editAppForm.phone)) {
+      setSnackbar({ open: true, message: 'Enter a valid Philippine mobile number.', severity: 'error' });
+      return;
+    }
 
     const changes: Partial<Application> = {};
     for (const key of Object.keys(editAppForm) as (keyof Application)[]) {
@@ -1264,6 +1270,11 @@ export default function RecruitmentManagement() {
 
     return (
       <Grid size={size}>
+        {editable && field === 'phone' ? (
+          <MobileNumberField fullWidth label={label} value={getEditableValue(field, value)}
+            size="small" sx={softTextFieldSx}
+            onNumberChange={digits => updateEditField(field, formatMobileNumber(digits))} />
+        ) : (
         <TextField
           fullWidth
           label={label}
@@ -1277,6 +1288,7 @@ export default function RecruitmentManagement() {
           onChange={event => field && updateEditField(field, event.target.value)}
           sx={softTextFieldSx}
         />
+        )}
       </Grid>
     );
   };

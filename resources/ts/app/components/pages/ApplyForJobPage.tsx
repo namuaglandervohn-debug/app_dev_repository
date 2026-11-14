@@ -1,4 +1,6 @@
 import TextField from '../DateTextField';
+import MobileNumberField from '../MobileNumberField';
+import { formatMobileNumber as formatPhoneWithCountryCode, isPhilippineMobileNumber, localMobileNumber as sanitizePhoneNumber } from '../../lib/mobileNumber';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import {
@@ -19,7 +21,6 @@ import {
   FormGroup,
   FormControlLabel,
   Checkbox,
-  InputAdornment,
 } from '@mui/material';
 
 import {
@@ -93,8 +94,6 @@ type EmergencyContact = {
   address: string;
 };
 
-const PHONE_COUNTRY_CODE = '+63';
-const PHONE_LOCAL_LENGTH = 10;
 const EMPTY_CHARACTER_REFERENCE: CharacterReference = { name: '', position: '', company: '', contact: '' };
 const EMPTY_WORK_EXPERIENCE: WorkExperience = {
   companyOrganization: '',
@@ -142,16 +141,6 @@ function calculateAge(birthdate: string) {
   return age >= 0 ? String(age) : '';
 }
 
-function sanitizePhoneNumber(value: string) {
-  let digits = value.replace(/\D/g, '');
-  if (digits.startsWith('63')) digits = digits.slice(2);
-  if (digits.startsWith('0')) digits = digits.slice(1);
-  return digits.slice(0, PHONE_LOCAL_LENGTH);
-}
-
-function formatPhoneWithCountryCode(value: string) {
-  return value ? `${PHONE_COUNTRY_CODE}${value}` : '';
-}
 
 const fallbackBarangays = ['Poblacion', 'Barangay 1', 'Barangay 2', 'Barangay 3', 'Other / Not listed'];
 
@@ -483,18 +472,6 @@ export default function ApplyForJobPage() {
     clearFieldError('age');
   };
 
-  const setPhone = (key: 'contactNumber') => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const value = sanitizePhoneNumber(e.target.value);
-    setFormData((prev) => ({ ...prev, [key]: value }));
-    clearFieldError(key);
-  };
-
-  const phoneInputFieldProps = { inputMode: 'numeric' as const, pattern: '[0-9]*', maxLength: PHONE_LOCAL_LENGTH };
-  const phoneAdornment = (
-    <InputAdornment position="start" sx={{ color: '#0f172a', fontWeight: 400 }}>
-      {PHONE_COUNTRY_CODE}
-    </InputAdornment>
-  );
 
   const buildAddress = (country: string, region: string, province: string, city: string, barangay = '', street = '', zipCode = '') =>
     [street, barangay, city, province, region, country, zipCode].map((part) => part.trim()).filter(Boolean).join(', ');
@@ -644,7 +621,7 @@ export default function ApplyForJobPage() {
       if (!formData.civilStatus) errors.civilStatus = 'Civil status is required.';
       if (!formData.nationality) errors.nationality = 'Nationality is required.';
       if (!formData.contactNumber) errors.contactNumber = 'Contact number is required.';
-      if (formData.contactNumber && formData.contactNumber.length !== PHONE_LOCAL_LENGTH) errors.contactNumber = `Contact number must be exactly ${PHONE_LOCAL_LENGTH} digits after +63.`;
+      if (formData.contactNumber && !isPhilippineMobileNumber(formData.contactNumber)) errors.contactNumber = 'Enter 10 digits starting with 9.';
       if (!formData.email.trim()) errors.email = 'Email address is required.';
       if (formData.email && !validateEmail(formData.email)) errors.email = 'Please enter a valid email address.';
       if (!formData.birthplaceCountry) errors.birthplaceCountry = 'Birthplace country is required.';
@@ -698,7 +675,7 @@ export default function ApplyForJobPage() {
           if (!reference.name.trim()) errors.referenceName = `Reference ${index + 1}: name is required.`;
           if (!reference.position.trim()) errors.referencePosition = `Reference ${index + 1}: position/relationship is required.`;
           if (!reference.contact.trim()) errors.referenceContact = `Reference ${index + 1}: contact number is required.`;
-          if (reference.contact && reference.contact.length !== PHONE_LOCAL_LENGTH) errors.referenceContact = `Reference ${index + 1}: contact number must be exactly ${PHONE_LOCAL_LENGTH} digits after +63.`;
+          if (reference.contact && !isPhilippineMobileNumber(reference.contact)) errors.referenceContact = `Reference ${index + 1}: enter 10 digits starting with 9.`;
         }
       });
       emergencyContacts.forEach((emergencyContact, index) => {
@@ -715,8 +692,8 @@ export default function ApplyForJobPage() {
             errors.emergencyContactRelationOther = `Emergency contact ${index + 1}: please specify the relationship.`;
           }
           if (!emergencyContact.phone.trim()) errors.emergencyContactPhone = `Emergency contact ${index + 1}: contact number is required.`;
-          if (emergencyContact.phone && emergencyContact.phone.length !== PHONE_LOCAL_LENGTH) {
-            errors.emergencyContactPhone = `Emergency contact ${index + 1}: number must be exactly ${PHONE_LOCAL_LENGTH} digits after +63.`;
+          if (emergencyContact.phone && !isPhilippineMobileNumber(emergencyContact.phone)) {
+            errors.emergencyContactPhone = `Emergency contact ${index + 1}: enter 10 digits starting with 9.`;
           }
         }
       });
@@ -1198,7 +1175,10 @@ export default function ApplyForJobPage() {
                     <Grid size={fieldGrid}><TextField fullWidth required select label="Gender" value={formData.gender} onChange={set('gender')} error={!!fieldErrors.gender} helperText={fieldErrors.gender} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{GENDER.map((gender) => <MenuItem key={gender} value={gender}>{gender}</MenuItem>)}</TextField></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required select label="Civil Status" value={formData.civilStatus} onChange={set('civilStatus')} error={!!fieldErrors.civilStatus} helperText={fieldErrors.civilStatus} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{CIVIL_STATUS.map((status) => <MenuItem key={status} value={status}>{status}</MenuItem>)}</TextField></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required select label="Nationality" value={formData.nationality} onChange={set('nationality')} error={!!fieldErrors.nationality} helperText={fieldErrors.nationality} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{NATIONALITIES.map((nationality) => <MenuItem key={nationality} value={nationality}>{nationality}</MenuItem>)}</TextField></Grid>
-                    <Grid size={fieldGrid}><TextField fullWidth placeholder="9XXXXXXXXX" required label="Contact Number" value={formData.contactNumber} onChange={setPhone('contactNumber')} error={!!fieldErrors.contactNumber} inputProps={phoneInputFieldProps} InputProps={{ startAdornment: phoneAdornment }} sx={textFieldSx} /></Grid>
+                    <Grid size={fieldGrid}><MobileNumberField fullWidth required label="Contact Number" value={formData.contactNumber} onNumberChange={contactNumber => {
+                      setFormData(prev => ({ ...prev, contactNumber }));
+                      clearFieldError('contactNumber');
+                    }} error={!!fieldErrors.contactNumber} helperText={fieldErrors.contactNumber} sx={textFieldSx} /></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth placeholder="example@email.com" required type="email" label="Email Address" value={formData.email} InputProps={{ readOnly: true }} error={!!fieldErrors.email} helperText={fieldErrors.email} inputProps={{ maxLength: 120 }} sx={textFieldSx} /></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required label="Height (cm)" value={formData.height} onChange={setNumeric('height', 3)} error={!!fieldErrors.height} helperText={fieldErrors.height} inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 3 }} sx={textFieldSx} /></Grid>
                     <Grid size={fieldGrid}><TextField fullWidth required label="Weight (kg)" value={formData.weight} onChange={setNumeric('weight', 3)} error={!!fieldErrors.weight} helperText={fieldErrors.weight} inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 3 }} sx={textFieldSx} /></Grid>
@@ -1309,7 +1289,7 @@ export default function ApplyForJobPage() {
                           <Grid size={fieldGrid}><TextField fullWidth label="Reference Name" value={reference.name} onChange={(e) => updateCharacterReferenceName(index, e.target.value)} inputProps={{ maxLength: 80 }} sx={textFieldSx} /></Grid>
                           <Grid size={fieldGrid}><TextField fullWidth label="Position" value={reference.position} onChange={(e) => updateCharacterReference(index, 'position', e.target.value)} inputProps={{ maxLength: 80 }} sx={textFieldSx} /></Grid>
                           <Grid size={fieldGrid}><TextField fullWidth label="Company / Organization" value={reference.company} onChange={(e) => updateCharacterReference(index, 'company', e.target.value)} inputProps={{ maxLength: 120 }} sx={textFieldSx} /></Grid>
-                          <Grid size={fieldGrid}><TextField fullWidth placeholder="9XXXXXXXXX" label="Reference Contact Number" value={reference.contact} onChange={(e) => updateCharacterReferenceContact(index, e.target.value)} inputProps={phoneInputFieldProps} InputProps={{ startAdornment: phoneAdornment }} sx={textFieldSx} /></Grid>
+                          <Grid size={fieldGrid}><MobileNumberField fullWidth label="Reference Contact Number" value={reference.contact} onNumberChange={digits => updateCharacterReferenceContact(index, digits)} sx={textFieldSx} /></Grid>
                         </Grid>
                       </Paper>
                     ))}
@@ -1333,7 +1313,7 @@ export default function ApplyForJobPage() {
                           <Grid size={fieldGrid}><TextField fullWidth required label="Emergency Contact Person" value={emergencyContact.name} onChange={(e) => updateEmergencyContactName(index, e.target.value)} inputProps={{ maxLength: 80 }} sx={textFieldSx} /></Grid>
                           <Grid size={fieldGrid}><TextField fullWidth required select label="Relationship" value={emergencyContact.relation} onChange={(e) => updateEmergencyContactRelation(index, e.target.value)} InputLabelProps={{ shrink: true }} sx={textFieldSx}>{RELATIONSHIPS.map((relationship) => <MenuItem key={relationship} value={relationship}>{relationship}</MenuItem>)}</TextField></Grid>
                           {emergencyContact.relation === 'Other' && <Grid size={fieldGrid}><TextField fullWidth required label="Please specify relationship" value={emergencyContact.relationOther} onChange={(e) => updateEmergencyContactRelationOther(index, e.target.value)} inputProps={{ maxLength: 80 }} sx={textFieldSx} /></Grid>}
-                          <Grid size={fieldGrid}><TextField fullWidth placeholder="9XXXXXXXXX" required label="Emergency Contact Number" value={emergencyContact.phone} onChange={(e) => updateEmergencyContactPhone(index, e.target.value)} inputProps={phoneInputFieldProps} InputProps={{ startAdornment: phoneAdornment }} sx={textFieldSx} /></Grid>
+                          <Grid size={fieldGrid}><MobileNumberField fullWidth required label="Emergency Contact Number" value={emergencyContact.phone} onNumberChange={digits => updateEmergencyContactPhone(index, digits)} sx={textFieldSx} /></Grid>
                           <Grid size={{ xs: 12, md: emergencyContact.relation === 'Other' ? 12 : 8 }}><TextField fullWidth label="Emergency Contact Address" value={emergencyContact.address} onChange={(e) => updateEmergencyContact(index, 'address', e.target.value)} inputProps={{ maxLength: 160 }} sx={textFieldSx} /></Grid>
                         </Grid>
                       </Paper>
