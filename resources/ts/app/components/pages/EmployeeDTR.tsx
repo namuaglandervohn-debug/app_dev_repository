@@ -37,6 +37,7 @@ interface AttendanceLogRow {
   time_out?: string | null;
   raw_time_in?: string | null;
   raw_time_out?: string | null;
+  work_intervals?: [number, number][] | null;
   total_hours?: number | string | null;
   late_minutes?: number | null;
   undertime_minutes?: number | null;
@@ -185,8 +186,11 @@ function mapAttendanceLogToDTR(row: AttendanceLogRow): DTRRecord {
       : Number.isFinite(totalHours) && totalHours > 0 && totalHours < REQUIRED_DAILY_HOURS
         ? Math.round((REQUIRED_DAILY_HOURS - totalHours) * 60)
         : 0;
-  const breakOut = timeIn && timeOut ? addMinutesToClock(timeIn, 4 * 60) : "";
-  const breakIn = breakOut ? addMinutesToClock(breakOut, 60) : "";
+  const intervals = row.work_intervals;
+  const hasRecordedBreak = intervals && intervals.length >= 2;
+  const legacyBreakOut = !intervals && timeIn && timeOut ? addMinutesToClock(timeIn, 4 * 60) : "";
+  const breakOut = hasRecordedBreak ? formatMinutesAsTime(intervals[0][1]) : legacyBreakOut;
+  const breakIn = hasRecordedBreak ? formatMinutesAsTime(intervals[1][0]) : legacyBreakOut ? addMinutesToClock(legacyBreakOut, 60) : "";
   const regularOut =
     timeOut && derivedOvertimeMinutes > 0
       ? addMinutesToClock(timeOut, -derivedOvertimeMinutes)
@@ -455,7 +459,7 @@ export default function EmployeeDTR() {
       supabase
       .from("attendance_logs")
       .select(
-        "log_id, employee_id, attendance_date, time_in, time_out, raw_time_in, raw_time_out, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_undertime, is_overtime, is_absent, is_incomplete, remarks, validation_status"
+        "log_id, employee_id, attendance_date, time_in, time_out, raw_time_in, raw_time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_undertime, is_overtime, is_absent, is_incomplete, remarks, validation_status"
       )
       .eq("employee_id", targetEmployeeId)
       .gte("attendance_date", periodStart)

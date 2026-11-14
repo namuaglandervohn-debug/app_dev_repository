@@ -100,6 +100,14 @@ const EMPTY: AttendanceDraft = {
   discrepancy: "Complete",
 };
 
+const MANUAL_PUNCHES = [
+  ['morningIn', 'Morning Time In'],
+  ['morningOut', 'Morning Time Out'],
+  ['afternoonIn', 'Afternoon Time In'],
+  ['afternoonOut', 'Afternoon Time Out'],
+] as const;
+const EMPTY_PUNCHES = { morningIn: '', morningOut: '', afternoonIn: '', afternoonOut: '' };
+
 const IMPORT_CONCURRENCY = 10;
 const DELETE_CONCURRENCY = 10;
 const PREVIEW_ROW_LIMIT = 50;
@@ -204,25 +212,11 @@ type ImportSaveResult =
       error: string;
     };
 
-// Auto-compute attendance metrics based on time-in and time-out vs expected schedule.
-// Manual entries still use the default 8:00 AM - 5:00 PM schedule.
-function computeAttendance(
-  timeIn: string,
-  timeOut: string,
-  expectedIn = "8:00 AM",
-  expectedOut = "5:00 PM",
-): Partial<AttendanceDraft> {
-  return computeAttendanceFromPunches(
-    [timeIn, timeOut],
-    expectedIn,
-    expectedOut,
-  );
-}
-
 function computeAttendanceFromPunches(
   punches: string[],
   expectedIn?: string,
   expectedOut?: string,
+  expectedWorkMinutes?: number,
 ): Partial<AttendanceDraft> {
   const minutes = punches
     .map((t) => parseClockToMinutes(t))
@@ -256,7 +250,7 @@ function computeAttendanceFromPunches(
   const scheduledOut = expectedOut ? parseClockToMinutes(expectedOut) : null;
 
   if (scheduledIn !== null && scheduledOut !== null && minutes.length >= 2) {
-    const scheduledMinutes = diffMinutes(scheduledIn, scheduledOut);
+    const scheduledMinutes = expectedWorkMinutes ?? diffMinutes(scheduledIn, scheduledOut);
     const lateMin = Math.max(0, minutes[0] - scheduledIn);
     const undertimeMin = Math.max(
       0,
@@ -1329,6 +1323,7 @@ export default function AttendanceMonitoring() {
   const [parsingImport, setParsingImport] = useState(false);
   const [importing, setImporting] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [manualPunches, setManualPunches] = useState(EMPTY_PUNCHES);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -1404,19 +1399,42 @@ export default function AttendanceMonitoring() {
     setPage(0);
   }, [filterDate, filterEmployee, filterStatus]);
 
-  // Auto-compute when time changes
-  const handleTimeChange = (field: "timeIn" | "timeOut", val: string) => {
-    const updated = { ...form, [field]: val };
-    const computed = computeAttendance(
-      field === "timeIn" ? val : form.timeIn,
-      field === "timeOut" ? val : form.timeOut,
-    );
-    setForm({ ...updated, ...computed });
+  const getManualAttendance = (punches: typeof EMPTY_PUNCHES) => {
+    const { morningIn, morningOut, afternoonIn, afternoonOut } = punches;
+    if (Boolean(morningIn) !== Boolean(morningOut) || Boolean(afternoonIn) !== Boolean(afternoonOut)) return null;
+    const times = [morningIn, morningOut, afternoonIn, afternoonOut].filter(Boolean);
+    if (!times.length) return null;
+    const computed = computeAttendanceFromPunches(times, "8:00 AM", "5:00 PM", REQUIRED_DAILY_HOURS * 60);
+    const intervals = computed.workIntervals ?? [];
+    if (intervals.length !== times.length / 2 || intervals[intervals.length - 1][1] - intervals[0][0] >= 1440) return null;
+    return computed;
+  };
+
+  const handleTimeChange = (field: keyof typeof EMPTY_PUNCHES, value: string) => {
+    const updated = { ...manualPunches, [field]: value };
+    setManualPunches(updated);
+    const computed = getManualAttendance(updated);
+    const metrics = computed ?? EMPTY;
+    setForm(prev => ({
+      ...prev,
+      timeIn: metrics.timeIn ?? '',
+      timeOut: metrics.timeOut ?? '',
+      workIntervals: metrics.workIntervals ?? null,
+      totalHours: metrics.totalHours ?? '',
+      late: metrics.late ?? '0',
+      undertime: metrics.undertime ?? '0',
+      overtime: metrics.overtime ?? '0',
+    }));
   };
 
   const handleSave = async () => {
     if (!form.employee || !form.date) {
       setSnackbar({ open: true, message: "Please select an employee and date.", severity: "error" });
+      return;
+    }
+    const hasPunches = Object.values(manualPunches).some(Boolean);
+    if ((hasPunches && !form.workIntervals?.length) || (!hasPunches && (form.status === 'Present' || form.status === 'Late'))) {
+      setSnackbar({ open: true, message: 'Enter a complete Time In and Time Out pair for each worked session. Check that the sessions do not overlap.', severity: 'error' });
       return;
     }
     setSaving(true);
@@ -1439,6 +1457,7 @@ export default function AttendanceMonitoring() {
       setAttendances((prev) => [savedRecord, ...prev]);
       setDialogOpen(false);
       setForm(EMPTY);
+      setManualPunches(EMPTY_PUNCHES);
       setSnackbar({
         open: true,
         message: `Attendance record ${savedRecord.displayId ?? savedRecord.id} saved.`,
@@ -2876,31 +2895,19 @@ export default function AttendanceMonitoring() {
             InputLabelProps={{ shrink: true }}
           />
           <Grid container spacing={2}>
-            <Grid size={6}>
-              <TextField
-                label="Time In"
-                fullWidth
-                value={form.timeIn}
-                onChange={(e) => handleTimeChange("timeIn", e.target.value)}
-                placeholder="e.g. 8:00 AM"
-                helperText="Auto-computes metrics"
-              />
-            </Grid>
-            <Grid size={6}>
-              <TextField
-                label="Time Out"
-                fullWidth
-                value={form.timeOut}
-                onChange={(e) => handleTimeChange("timeOut", e.target.value)}
-                placeholder="e.g. 5:00 PM"
-              />
-            </Grid>
+            {MANUAL_PUNCHES.map(([field, label]) => (
+              <Grid key={field} size={6}>
+                <TextField label={label} type="time" fullWidth value={manualPunches[field]}
+                  onChange={event => handleTimeChange(field, event.target.value)}
+                  InputLabelProps={{ shrink: true }} />
+              </Grid>
+            ))}
           </Grid>
           <TextField
             label="Total Hours"
             fullWidth
             value={form.totalHours}
-            onChange={(e) => setForm({ ...form, totalHours: e.target.value })}
+            InputProps={{ readOnly: true }}
             placeholder="Auto-computed"
           />
           <Grid container spacing={2}>
