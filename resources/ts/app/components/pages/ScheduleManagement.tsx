@@ -21,6 +21,7 @@ import {
   CheckCircleOutline,
   CloudUpload,
   DoneAll,
+  Download,
   EditOutlined as EditIcon,
   EventAvailable,
   Image,
@@ -28,6 +29,7 @@ import {
   ManageSearch,
   PersonOutline,
   PlaylistAddCheck,
+  Print,
   Storefront,
   Sync,
   TaskAlt,
@@ -540,6 +542,7 @@ const getWeekRange = (offsetWeeks: number = 0): string => {
 
 function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const weeks = new Map<string, { label: string; start: Date | undefined; rows: Schedule[] }>();
   for (const schedule of schedules) {
     const week = stripSpecialDutyReason(schedule.week);
@@ -576,6 +579,66 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
     date.setDate(date.getDate() + index);
     return new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).format(date);
   });
+  const outletGroups = [...groups].sort(([left], [right]) => left.localeCompare(right));
+  for (const [, rows] of outletGroups) {
+    rows.sort((left, right) => left.employee.localeCompare(right.employee));
+  }
+
+  const downloadCsv = () => {
+    const header = ['Outlet', 'Name', 'Position', ...DAY_LABELS.map((day, index) =>
+      weekDates[index] ? `${day} ${weekDates[index]}` : day), 'Special Duty'];
+    const rows = outletGroups.flatMap(([outlet, schedules]) => schedules.map(schedule => [
+      outlet, schedule.employee, schedule.position,
+      ...DAYS.map(day => {
+        const shift = schedule[day].trim();
+        return /^(rd|rest day)$/i.test(shift) ? REST_DAY : shift;
+      }),
+      getSpecialDutyReason(schedule.week),
+    ]));
+    const csv = [header, ...rows].map(row => row.map(value => {
+      const cell = /^[\s\uFEFF]*[=+\-@]|^[\t\r\n]/.test(value) ? `'${value}` : value;
+      return `"${cell.replace(/"/g, '""')}"`;
+    }).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `weekly-employee-schedule-${roster.label.replace(/[^a-z0-9]+/gi, '-')}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const printSchedule = () => {
+    const table = tableRef.current;
+    if (!table) return;
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWindow) return;
+
+    const doc = printWindow.document;
+    doc.title = 'Weekly Employee Schedule';
+    const style = doc.createElement('style');
+    style.textContent = `
+      @page { size: A4 landscape; margin: 12mm; }
+      body { font: 11px Arial, sans-serif; color: #173421; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      p { margin: 0 0 12px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #b7d5be; padding: 6px; overflow-wrap: anywhere; }
+      thead th { background: #e6f8e9; }
+      th[scope="rowgroup"] { background: #e6f8e9; text-align: left; }
+      th[scope="row"] { text-align: left; }
+      th span { display: block; font-size: 10px; }
+      td[align="center"] { white-space: pre-line; }
+      tr { break-inside: avoid; }
+    `;
+    doc.head.append(style);
+    const title = doc.createElement('h1');
+    title.textContent = 'Weekly Employee Schedule';
+    const period = doc.createElement('p');
+    period.textContent = roster.label;
+    doc.body.append(title, period, doc.importNode(table, true));
+    printWindow.focus();
+    printWindow.print();
+  };
 
   return (
     <Paper component="section" aria-labelledby="weekly-schedule-title" elevation={0}
@@ -590,18 +653,28 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
           </Typography>
           <Typography variant="body2">{roster.label}</Typography>
         </Box>
-        {options.length > 1 && (
-          <TextField select size="small" label="Schedule week" value={activeWeek}
-            onChange={event => setSelectedWeek(event.target.value)}
-            sx={{ ...softTextFieldSx, minWidth: 230, '& .MuiInputLabel-root': { color: '#fff' } }}>
-            {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
-          </TextField>
-        )}
+        <Box sx={{ ml: 'auto', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
+          {options.length > 1 && (
+            <TextField select size="small" label="Schedule week" value={activeWeek}
+              onChange={event => setSelectedWeek(event.target.value)}
+              sx={{ ...softTextFieldSx, minWidth: 230, '& .MuiInputLabel-root': { color: '#fff' } }}>
+              {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
+            </TextField>
+          )}
+          <Button variant="contained" size="small" startIcon={<Print />} onClick={printSchedule}
+            sx={{ bgcolor: '#fff', color: GREEN_UI.greenDark, '&:hover': { bgcolor: GREEN_UI.greenSoft } }}>
+            Print
+          </Button>
+          <Button variant="outlined" size="small" startIcon={<Download />} onClick={downloadCsv}
+            sx={{ color: '#fff', borderColor: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
+            Download CSV
+          </Button>
+        </Box>
       </Box>
       <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
         <TableContainer tabIndex={0} role="region" aria-label="Weekly roster"
           sx={{ border: `1px solid ${GREEN_UI.borderStrong}`, borderRadius: 2 }}>
-          <Table size="small" aria-label="Employee shifts by outlet and weekday" sx={{
+          <Table ref={tableRef} size="small" aria-label="Employee shifts by outlet and weekday" sx={{
             minWidth: 990,
             tableLayout: 'fixed',
             '& .MuiTableCell-root': { py: 1, px: 1.25, borderBottom: `1px solid ${GREEN_UI.border}`, borderRight: `1px solid ${GREEN_UI.border}` },
@@ -619,13 +692,13 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
                 ))}
               </TableRow>
             </TableHead>
-            {[...groups].sort(([left], [right]) => left.localeCompare(right)).map(([outlet, rows]) => (
+            {outletGroups.map(([outlet, rows]) => (
               <TableBody key={outlet}>
                 <TableRow>
                   <TableCell component="th" scope="rowgroup" colSpan={9}
                     sx={{ bgcolor: GREEN_UI.greenDark, color: '#fff', fontWeight: 800 }}>{outlet}</TableCell>
                 </TableRow>
-                {rows.sort((left, right) => left.employee.localeCompare(right.employee)).map(schedule => {
+                {rows.map(schedule => {
                   const specialDuty = getSpecialDutyReason(schedule.week);
                   return (
                     <TableRow key={schedule.id} sx={{ bgcolor: GREEN_UI.cardBg }}>
