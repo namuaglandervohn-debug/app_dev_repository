@@ -101,7 +101,23 @@ interface EmployeeOption {
   salary?: string | number | null;
 }
 
-const EMPTY = { employee: '', position: '', period: new Date().toISOString().slice(0, 7), totalHours: '', overtime: '0', deductions: '0', grossPay: '' };
+const MANUAL_CALCULATED_FIELDS = [
+  { quantity: 'regularHours', amount: 'basicPayAmt', label: 'Basic Pay', unit: 'hours' },
+  { quantity: 'overtime', amount: 'otAmt', label: 'Regular Overtime', unit: 'hours' },
+  { quantity: 'nsdHours', amount: 'nsdAmt', label: 'Night Shift Differential', unit: 'hours' },
+  { quantity: 'regularHolidayDays', amount: 'regularHolidayAmt', label: 'Regular Holiday Premium', unit: 'days' },
+  { quantity: 'specialHolidayDays', amount: 'specialHolidayAmt', label: 'Special Holiday Premium', unit: 'days' },
+] as const;
+const MANUAL_DEDUCTIONS = [
+  ['sssAmt', 'SSS'], ['phicAmt', 'PhilHealth'], ['hdmfAmt', 'Pag-IBIG'],
+  ['cashAdvance', 'Cash Advance'], ['otherCharges', 'Other Deductions'],
+] as const;
+const EMPTY = {
+  employee: '', period: new Date().toISOString().slice(0, 7), cutoff: '5',
+  regularHours: '', overtime: '', nsdHours: '', regularHolidayDays: '', specialHolidayDays: '',
+  allowanceAmt: '', sssAmt: '', phicAmt: '', hdmfAmt: '', cashAdvance: '', otherCharges: '',
+  overrideAmounts: {} as Partial<Record<PayslipAmountField, string>>, reason: '',
+};
 
 const money = (value: number | string | null | undefined) => {
   const n = typeof value === 'number'
@@ -366,8 +382,18 @@ export default function PayrollComputation() {
   const [generateCutoff, setGenerateCutoff] = useState('5');
   const [generateBaseOverride, setGenerateBaseOverride] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY);
-  const manualGross = roundMoney(toNumber(form.grossPay));
-  const manualDeductions = roundMoney(toNumber(form.deductions));
+  const [manualRates, setManualRates] = useState<{ dailyRate: number; premiums: PayrollPremiumRates } | null>(null);
+  const [manualRateError, setManualRateError] = useState('');
+  const manualDailyRate = manualRates?.dailyRate ?? 0;
+  const manualHourlyRate = manualDailyRate / payrollHoursPerDay;
+  const manualEarnings = MANUAL_CALCULATED_FIELDS.map(line => {
+    const calculated = calculatePayslipLineAmount({ hourlyRate: manualHourlyRate }, line.quantity, form[line.quantity], manualRates?.premiums) ?? 0;
+    const override = form.overrideAmounts[line.amount];
+    return { ...line, calculated, value: override && Number.isFinite(Number(override)) ? roundMoney(Number(override)) : calculated };
+  });
+  const hasManualOverride = manualEarnings.some(line => line.calculated !== line.value);
+  const manualGross = roundMoney(manualEarnings.reduce((total, line) => total + line.value, roundMoney(toNumber(form.allowanceAmt))));
+  const manualDeductions = roundMoney(MANUAL_DEDUCTIONS.reduce((total, [field]) => total + roundMoney(toNumber(form[field])), 0));
   const manualNetPay = netPayAfterDeductions(manualGross, manualDeductions);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -767,13 +793,33 @@ export default function PayrollComputation() {
     employeeOptions.find(employee => employee.employeeId === employeeId);
 
   const handleManualEmployeeChange = (employeeId: string) => {
-    const selected = getEmployeeOption(employeeId);
+    setManualRates(null);
+    setManualRateError('');
     setForm(prev => ({
       ...prev,
       employee: employeeId,
-      position: selected?.position || '',
     }));
   };
+
+  const manualEmployee = getEmployeeOption(form.employee);
+  useEffect(() => {
+    if (!addDialog || !manualEmployee) return;
+    let active = true;
+    Promise.all([loadJobSalaryRates([manualEmployee.position]), loadPayrollRates()]).then(([rates, premiums]) => {
+      if (!active) return;
+      setManualRates({
+        dailyRate: rates.get(jobTitleKey(manualEmployee.position)) || parseSalaryRate(manualEmployee.salary),
+        premiums: {
+          nsd_percent: premiums.nsd_percent ?? payrollPremiumDefaults.nsd_percent,
+          regular_holiday_percent: premiums.regular_holiday_percent ?? payrollPremiumDefaults.regular_holiday_percent,
+          special_holiday_percent: premiums.special_holiday_percent ?? payrollPremiumDefaults.special_holiday_percent,
+        },
+      });
+    }).catch(() => {
+      if (active) setManualRateError('Payroll rates could not be loaded. Reopen Manual Entry to try again.');
+    });
+    return () => { active = false; };
+  }, [addDialog, manualEmployee]);
 
   const latestAttendanceMonth = async () => {
     const { data, error } = await supabase
@@ -803,7 +849,7 @@ export default function PayrollComputation() {
   };
 
   useEffect(() => {
-    if (!generateDialog && !addDialog) return;
+    if (!generateDialog) return;
 
     let canceled = false;
     supabase.from('job_postings').select('title').then(({ data, error }) => {
@@ -815,7 +861,7 @@ export default function PayrollComputation() {
       setJobTitleOptions(getJobTitleOptions((data ?? []).map(job => job.title)));
     });
     return () => { canceled = true; };
-  }, [generateDialog, addDialog]);
+  }, [generateDialog]);
 
   useEffect(() => {
     if (!generateDialog || !generatePosition) return;
@@ -830,84 +876,54 @@ export default function PayrollComputation() {
   }, [generateDialog, generatePosition]);
 
   const handleAdd = async () => {
-    if (!form.employee || !form.grossPay) {
-      setSnackbar({ open: true, message: 'Please enter an Employee ID and Gross Pay.', severity: 'error' });
+    if (!manualEmployee || !manualDailyRate || !/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)
+      || (hasManualOverride && !form.reason.trim())) {
+      setSnackbar({ open: true, message: 'Select an employee with a daily rate and a payroll period. Enter a reason for any override.', severity: 'error' });
       return;
     }
 
     setSaving(true);
     try {
-      const { start, end } = getMonthRange(form.period);
+      const { start, end, cutoffLabel } = getSemiMonthlyCutoffRange(form.period, form.cutoff);
       const preparedByUserId = await resolveCurrentUserAccountUserId();
-
-      const { data: employee, error: empError } = await supabase
-        .from('employees')
-        .select('employee_id, first_name, middle_name, last_name, suffix, position, outlet, salary')
-        .eq('employee_id', form.employee.trim())
-        .single();
-
-      if (empError || !employee) {
-        throw new Error('Employee ID was not found in the employees table.');
-      }
-
-      const { data: userAccount, error: userAccountError } = await supabase
-        .from('user_accounts')
-        .select('outlet')
-        .eq('employee_id', employee.employee_id)
-        .maybeSingle();
-
-      if (userAccountError) throw userAccountError;
-
-      const { data: summary, error: summaryError } = await supabase
-        .from('payroll_summaries')
-        .upsert({
-          period_start: start,
-          period_end: end,
-          cutoff_label: form.period,
-          status: 'Draft',
-          prepared_by_user_id: preparedByUserId,
-        }, { onConflict: 'period_start,period_end' })
-        .select('payroll_id')
-        .single();
-
-      if (summaryError) throw summaryError;
-
-      const employeeName = [employee.first_name, employee.middle_name, employee.last_name, employee.suffix].filter(Boolean).join(' ');
-      const payrollDisplayId = formatPayrollDisplayIdFromEmployee(employee.employee_id, start, summary.payroll_id);
-      const employeeOutlet = getEmployeeOutlet(employee, userAccount?.outlet);
-      const gross = manualGross;
-      const deductions = manualDeductions;
-      const net = manualNetPay;
-
-      const { data: item, error: itemError } = await supabase
-        .from('payroll_items')
-        .insert({
-          payroll_id: summary.payroll_id,
-          employee_id: employee.employee_id,
-          employee_name: employeeName,
-          position: employee.position || form.position,
-          outlet: employeeOutlet,
-          salary_rate: toNumber(employee.salary),
-          rate_type: 'Monthly',
-          total_work_hours: toNumber(form.totalHours),
-          regular_hours: toNumber(form.totalHours),
+      const details = {
+        ...Object.fromEntries(manualEarnings.slice(2).flatMap(line => [
+          [line.quantity, form[line.quantity]], [line.amount, money(line.value)],
+        ])),
+        ...Object.fromEntries(MANUAL_DEDUCTIONS.map(([field]) => [field, money(toNumber(form[field]))])),
+        allowanceAmt: money(toNumber(form.allowanceAmt)),
+        ...(hasManualOverride ? {
+          manualAdjustmentReason: form.reason.trim(),
+          manualAdjustments: manualEarnings.filter(line => line.calculated !== line.value)
+            .map(({ label, calculated, value }) => ({ label, calculated, value })),
+        } : {}),
+      };
+      const { error: itemError } = await supabase.rpc('save_manual_payroll_draft', {
+        p_start: start, p_end: end, p_cutoff: cutoffLabel, p_prepared_by: preparedByUserId,
+        p_item: {
+          employee_id: manualEmployee.employeeId,
+          employee_name: manualEmployee.name,
+          position: manualEmployee.position,
+          outlet: manualEmployee.outlet,
+          salary_rate: manualDailyRate,
+          total_work_hours: roundMoney(toNumber(form.regularHours) + toNumber(form.overtime)),
+          regular_hours: toNumber(form.regularHours),
           overtime_hours: toNumber(form.overtime),
-          basic_pay: gross,
-          overtime_pay: 0,
-          gross_pay: gross,
-          total_deductions: deductions,
-          net_pay: net,
-          payslip_details: { payrollDisplayId },
-          remarks: 'Manual payroll entry',
-        })
-        .select()
-        .single();
+          basic_pay: manualEarnings[0].value,
+          overtime_pay: manualEarnings[1].value,
+          gross_pay: manualGross,
+          other_deductions: manualDeductions,
+          total_deductions: manualDeductions,
+          net_pay: manualNetPay,
+          payslip_details: details,
+        },
+      });
 
       if (itemError) throw itemError;
 
       await fetchPayroll();
       setAddDialog(false); setForm(EMPTY);
-      setSnackbar({ open: true, message: `Payroll record saved for ${employeeName}!`, severity: 'success' });
+      setSnackbar({ open: true, message: `Payroll draft saved for ${manualEmployee.name}.`, severity: 'success' });
     } catch (e: any) {
       setSnackbar({ open: true, message: `Failed: ${e.message ?? e}`, severity: 'error' });
     } finally {
@@ -928,6 +944,12 @@ export default function PayrollComputation() {
       if (existingPeriod.error) throw existingPeriod.error;
       if (existingPeriod.data && existingPeriod.data.status !== 'Draft') {
         throw new Error('This cutoff already has payroll beyond Draft. Review the existing payroll before generating it again.');
+      }
+      if (existingPeriod.data) {
+        const { data: manualItems, error } = await supabase.from('payroll_items').select('payroll_item_id')
+          .eq('payroll_id', existingPeriod.data.payroll_id).eq('remarks', 'Manual payroll entry').limit(1);
+        if (error) throw error;
+        if (manualItems?.length) throw new Error('This cutoff contains manual drafts. Review those payslips before regenerating payroll.');
       }
       const holidays = (rates.holidays ?? []).filter(holiday => holiday.date >= start && holiday.date <= end);
       const hasRegularHoliday = holidays.some(holiday => holiday.type === 'regular');
@@ -2170,7 +2192,7 @@ export default function PayrollComputation() {
       </Dialog>
 
       {/* Manual Add Dialog */}
-      <Dialog open={addDialog} onClose={() => setAddDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: dialogPaperSx }}>
+      <Dialog open={addDialog} onClose={() => { if (!saving) setAddDialog(false); }} maxWidth="md" fullWidth PaperProps={{ sx: dialogPaperSx }}>
         <DialogTitle fontWeight={700} sx={dialogTitleSx}>Manual Payroll Entry</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '18px !important', px: { xs: 2, sm: 3 }, bgcolor: '#fbfff9' }}>
           <TextField
@@ -2189,36 +2211,77 @@ export default function PayrollComputation() {
               </MenuItem>
             ))}
           </TextField>
-          <TextField
-            select
-            label="Position"
-            fullWidth
-            value={form.position}
-            onChange={e => setForm({ ...form, position: e.target.value })}
-            InputLabelProps={{ shrink: true }}
-          >
-            <MenuItem value="">Select position…</MenuItem>
-            {form.position && !jobTitleOptions.includes(form.position) && (
-              <MenuItem value={form.position}>{form.position}</MenuItem>
-            )}
-            {jobTitleOptions.map(position => (
-              <MenuItem key={position} value={position}>{position}</MenuItem>
-            ))}
-          </TextField>
-          <TextField label="Period" type="month" fullWidth value={form.period} onChange={e => setForm({ ...form, period: e.target.value })} InputLabelProps={{ shrink: true }} />
           <Grid container spacing={2}>
-            <Grid size={6}><TextField label="Total Hours" fullWidth value={form.totalHours} onChange={e => setForm({ ...form, totalHours: e.target.value })} /></Grid>
-            <Grid size={6}><TextField label="Overtime (hrs)" fullWidth value={form.overtime} onChange={e => setForm({ ...form, overtime: e.target.value })} /></Grid>
-            <Grid size={4}><TextField label="Gross Pay" fullWidth required value={form.grossPay} onChange={e => setForm({ ...form, grossPay: e.target.value })} placeholder="₱0" /></Grid>
-            <Grid size={4}><TextField label="Deductions" fullWidth value={form.deductions} onChange={e => setForm({ ...form, deductions: e.target.value })} placeholder="₱0" /></Grid>
-            <Grid size={4}><TextField label="Net Pay" fullWidth value={money(manualNetPay)} InputProps={{ readOnly: true }} /></Grid>
+            <Grid size={{ xs: 12, sm: 6 }}><TextField label="Period" type="month" fullWidth value={form.period} onChange={e => setForm({ ...form, period: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField label="Cutoff" select fullWidth value={form.cutoff} onChange={e => setForm({ ...form, cutoff: e.target.value })}>
+                <MenuItem value="5">Cutoff 5 - payout 10</MenuItem>
+                <MenuItem value="20">Cutoff 20 - payout 25</MenuItem>
+              </TextField>
+            </Grid>
+            {[
+              ['Position', manualEmployee?.position || '—'],
+              ['Daily Rate', manualDailyRate ? money(manualDailyRate) : '—'],
+              ['Hourly Rate', manualHourlyRate ? money(manualHourlyRate) : '—'],
+            ].map(([label, value]) => (
+              <Grid size={{ xs: 12, sm: 4 }} key={label}><TextField label={label} fullWidth value={value} InputProps={{ readOnly: true }} /></Grid>
+            ))}
+          </Grid>
+          {manualRateError && <Alert severity="error">{manualRateError}</Alert>}
+          {manualEmployee && manualRates && !manualDailyRate && <Alert severity="warning">Save a daily rate for this position before creating the draft.</Alert>}
+          <Typography fontWeight={700}>Earnings</Typography>
+          <Grid container spacing={2}>
+            {manualEarnings.map(line => (
+              <React.Fragment key={line.quantity}>
+                <Grid size={6}>
+                  <TextField fullWidth label={`${line.quantity === 'regularHours' ? 'Regular' : line.label} (${line.unit})`}
+                    value={form[line.quantity]} inputProps={{ inputMode: 'decimal' }}
+                    onChange={e => { if (/^\d{0,6}(?:\.\d{0,2})?$/.test(e.target.value)) setForm({ ...form, [line.quantity]: e.target.value }); }} />
+                </Grid>
+                <Grid size={6}>
+                  <TextField fullWidth label={`${line.label} amount`} value={form.overrideAmounts[line.amount] ?? ''}
+                    placeholder={manualDailyRate ? money(line.calculated).replace('₱', '') : '—'} InputLabelProps={{ shrink: true }}
+                    helperText={form.overrideAmounts[line.amount] && line.calculated !== line.value ? `Calculated ${money(line.calculated)}` : undefined}
+                    inputProps={{ inputMode: 'decimal' }}
+                    InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                    onChange={e => {
+                      if (/^\d{0,8}(?:\.\d{0,2})?$/.test(e.target.value)) {
+                        setForm({ ...form, overrideAmounts: { ...form.overrideAmounts, [line.amount]: e.target.value } });
+                      }
+                    }} />
+                </Grid>
+              </React.Fragment>
+            ))}
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField fullWidth label="Allowance" value={form.allowanceAmt} inputProps={{ inputMode: 'decimal' }}
+                InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                onChange={e => { if (/^\d{0,8}(?:\.\d{0,2})?$/.test(e.target.value)) setForm({ ...form, allowanceAmt: e.target.value }); }} />
+            </Grid>
+          </Grid>
+          {hasManualOverride && <TextField label="Reason for adjustment" required fullWidth multiline minRows={2}
+            value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} inputProps={{ maxLength: 500 }} />}
+          <Typography fontWeight={700}>Deductions</Typography>
+          <Grid container spacing={2}>
+            {MANUAL_DEDUCTIONS.map(([field, label]) => (
+              <Grid size={{ xs: 6, sm: 4 }} key={field}>
+                <TextField fullWidth label={label} value={form[field]} inputProps={{ inputMode: 'decimal' }}
+                  InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                  onChange={e => { if (/^\d{0,8}(?:\.\d{0,2})?$/.test(e.target.value)) setForm({ ...form, [field]: e.target.value }); }} />
+              </Grid>
+            ))}
+          </Grid>
+          <Typography fontWeight={700}>Payroll Summary</Typography>
+          <Grid container spacing={2}>
+            {([['Gross Pay', manualGross], ['Total Deductions', manualDeductions], ['Net Pay', manualNetPay]] as const).map(([label, value]) => (
+              <Grid size={{ xs: 12, sm: 4 }} key={label}><TextField fullWidth label={label} value={money(value)} InputProps={{ readOnly: true }} /></Grid>
+            ))}
           </Grid>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfff9' }}>
-          <Button onClick={() => setAddDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdd} disabled={saving}
+          <Button onClick={() => setAddDialog(false)} disabled={saving}>Cancel</Button>
+          <Button variant="contained" onClick={handleAdd} disabled={saving || !manualDailyRate || !form.period || (hasManualOverride && !form.reason.trim())}
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}>
-            {saving ? 'Saving…' : 'Generate Payroll'}
+            {saving ? 'Saving…' : 'Save as Draft'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2246,6 +2309,12 @@ export default function PayrollComputation() {
         </DialogTitle>
         <DialogContent sx={{ p: 2 }}>
           {editingPayslip && ratesError && <Alert severity="warning" sx={{ mb: 1 }}>{ratesError}</Alert>}
+          {typeof selectedPayroll?.payslipDetails?.manualAdjustmentReason === 'string' && (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              <Typography fontWeight={700}>Manual adjustment reason</Typography>
+              {selectedPayroll.payslipDetails.manualAdjustmentReason}
+            </Alert>
+          )}
           {canManagePayroll && Boolean(selectedPayroll?.payslipDetails?.nightNeedsReview) && (
             <Alert severity="warning" sx={{ mb: 1 }}>Check night shift hours against the original punches. Some work or break times are missing.</Alert>
           )}
