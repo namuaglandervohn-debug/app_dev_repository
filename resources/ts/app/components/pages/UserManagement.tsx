@@ -35,6 +35,8 @@ interface EmployeeOption {
   outlet: string;
 }
 
+const NO_OUTLET = '__no_outlet__';
+
 const EMPTY_FORM = {
   name: '',
   email: '',
@@ -313,7 +315,7 @@ export default function UserManagement() {
         password: form.password,
         role: form.role,
         employee_id: form.role === 'employee' ? form.employeeId : null,
-        outlet: form.outlet,
+        outlet: form.outlet === NO_OUTLET ? '' : form.outlet,
       }),
     });
 
@@ -1048,7 +1050,6 @@ export default function UserManagement() {
                 label="Email / Username"
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}
-                helperText="Used to log in to the system"
                 sx={softTextFieldSx}
               />
             </Grid>
@@ -1078,6 +1079,7 @@ export default function UserManagement() {
                 sx={softTextFieldSx}
               >
                 <MenuItem key="outlet-empty" value="">Select Outlet…</MenuItem>
+                <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
                 {OUTLETS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
               </TextField>
             </Grid>
@@ -1097,7 +1099,6 @@ export default function UserManagement() {
                     </InputAdornment>
                   ),
                 }}
-                helperText={form.role === 'employee' ? "Auto-generated — assigned sequentially" : undefined}
                 sx={{
                   ...softTextFieldSx,
                   '& .MuiInputBase-input.Mui-disabled': {
