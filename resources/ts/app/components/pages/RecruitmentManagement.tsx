@@ -73,7 +73,7 @@ interface DocFile {
   data: string; // base64 data URI
 }
 
-type DocumentItem = { name: string; data?: string; type?: string };
+type DocumentItem = { name: string; data?: string; type?: string; isCertificate?: boolean };
 
 type AppStatus =
   | 'Submitted'
@@ -599,6 +599,10 @@ const getFileTypeFromName = (name?: string) => {
 const buildDocumentsForApplication = (app: Application | null, submittedDocuments: string[] = []): DocumentItem[] => {
   if (!app) return [];
   const docs = new Map<string, DocumentItem>();
+  const certificateNames = new Set([
+    ...ensureArray<string>(app.raw?.certifications),
+    ...ensureArray<string>(safeJsonParse(app.coverLetter).certifications),
+  ]);
 
   if (app.resumeFileName) {
     docs.set(app.resumeFileName, {
@@ -616,7 +620,10 @@ const buildDocumentsForApplication = (app: Application | null, submittedDocument
     if (!docs.has(name)) docs.set(name, { name });
   });
 
-  return [...docs.values()];
+  return [...docs.values()].map(doc => ({
+    ...doc,
+    isCertificate: doc.name !== app.resumeFileName && certificateNames.has(doc.name),
+  }));
 };
 
 const getSubmittedDocumentsForApplication = (app: Application | null): string[] => {
@@ -1691,9 +1698,15 @@ export default function RecruitmentManagement() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <DocIcon name={doc.name} type={type} />
             <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography fontWeight={600} noWrap>
-                {doc.name}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
+                <Typography fontWeight={600} noWrap sx={{ maxWidth: '100%' }}>
+                  {doc.name}
+                </Typography>
+                {doc.isCertificate && (
+                  <Chip label="Certificates" size="small"
+                    sx={{ bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontWeight: 700 }} />
+                )}
+              </Box>
               <Typography variant="caption" color="text.secondary">
                 {hasData
                   ? 'File ready for preview and download'
