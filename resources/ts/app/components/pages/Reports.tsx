@@ -1,4 +1,4 @@
-import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange } from '../../lib/displayDate';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange, parseDisplayDate } from '../../lib/displayDate';
 import TextField from '../DateTextField';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -108,7 +108,7 @@ const COLUMNS: Record<string, string[]> = {
   evaluations: ['id', 'employee', 'position', 'outlet', 'period', 'rawScore', 'finalScore', 'rating', 'status'],
   requests: ['id', 'employee', 'type', 'leaveType', 'date', 'time', 'reason', 'status', 'reviewerRemarks'],
   criteria: ['id', 'criteriaName', 'category', 'weight', 'maxScore', 'active', 'description'],
-  systemLogs: ['id', 'userName', 'userRole', 'action', 'module', 'recordTable', 'description', 'date'],
+  systemLogs: ['id', 'userName', 'userRole', 'action', 'module', 'recordId', 'recordTable', 'description', 'dateTime'],
 };
 
 const reportDateColumns = new Set(['date', 'dateHired', 'dateApplied', 'createdAt', 'submittedDate', 'periodStart', 'periodEnd']);
@@ -246,7 +246,25 @@ const isWithinReportRange = (row: any, dateFrom: string, dateTo: string) => {
   const dateVal = row.date || row.dateApplied || row.createdAt || row.periodStart || row.submittedDate || row.week || row.period;
   const comparableDate = getComparableReportDate(dateVal);
   if (!comparableDate) return true;
-  return comparableDate >= dateFrom && comparableDate <= dateTo;
+  return (!dateFrom || comparableDate >= dateFrom) && (!dateTo || comparableDate <= dateTo);
+};
+
+const getReportYear = () => formatDisplayDate(new Date()).slice(-4);
+
+const loadSystemLogs = async () => {
+  const pageSize = 500;
+  const rows = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from('system_logs')
+      .select('log_id,user_name,user_role,action,module,record_id,record_table,description,created_at')
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
 };
 
 const labelize = (key: string) =>
@@ -282,8 +300,8 @@ const getStatusColor = (value: any) => {
 
 export default function Reports() {
   const [reportType, setReportType] = useState('employees');
-  const [dateFrom, setDateFrom] = useState('2026-01-01');
-  const [dateTo, setDateTo] = useState('2026-12-31');
+  const [dateFrom, setDateFrom] = useState(() => `${getReportYear()}-01-01`);
+  const [dateTo, setDateTo] = useState(() => `${getReportYear()}-12-31`);
   const [allData, setAllData] = useState<ReportData>({});
   const [loadingAll, setLoadingAll] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -316,7 +334,7 @@ export default function Reports() {
 
     const safe = async (tableName: string, orderColumn?: string) => {
       try {
-        return await loadTable(tableName, orderColumn);
+        return await (tableName === 'system_logs' ? loadSystemLogs() : loadTable(tableName, orderColumn));
       } catch (err: any) {
         warnings.push(err?.message ?? `Unable to load ${tableName}`);
         return [];
@@ -348,7 +366,7 @@ export default function Reports() {
         safe('employee_requests', 'created_at'),
         safe('evaluation_criteria', 'created_at'),
         safe('employee_evaluations', 'created_at'),
-        safe('system_logs', 'created_at'),
+        safe('system_logs'),
         safe('user_accounts'),
       ]);
 
@@ -493,15 +511,17 @@ export default function Reports() {
           date: toDateOnly(c.created_at),
         })),
 
-        systemLogs: systemLogs.map((l: any) => ({
+        systemLogs: systemLogs.map(l => ({
           id: l.log_id,
           userName: l.user_name || '—',
           userRole: l.user_role || '—',
           action: l.action || '—',
           module: l.module || '—',
+          recordId: l.record_id || '—',
           recordTable: l.record_table || '—',
           description: l.description || '—',
-          date: toDateOnly(l.created_at),
+          date: parseDisplayDate(formatDisplayDate(l.created_at)),
+          dateTime: l.created_at,
         })),
       };
 
@@ -544,6 +564,7 @@ export default function Reports() {
 
   const formatValue = (key: string, value: any) => {
     if (value === null || value === undefined || value === '') return '—';
+    if (key === 'dateTime') return formatDisplayDateTime(String(value), '—');
     if (key === 'week' || key === 'period') return formatDisplayDateRange(String(value));
     if (reportDateColumns.has(key)) return formatDisplayDateRange(String(value));
     if (currencyColumns.has(key)) return money(value);
@@ -941,8 +962,9 @@ export default function Reports() {
               startIcon={<RestartAlt />}
               sx={{ ...pillButtonSx, height: '56px', borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
               onClick={() => {
-                setDateFrom('2026-01-01');
-                setDateTo('2026-12-31');
+                const year = getReportYear();
+                setDateFrom(`${year}-01-01`);
+                setDateTo(`${year}-12-31`);
               }}
             >
               Reset
