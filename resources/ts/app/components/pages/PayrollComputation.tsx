@@ -346,6 +346,26 @@ const formatMonthLabel = (monthValue: string) => {
   });
 };
 
+const getPayrollPeriod = (start?: string, end?: string, savedCutoff?: string | null) => {
+  const cutoff = /^(\d{4}-(?:0[1-9]|1[0-2])) Cutoff (5|20)$/i.exec(savedCutoff?.trim() ?? '');
+  if (cutoff) {
+    const [, month, day] = cutoff;
+    return { month, label: `${formatMonthLabel(month)} · Cutoff ${day}` };
+  }
+
+  const month = monthFromDate(end || start);
+  if (start && end && !savedCutoff?.trim()) {
+    const day = String(Number(end.slice(8, 10)));
+    if (day === '5' || day === '20') {
+      const range = getSemiMonthlyCutoffRange(month, day);
+      if (start === range.start && end === range.end) {
+        return { month, label: `${formatMonthLabel(month)} · Cutoff ${day}` };
+      }
+    }
+  }
+  return { month, label: savedCutoff?.trim() || formatMonthLabel(month) };
+};
+
 const parsePayslipDetails = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== 'object') return {};
   return value as Record<string, string>;
@@ -600,6 +620,7 @@ export default function PayrollComputation() {
 
   const mapItemToPayroll = (item: any, summariesById: Map<string, any>, employeesById = new Map<string, any>(), accountOutletsByEmployeeId = new Map<string, string>()): Payroll => {
     const summary = summariesById.get(item.payroll_id);
+    const period = getPayrollPeriod(summary?.period_start, summary?.period_end, summary?.cutoff_label);
     const details = parsePayslipDetails(item.payslip_details);
     const employee = employeesById.get(item.employee_id);
     const displayId = formatPayrollDisplayIdFromEmployee(item.employee_id, summary?.period_start, item.payroll_id);
@@ -616,11 +637,11 @@ export default function PayrollComputation() {
       employee: item.employee_name || fullNameFromEmployee(employee) || item.employee_id || 'Unnamed Employee',
       position: item.position || employee?.position || '',
       outlet: String(item.outlet ?? '').trim() || getEmployeeOutlet(employee, accountOutletsByEmployeeId.get(item.employee_id)),
-      period: monthFromDate(summary?.period_start),
-      payPeriodLabel: payslipPeriod(summary?.period_start, summary?.period_end, monthFromDate(summary?.period_start)),
+      period: period.month,
+      payPeriodLabel: payslipPeriod(summary?.period_start, summary?.period_end),
       payRate: item.salary_rate == null ? '—' : money(item.salary_rate),
-      cutoffLabel: summary?.cutoff_label ?? '',
-      totalHours: String(item.total_work_hours ?? item.regular_hours ?? '0'),
+      cutoffLabel: period.label,
+      totalHours: String(item.total_work_hours ?? roundMoney(toNumber(item.regular_hours) + toNumber(item.overtime_hours))),
       regularHours: String(item.regular_hours ?? item.total_work_hours ?? '0'),
       overtime: String(item.overtime_hours ?? '0'),
       hourlyRate: hourlyRate > 0 ? hourlyRate : undefined,
@@ -1794,7 +1815,7 @@ export default function PayrollComputation() {
           <Grid size={{ xs: 12, md: 4 }}>
             <TextField
               fullWidth
-              label="Filter by Period"
+              label="Filter by Cutoff Month"
               type="month"
               value={filterPeriod}
               onChange={e => setFilterPeriod(e.target.value)}
@@ -1867,9 +1888,9 @@ export default function PayrollComputation() {
                 <TableCell>ID</TableCell>
                 <TableCell>Employee</TableCell>
                 <TableCell>Position</TableCell>
-                <TableCell>Period</TableCell>
-                <TableCell>Total Hours</TableCell>
-                <TableCell>OT</TableCell>
+                <TableCell>Payroll Cutoff</TableCell>
+                <TableCell>Total Hours<br />Includes OT</TableCell>
+                <TableCell>Overtime</TableCell>
                 <TableCell>Deductions</TableCell>
                 <TableCell>Gross Pay</TableCell>
                 <TableCell>Net Pay</TableCell>
@@ -1934,7 +1955,10 @@ export default function PayrollComputation() {
                     <Typography variant="body2" sx={{ color: GREEN_UI.muted, fontWeight: 700 }}>{p.position || '—'}</Typography>
                     <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>{p.outlet || 'No outlet'}</Typography>
                   </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{p.period}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <Typography variant="body2" fontWeight={700}>{p.cutoffLabel}</Typography>
+                    <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>{p.payPeriodLabel}</Typography>
+                  </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{p.totalHours}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{p.overtime} hrs</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', color: '#9c2f2f !important', fontWeight: 600 }}>{p.deductions}</TableCell>
