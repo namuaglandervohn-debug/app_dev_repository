@@ -56,10 +56,11 @@ import { nextEmployeeId } from "../../lib/employeeIds";
 import {
   NO_OUTLET,
   OUTLETS,
-  POSITIONS,
   DEPARTMENTS,
 } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
+import { includeSelectedJobTitle } from '../../lib/jobTitles';
+import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 
 import { employeeSearchFields, emptyEmployeeFilters, filterEmployeeRecords, type EmployeeSearchField } from '../../lib/employeeFilters';
 
@@ -197,6 +198,7 @@ const employeeStatusChipSx = (status: Employee['status']) => {
 
 export default function EmployeeRecords() {
   const navigate = useNavigate();
+  const jobTitleOptions = useJobTitleOptions();
   const { user } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
@@ -646,7 +648,10 @@ export default function EmployeeRecords() {
                     {['position', 'outlet', 'status'].includes(key) ? [
                       <MenuItem key="all" value="">All</MenuItem>,
                       ...(key === 'outlet' ? [<MenuItem key={NO_OUTLET} value={NO_OUTLET}>No Outlet</MenuItem>] : []),
-                      ...Array.from(new Set(employees.map(employee => employee[key]).filter(Boolean))).sort().map(value => <MenuItem key={value} value={value}>{value}</MenuItem>),
+                      ...Array.from(new Set([
+                        ...(key === 'position' ? jobTitleOptions : []),
+                        ...employees.map(employee => employee[key]).filter(Boolean),
+                      ])).sort().map(value => <MenuItem key={value} value={value}>{value}</MenuItem>),
                     ] : null}
                   </TextField>
                 </TableCell>)}
@@ -911,7 +916,7 @@ export default function EmployeeRecords() {
                   <MenuItem key="pos-empty" value="">
                     Select Position…
                   </MenuItem>
-                  {POSITIONS.map((p) => (
+                  {includeSelectedJobTitle(jobTitleOptions, form.position).map((p) => (
                     <MenuItem key={p} value={p}>
                       {p}
                     </MenuItem>

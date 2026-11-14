@@ -11,7 +11,8 @@ import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt,
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { getAttendanceOvertimeMinutes } from '../../lib/attendanceOvertime';
-import { getJobTitleOptions, jobTitleKey } from '../../lib/jobTitles';
+import { includeSelectedJobTitle, jobTitleKey } from '../../lib/jobTitles';
+import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import {
   calculatePayslipLineAmount, calculatePayslipTotals, netPayAfterDeductions,
@@ -399,7 +400,7 @@ export default function PayrollComputation() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
   const { user } = useAuth();
   const [generatePosition, setGeneratePosition] = useState('');
-  const [jobTitleOptions, setJobTitleOptions] = useState(() => getJobTitleOptions([]));
+  const jobTitleOptions = useJobTitleOptions(generateDialog);
   const [selectedJobRate, setSelectedJobRate] = useState<{ position: string; rate: number } | null>(null);
   const postedDailyRate = selectedJobRate?.position === generatePosition ? selectedJobRate.rate : 0;
   const generateBase = generateBaseOverride ?? String(postedDailyRate || defaultDailyRateForPosition(generatePosition));
@@ -844,21 +845,6 @@ export default function PayrollComputation() {
       setGenerateDialog(true);
     }
   };
-
-  useEffect(() => {
-    if (!generateDialog) return;
-
-    let canceled = false;
-    supabase.from('job_postings').select('title').then(({ data, error }) => {
-      if (canceled) return;
-      if (error) {
-        setSnackbar({ open: true, severity: 'error', message: 'Could not load saved job titles.' });
-        return;
-      }
-      setJobTitleOptions(getJobTitleOptions((data ?? []).map(job => job.title)));
-    });
-    return () => { canceled = true; };
-  }, [generateDialog]);
 
   useEffect(() => {
     if (!generateDialog || !generatePosition) return;
@@ -2165,7 +2151,7 @@ export default function PayrollComputation() {
             helperText="Leave blank to generate for all active employees"
           >
             <MenuItem key="all-pos" value="">All Positions</MenuItem>
-            {jobTitleOptions.map(title => <MenuItem key={title} value={title}>{title}</MenuItem>)}
+            {includeSelectedJobTitle(jobTitleOptions, generatePosition).map(title => <MenuItem key={title} value={title}>{title}</MenuItem>)}
           </TextField>
           <TextField label="Fallback Daily Salary Rate (₱)" type="number" fullWidth value={generateBase}
             onChange={e => setGenerateBaseOverride(e.target.value)}

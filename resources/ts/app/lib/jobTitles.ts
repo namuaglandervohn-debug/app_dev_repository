@@ -17,3 +17,7 @@ export function getJobTitleOptions(savedTitles: ReadonlyArray<string | null | un
   }
   return [...titles.values()];
 }
+
+export function includeSelectedJobTitle(titles: string[], selected: string) {
+  return selected && !titles.includes(selected) ? [...titles, selected] : titles;
+}

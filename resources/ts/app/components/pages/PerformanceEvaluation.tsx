@@ -40,11 +40,12 @@ import {
   TaskAlt,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
-import { NO_OUTLET, OUTLETS, POSITIONS } from "../../lib/constants";
+import { NO_OUTLET, OUTLETS } from "../../lib/constants";
+import { includeSelectedJobTitle } from '../../lib/jobTitles';
+import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { useAuth } from "../../context/AuthContext";
 import ActionSnackbar from "../ActionSnackbar";
 
-const AVAILABLE_POSITIONS = POSITIONS.filter((position) => position !== "Payroll Staff");
 
 const cleanCriteriaReadyMessage = (message: string) =>
   message
@@ -357,6 +358,7 @@ export default function PerformanceEvaluation() {
   const [error, setError] = useState<string | null>(null);
 
   const [evalDialogOpen, setEvalDialogOpen] = useState(false);
+  const jobTitleOptions = useJobTitleOptions(evalDialogOpen);
   const [form, setForm] = useState<FormState>(() => buildEmptyForm([]));
   const selectedFormEmployee = form.employee_id
     ? employees.find((emp) => emp.employee_id === form.employee_id)
@@ -592,15 +594,8 @@ export default function PerformanceEvaluation() {
 
   const previewScore = computePreviewScore(form.scores, criteria);
   const positionOptions = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...AVAILABLE_POSITIONS,
-          ...employees.map((employee) => employee.position),
-          form.position,
-        ].map((position) => String(position ?? "").trim()).filter(Boolean))
-      ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
-    [employees, form.position]
+    () => Array.from(new Set([...jobTitleOptions, ...employees.map(employee => employee.position).filter(Boolean)])),
+    [employees, jobTitleOptions],
   );
   const assignedDraftEvaluations = useMemo(
     () => displayedEvaluations.filter((evaluation) => evaluation.status === "Draft"),
@@ -1687,7 +1682,7 @@ export default function PerformanceEvaluation() {
                 sx={softTextFieldSx}
               >
                 <MenuItem value="">Select position…</MenuItem>
-                {positionOptions.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                {includeSelectedJobTitle(positionOptions, form.position).map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
               </TextField>
             </Grid>
 

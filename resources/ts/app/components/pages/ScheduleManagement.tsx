@@ -37,11 +37,12 @@ import {
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
 import { supabase } from "../../lib/supabaseClient";
-import { NO_OUTLET, OUTLETS, POSITIONS } from '../../lib/constants';
+import { NO_OUTLET, OUTLETS } from '../../lib/constants';
+import { includeSelectedJobTitle } from '../../lib/jobTitles';
+import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { parseRegularScheduleShift, splitShiftExample } from '../../lib/regularScheduleShift';
 import ActionSnackbar from '../ActionSnackbar';
 
-const AVAILABLE_POSITIONS = POSITIONS.filter(position => position !== 'Payroll Staff');
 import { useAuth } from '../../context/AuthContext';
 
 interface Schedule {
@@ -651,6 +652,7 @@ export default function ScheduleManagement() {
   const [search, setSearch] = useState('');
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
   const [editDialog, setEditDialog] = useState(false);
+  const jobTitleOptions = useJobTitleOptions(openDialog || editDialog);
   const [viewSchedule, setViewSchedule] = useState<Schedule | null>(null);
   const [editRecord, setEditRecord] = useState<Schedule | null>(null);
   const [editForm, setEditForm] = useState(EMPTY);
@@ -2307,7 +2309,7 @@ export default function ScheduleManagement() {
                   InputLabelProps={{ shrink: true }}
                 >
                   <MenuItem key="pos-empty" value="">Select position…</MenuItem>
-                  {AVAILABLE_POSITIONS.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                  {includeSelectedJobTitle(jobTitleOptions, form.position).map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
@@ -2727,7 +2729,7 @@ export default function ScheduleManagement() {
                   sx={softTextFieldSx}
                 >
                   <MenuItem key="edit-pos-empty" value="">Select position…</MenuItem>
-                  {AVAILABLE_POSITIONS.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                  {includeSelectedJobTitle(jobTitleOptions, editForm.position).map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>

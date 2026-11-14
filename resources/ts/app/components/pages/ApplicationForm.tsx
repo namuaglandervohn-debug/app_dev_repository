@@ -8,7 +8,7 @@ import {
   Chip,
 } from '@mui/material';
 import { ArrowBackIosNew, Send, TaskAlt, ContentCopy } from '@mui/icons-material';
-import { POSITIONS } from '../../lib/constants';
+import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import FileUploadField from '../FileUploadField';
 import { copyToClipboard } from '../../lib/copyToClipboard';
 import { saveApplicationFiles } from '../../lib/applicationFiles';
@@ -28,6 +28,7 @@ function fileToBase64(file: File): Promise<string> {
 
 export default function ApplicationForm() {
   const navigate = useNavigate();
+  const jobTitleOptions = useJobTitleOptions();
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', phone: '',
     position: '', experience: '', education: '', coverLetter: '',
@@ -161,7 +162,7 @@ export default function ApplicationForm() {
               <TextField fullWidth select label="Position Applied For" value={f.position} onChange={set('position')} required
                 InputLabelProps={{ shrink: true }}>
                 <MenuItem key="pos-empty" value="">Select Position…</MenuItem>
-                {POSITIONS.map((pos) => <MenuItem key={pos} value={pos}>{pos}</MenuItem>)}
+                {jobTitleOptions.map((pos) => <MenuItem key={pos} value={pos}>{pos}</MenuItem>)}
               </TextField>
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>

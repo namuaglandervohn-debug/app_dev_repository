@@ -32,6 +32,7 @@ import {
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import { getJobTitleOptions, jobTitleKey } from "../../lib/jobTitles";
+import { useJobTitleOptions } from "../../lib/useJobTitleOptions";
 import ActionSnackbar from "../ActionSnackbar";
 
 interface JobPosting {
@@ -376,7 +377,11 @@ export default function JobPostingManagement() {
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [addingJobTitle, setAddingJobTitle] = useState(false);
-  const jobTitleOptions = useMemo(() => getJobTitleOptions(jobs.map(job => job.title)), [jobs]);
+  const catalogTitles = useJobTitleOptions(open);
+  const jobTitleOptions = useMemo(
+    () => getJobTitleOptions([...jobs.map(job => job.title), ...catalogTitles]),
+    [jobs, catalogTitles],
+  );
 
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
