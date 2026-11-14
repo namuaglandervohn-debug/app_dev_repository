@@ -1,7 +1,7 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Box, IconButton, InputAdornment, TextField as MuiTextField, type TextFieldProps } from '@mui/material';
 import { CalendarMonthOutlined } from '@mui/icons-material';
-import { formatDisplayDate, parseDisplayDate } from '../lib/displayDate';
+import { formatDisplayDate, formatTypedDateDigits, parseDisplayDate } from '../lib/displayDate';
 
 // Keep ISO values at the form boundary and render the same date order in every browser locale.
 export default function DateTextField({ type, ...props }: TextFieldProps) {
@@ -13,6 +13,7 @@ function FormattedDateField({ value, onChange, onBlur, inputProps, InputProps, I
   const [draft, setDraft] = useState<string | null>(null);
   const calendar = useRef<HTMLInputElement>(null);
   const textInput = useRef<HTMLInputElement>(null);
+  const pendingCaret = useRef<number | null>(null);
   const min = inputProps?.min as string | undefined;
   const max = inputProps?.max as string | undefined;
   const isAllowed = (iso: string) => (!min || iso >= min) && (!max || iso <= max);
@@ -21,6 +22,12 @@ function FormattedDateField({ value, onChange, onBlur, inputProps, InputProps, I
   const invalid = Boolean(draft && (!draftDate || !isAllowed(draftDate)));
   const [blurred, setBlurred] = useState(false);
   const invalidMessage = 'Enter a valid date in MM/DD/YYYY format within the allowed range.';
+
+  useLayoutEffect(() => {
+    if (pendingCaret.current === null) return;
+    textInput.current?.setSelectionRange(pendingCaret.current, pendingCaret.current);
+    pendingCaret.current = null;
+  });
 
   function emit(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>, iso: string) {
     const field = { value: iso, name: event.target.name, id: event.target.id };
@@ -57,12 +64,20 @@ function FormattedDateField({ value, onChange, onBlur, inputProps, InputProps, I
           ) : InputProps?.endAdornment,
         }}
         onChange={event => {
-          const input = event.target.value;
-          let text = /^\d{4}-\d{2}-\d{2}$/.test(input) ? formatDisplayDate(input) : input;
+          const { value: input } = event.target;
+          const isIso = /^\d{4}-\d{2}-\d{2}$/.test(input);
+          let text = isIso ? formatDisplayDate(input) : input;
           if (!/^[\d/]{0,10}$/.test(text) || text.replace(/\//g, '').length > 8) return;
-          if (!text.includes('/') || (text.length > 5 && /^\d{2}\/\d{3,6}$/.test(text))) {
-            const digits = text.replace(/\//g, '');
-            text = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join('/');
+          const deletion = (event.nativeEvent as InputEvent).inputType?.startsWith('delete');
+          if (!deletion && (/^\d+$/.test(text) || /^\d{2}\/\d{3,6}$/.test(text))) {
+            const formatted = formatTypedDateDigits(text.replace(/\//g, ''));
+            if (!isIso && formatted !== text && event.target instanceof HTMLInputElement) {
+              const beforeCaret = text.slice(0, event.target.selectionStart ?? text.length).replace(/\//g, '').length;
+              let caret = 0;
+              while (caret < formatted.length && formatted.slice(0, caret).replace(/\//g, '').length < beforeCaret) caret++;
+              pendingCaret.current = caret;
+            }
+            text = formatted;
           }
           const iso = parseDisplayDate(text);
           setDraft(text);
@@ -84,7 +99,7 @@ function FormattedDateField({ value, onChange, onBlur, inputProps, InputProps, I
         onChange={event => {
           setDraft(null);
           textInput.current?.setCustomValidity('');
-          onChange?.({ ...event, target: { value: event.target.value, name: props.name, id: props.id } } as ChangeEvent<HTMLInputElement>);
+          emit(event, event.target.value);
         }} />
     </Box>
   );

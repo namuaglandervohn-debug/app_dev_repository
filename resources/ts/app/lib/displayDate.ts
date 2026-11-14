@@ -14,6 +14,10 @@ export function parseDisplayDate(value: string) {
   return year !== '0000' && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === iso ? iso : '';
 }
 
+export function formatTypedDateDigits(digits: string) {
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('/');
+}
+
 export function formatDisplayDate(value?: string | Date | null, fallback = ''): string {
   if (!value) return fallback;
   if (typeof value === 'string') {

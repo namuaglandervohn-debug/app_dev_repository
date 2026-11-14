@@ -1,4 +1,4 @@
-import { formatDisplayDate, formatDisplayDateRange, parseDisplayDate } from '../../lib/displayDate';
+import { formatDisplayDate, formatDisplayDateRange, formatTypedDateDigits, parseDisplayDate } from '../../lib/displayDate';
 import TextField from '../DateTextField';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -383,6 +383,20 @@ const normalizeWeekInput = (value: string) => {
   const startLabel = MONTHS[start.getMonth()] + ' ' + start.getDate();
   const endLabel = start.getMonth() === end.getMonth() ? end.getDate() : MONTHS[end.getMonth()] + ' ' + end.getDate();
   return startLabel + ' – ' + endLabel + ', ' + end.getFullYear();
+};
+
+const updateWeekInput = (value: string) => {
+  const range = /^(\d{2}\/\d{2}\/\d{4})(?:\s*[-–—]\s*)?(\d[\d/]*)$/.exec(value);
+  if (range) {
+    const end = /^(?:\d+|\d{2}\/\d{3,6})$/.test(range[2]) ? formatTypedDateDigits(range[2].replace(/\//g, '')) : range[2];
+    return normalizeWeekInput(`${range[1]} – ${end}`);
+  }
+  if (/^\d{1,16}$/.test(value)) {
+    const start = formatTypedDateDigits(value);
+    return value.length > 8 ? normalizeWeekInput(`${start} – ${formatTypedDateDigits(value.slice(8))}`) : start;
+  }
+  if (/^\d{2}\/\d{3,6}$/.test(value)) return formatTypedDateDigits(value.replace(/\//g, ''));
+  return normalizeWeekInput(value);
 };
 
 const parseWeekRange = (week: string) => {
@@ -2328,7 +2342,7 @@ export default function ScheduleManagement() {
                   label="Week Period"
                   required
                   value={formatDisplayDateRange(form.week)}
-                  onChange={e => setForm({ ...form, week: normalizeWeekInput(e.target.value) })}
+                  onChange={e => setForm({ ...form, week: updateWeekInput(e.target.value) })}
                   placeholder="MM/DD/YYYY – MM/DD/YYYY"
                   size="small"
                   sx={softTextFieldSx}
@@ -2748,7 +2762,7 @@ export default function ScheduleManagement() {
                   label="Week Period"
                   required
                   value={formatDisplayDateRange(editForm.week)}
-                  onChange={e => setEditForm({ ...editForm, week: normalizeWeekInput(e.target.value) })}
+                  onChange={e => setEditForm({ ...editForm, week: updateWeekInput(e.target.value) })}
                   placeholder="MM/DD/YYYY – MM/DD/YYYY"
                   size="small"
                   sx={softTextFieldSx}
