@@ -1324,6 +1324,7 @@ export default function AttendanceMonitoring() {
   const [importing, setImporting] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [manualPunches, setManualPunches] = useState(EMPTY_PUNCHES);
+  const manualStatus = toSafeNumber(form.late) > 0 ? 'Late' : 'Present';
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -1432,8 +1433,7 @@ export default function AttendanceMonitoring() {
       setSnackbar({ open: true, message: "Please select an employee and date.", severity: "error" });
       return;
     }
-    const hasPunches = Object.values(manualPunches).some(Boolean);
-    if ((hasPunches && !form.workIntervals?.length) || (!hasPunches && (form.status === 'Present' || form.status === 'Late'))) {
+    if (!form.workIntervals?.length) {
       setSnackbar({ open: true, message: 'Enter a complete Time In and Time Out pair for each worked session. Check that the sessions do not overlap.', severity: 'error' });
       return;
     }
@@ -1443,7 +1443,7 @@ export default function AttendanceMonitoring() {
       if (!employee?.employee_id) throw new Error("Selected employee was not found in the employees table.");
 
       const logId = await getNextAttendanceLogId(form.date);
-      const payload = buildAttendancePayload(form, employee, logId);
+      const payload = buildAttendancePayload({ ...form, status: manualStatus }, employee, logId);
 
       const { data, error } = await supabase
         .from("attendance_logs")
@@ -2943,26 +2943,11 @@ export default function AttendanceMonitoring() {
           </Grid>
           <TextField
             label="Status"
-            select
             fullWidth
-            value={form.status}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                status: e.target.value as any,
-              })
-            }
+            value={form.workIntervals?.length ? manualStatus : "Awaiting punches"}
+            InputProps={{ readOnly: true }}
             InputLabelProps={{ shrink: true }}
-          >
-            <MenuItem key="status-empty" value="">
-              Select Status…
-            </MenuItem>
-            {["Present", "Late", "Absent", "On Leave"].map((s) => (
-              <MenuItem key={s} value={s}>
-                {s}
-              </MenuItem>
-            ))}
-          </TextField>
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={pillButtonSx}>Cancel</Button>
