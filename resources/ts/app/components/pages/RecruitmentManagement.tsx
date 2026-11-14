@@ -65,7 +65,6 @@ import {
 } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
 import ActionSnackbar from '../ActionSnackbar';
-import { nextEmployeeId } from '../../lib/employeeIds';
 
 interface DocFile {
   name: string;
@@ -987,62 +986,6 @@ export default function RecruitmentManagement() {
         ? sendApplicantStatusEmail(app, 'Hired').then(() => true, () => false)
         : Promise.resolve(false);
 
-      const firstName = app.firstName ?? '';
-      const middleName = app.middleName ?? '';
-      const lastName = app.lastName ?? '';
-      const suffix = app.suffix ?? '';
-      const { data: existingEmployee, error: existingEmployeeError } = await supabase
-        .from('employees')
-        .select('employee_id')
-        .eq('applicant_id', app.id)
-        .maybeSingle();
-
-      if (existingEmployeeError) throw existingEmployeeError;
-
-      let employeeId = existingEmployee?.employee_id as string | undefined;
-
-      if (!employeeId) {
-        employeeId = await nextEmployeeId();
-      }
-
-      const employeePayload = {
-        employee_id: employeeId,
-        applicant_id: app.id,
-        first_name: firstName,
-        middle_name: middleName,
-        last_name: lastName,
-        suffix,
-        email: app.email ?? '',
-        phone_number: app.phone ?? '',
-        address: app.address ?? '',
-        gender: app.gender ?? '',
-        civil_status: app.civilStatus ?? '',
-        birthdate: app.birthdate || null,
-        birthplace: app.birthplace ?? '',
-        position: app.position ?? '',
-        outlet: '',
-        status: 'Active',
-        hire_date: new Date().toISOString().split('T')[0],
-        education: app.education ?? '',
-        experience: app.experience ?? '',
-        tin: app.tin ?? '',
-        sss: app.sss ?? '',
-        philhealth: app.philhealth ?? '',
-        pagibig: app.pagibig ?? '',
-        emergency_contact: app.emergencyContact ?? '',
-      };
-
-      const { error: employeeSaveError } = existingEmployee
-        ? { error: null }
-        : await supabase.from('employees').insert(employeePayload);
-
-      if (employeeSaveError) {
-        if (employeeSaveError.code !== '23505') throw employeeSaveError;
-        const { data: concurrentlySaved, error: lookupError } = await supabase.from('employees')
-          .select('employee_id').eq('applicant_id', app.id).maybeSingle();
-        if (lookupError || !concurrentlySaved) throw employeeSaveError;
-      }
-
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
       const token = sessionData.session?.access_token;
@@ -1059,7 +1002,7 @@ export default function RecruitmentManagement() {
         ? 'Hired status email accepted for delivery.'
         : 'The Hired status email could not be sent. Use Complete Employee Account Setup to retry.';
       setSnackbar({ open: true, message: `${result.message} ${statusMessage}`,
-        severity: result.welcome_email_sent && statusSent ? 'success' : 'warning' });
+        severity: (result.welcome_email_sent || result.existing_login_ready) && statusSent ? 'success' : 'warning' });
       setViewDialog(false);
       void fetchApplications({ silent: true });
     } catch (e: any) {

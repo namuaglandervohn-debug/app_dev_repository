@@ -110,6 +110,20 @@ test('repairs an earlier conversion without touching the original applicant logi
   assert.deepEqual(f.state.mutations, ['create']);
 });
 
+test('keeps an existing separate employee login after a repeat application', async () => {
+  const f = fixture();
+  const email = 'employee.new@buenaventura.com';
+  f.state.authUsers.push({ id: 'existing-auth', email, app_metadata: { hris_hired_application: 'APP-PRIOR' } });
+  f.state.profiles.push({ user_id: 'existing', employee_id: 'EMP-2026-0001',
+    auth_user_id: 'existing-auth', email, role: 'employee', is_active: true });
+  const response = await f.invoke();
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.existing_login_ready, true);
+  assert.equal(response.body.user.auth_user_id, 'existing-auth');
+  assert.deepEqual(f.state.mutations, []);
+  assert.deepEqual(f.state.mail, []);
+});
+
 test('mail retries use the same account, password and delivery key', async () => {
   const f = fixture();
   f.state.mailStatus = 502;

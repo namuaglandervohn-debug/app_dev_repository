@@ -465,7 +465,7 @@ Route::post('/applications/hired-account', function (Request $request) {
     $nonce = $user['app_metadata']['hris_hired_welcome'] ?? null;
     if (! $nonce || ($user['app_metadata']['hris_hired_application'] ?? null) !== $id
         || ($user['app_metadata']['hris_temporary_password'] ?? null) !== true) {
-        return response()->json(['message' => 'The separate employee account is already ready.', 'welcome_email_sent' => false]);
+        return response()->json(['message' => 'The separate employee account is already ready.', 'welcome_email_sent' => false, 'existing_login_ready' => true]);
     }
     $sent = sendHiredWelcomeEmail($name, $recipient, $user['email'], $passwordFor($nonce), $user['id']);
     return response()->json(['welcome_email_sent' => $sent, 'message' => $sent

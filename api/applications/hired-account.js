@@ -126,7 +126,7 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
       }
       const nonce = authUser.app_metadata?.hris_hired_welcome;
       if (!nonce || authUser.app_metadata?.hris_hired_application !== applicantId || authUser.app_metadata?.hris_temporary_password !== true) {
-        return send(200, { message: 'The separate employee account is already ready.', user: saved, welcome_email_sent: false });
+        return send(200, { message: 'The separate employee account is already ready.', user: saved, welcome_email_sent: false, existing_login_ready: true });
       }
       const password = passwordFor(nonce);
       const sent = await sendHiredWelcome({ env, fetcher, recipient, name, email: authUser.email, password, authId: authUser.id }).catch(() => false);
