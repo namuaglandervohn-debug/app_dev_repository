@@ -677,24 +677,25 @@ Route::post('/applications/send-status-email', function (Request $request) {
     if ($interviewLocation) $details[] = "Location: {$interviewLocation}";
     if ($note) $details[] = "Note: {$note}";
 
+    $mailBody = [
+        'from' => $from,
+        'to' => [$data['email']],
+        'subject' => "Application/requirements status update: {$status}",
+        'html' => $html,
+        'text' => "Hello {$applicantName},\n\nApplicant ID: {$data['applicant_id']}\nYour application/requirements status is now: {$status}."
+            . ($details ? "\n".implode("\n", $details) : '')
+            . "\n\nWe will email you whenever your application status changes.\n\n{$appName}",
+    ];
     try {
         $mailRequest = Http::withToken($apiKey);
         if ($status === 'Hired') {
-            $mailRequest->withHeader('Idempotency-Key', 'hired-status/'.$data['applicant_id']);
+            $mailRequest->withHeader('Idempotency-Key', 'hired-status/'.$data['applicant_id'].'/'.hash('sha256', json_encode($mailBody, JSON_THROW_ON_ERROR)));
         }
         $response = $mailRequest
             ->timeout(10)
             ->acceptJson()
             ->asJson()
-            ->post('https://api.resend.com/emails', [
-                'from' => $from,
-                'to' => [$data['email']],
-                'subject' => "Application/requirements status update: {$status}",
-                'html' => $html,
-                'text' => "Hello {$applicantName},\n\nApplicant ID: {$data['applicant_id']}\nYour application/requirements status is now: {$status}."
-                    . ($details ? "\n".implode("\n", $details) : '')
-                    . "\n\nWe will email you whenever your application status changes.\n\n{$appName}",
-            ]);
+            ->post('https://api.resend.com/emails', $mailBody);
 
     } catch (\Illuminate\Http\Client\ConnectionException $exception) {
         return response()->json(['sent' => false, 'message' => 'The status email service could not be reached. Your saved checklist is unchanged.'], 503);

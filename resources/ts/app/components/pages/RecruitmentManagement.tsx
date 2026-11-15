@@ -651,6 +651,7 @@ export default function RecruitmentManagement() {
   const [interviewDialog, setInterviewDialog] = useState(false);
   const [saving, setSaving] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [sendingHiredStatus, setSendingHiredStatus] = useState(false);
   const [onboarding, setOnboarding] = useState<{
     id: string; account_ready?: boolean; password_set?: boolean; setup_email_sent_at?: string; error?: string;
   } | null>(null);
@@ -822,6 +823,19 @@ export default function RecruitmentManagement() {
     }, data.session.access_token);
   };
 
+  const resendHiredStatus = async (app: Application) => {
+    if (!app.email || sendingHiredStatus || creatingAccount) return;
+    setSendingHiredStatus(true);
+    try {
+      await sendApplicantStatusEmail(app, 'Hired');
+      setSnackbar({ open: true, message: 'Hired status email accepted for delivery.', severity: 'success' });
+    } catch (error) {
+      setSnackbar({ open: true, message: `Hired status email failed: ${readableErrorMessage(error, 'Try again later.')}`, severity: 'warning' });
+    } finally {
+      setSendingHiredStatus(false);
+    }
+  };
+
   const updateApplicantRecord = async (
     id: string,
     dbUpdate: Record<string, any>,
@@ -984,7 +998,12 @@ export default function RecruitmentManagement() {
     if (!retryHandoff && !canDecide) return;
     hiringInProgress.current = true;
     setCreatingAccount(true);
-    let hiredStatusEmail: Promise<boolean> | undefined;
+    let hiredStatusEmail: Promise<string | null> | undefined;
+    const statusMessage = async () => {
+      if (!hiredStatusEmail) return '';
+      const failure = await hiredStatusEmail;
+      return failure ? `Hired status email failed: ${failure} Use Resend Hired Status Email to retry.` : 'Hired status email accepted for delivery.';
+    };
 
     try {
       if (!retryHandoff) await updateApplicantRecord(
@@ -1008,9 +1027,11 @@ export default function RecruitmentManagement() {
         return;
       }
 
-      hiredStatusEmail = app.email
-        ? sendApplicantStatusEmail(app, 'Hired').then(() => true, () => false)
-        : Promise.resolve(false);
+      if (!retryHandoff) {
+        hiredStatusEmail = app.email
+          ? sendApplicantStatusEmail(app, 'Hired').then(() => null, error => readableErrorMessage(error, 'Try again later.'))
+          : Promise.resolve('The application has no email address.');
+      }
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
@@ -1023,21 +1044,13 @@ export default function RecruitmentManagement() {
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(apiErrorMessage(result, response.status, 'Employee account setup failed. Please retry.'));
-      const statusSent = await hiredStatusEmail;
-      const statusMessage = statusSent
-        ? 'Hired status email accepted for delivery.'
-        : 'The Hired status email could not be sent. Use Complete Employee Account Setup to retry.';
-      setSnackbar({ open: true, message: `${result.message} ${statusMessage}`,
-        severity: result.welcome_email_sent && statusSent ? 'success' : 'warning' });
+      const statusFailure = await hiredStatusEmail;
+      setSnackbar({ open: true, message: [result.message, await statusMessage()].filter(Boolean).join(' '),
+        severity: result.welcome_email_sent && !statusFailure ? 'success' : 'warning' });
       setViewDialog(false);
       void fetchApplications({ silent: true });
     } catch (e: any) {
-      const statusMessage = hiredStatusEmail
-        ? await hiredStatusEmail
-          ? ' Hired status email accepted for delivery.'
-          : ' The Hired status email could not be sent.'
-        : '';
-      setSnackbar({ open: true, message: `Failed: ${e.message}${statusMessage}`, severity: 'error' });
+      setSnackbar({ open: true, message: [`Failed: ${e.message}`, await statusMessage()].filter(Boolean).join(' '), severity: 'error' });
     } finally {
       hiringInProgress.current = false;
       setCreatingAccount(false);
@@ -2304,6 +2317,10 @@ export default function RecruitmentManagement() {
                   <div>Employee password · {onboarding.password_set ? 'Set' : 'Waiting for employee'}</div>
                 </>
               )}
+              <Button size="small" sx={{ mt: 1 }} disabled={sendingHiredStatus || creatingAccount || !selectedApp?.email}
+                onClick={() => selectedApp && void resendHiredStatus(selectedApp)}>
+                {sendingHiredStatus ? 'Sending Hired Status Email…' : 'Resend Hired Status Email'}
+              </Button>
             </Alert>
           )}
           {profileLoading && (
@@ -2603,7 +2620,7 @@ export default function RecruitmentManagement() {
               color="success"
               startIcon={<HowToReg />}
               onClick={() => handleHiringDecision(selectedApp.id, 'Hired')}
-              disabled={saving || creatingAccount}
+              disabled={saving || creatingAccount || sendingHiredStatus}
               sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, '&:hover': { bgcolor: GREEN_UI.greenDark } }}
             >
               {creatingAccount ? 'Preparing Employee Account…' :

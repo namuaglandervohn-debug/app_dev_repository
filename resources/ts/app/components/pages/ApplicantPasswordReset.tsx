@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, Button, CircularProgress, Container, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Button, CircularProgress, Container, IconButton, InputAdornment, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import AuthBackground from '../AuthBackground';
 
@@ -7,9 +8,23 @@ export default function ApplicantPasswordReset({ client }: { client: SupabaseCli
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const passwordsMatch = password === confirmation;
+  const showMatch = confirmation.length > 0;
+
+  const visibilityControl = (shown: boolean, toggle: () => void, field: string) => (
+    <InputAdornment position="end">
+      <IconButton type="button" edge="end" disabled={saving}
+        aria-label={`${shown ? 'Hide' : 'Show'} ${field}`} onClick={toggle}
+        onMouseDown={event => event.preventDefault()}>
+        {shown ? <VisibilityOff /> : <Visibility />}
+      </IconButton>
+    </InputAdornment>
+  );
 
   useEffect(() => {
     let active = true;
@@ -59,13 +74,21 @@ export default function ApplicantPasswordReset({ client }: { client: SupabaseCli
               <Stack component="form" onSubmit={submit} spacing={2}>
                 <Typography variant="body2" color="text.secondary">{session.user.email}</Typography>
                 {error && <Alert severity="error">{error}</Alert>}
-                <TextField label="New password" type="password" autoComplete="new-password" required
+                <TextField label="New password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required
                   inputProps={{ minLength: 8, maxLength: 120 }} value={password}
-                  onChange={event => setPassword(event.target.value)} disabled={saving} />
-                <TextField label="Confirm new password" type="password" autoComplete="new-password" required
+                  onChange={event => { setPassword(event.target.value); setError(''); }} disabled={saving}
+                  InputProps={{ endAdornment: visibilityControl(showPassword, () => setShowPassword(value => !value), 'new password') }} />
+                <TextField label="Confirm new password" type={showConfirmation ? 'text' : 'password'} autoComplete="new-password" required
                   inputProps={{ minLength: 8, maxLength: 120 }} value={confirmation}
-                  onChange={event => setConfirmation(event.target.value)} disabled={saving} />
-                <Button type="submit" variant="contained" disabled={saving}>{saving ? 'Saving…' : 'Save new password'}</Button>
+                  onChange={event => { setConfirmation(event.target.value); setError(''); }} disabled={saving}
+                  InputProps={{ endAdornment: visibilityControl(showConfirmation, () => setShowConfirmation(value => !value), 'confirmation password') }}
+                  error={showMatch && !passwordsMatch}
+                  helperText={<span role="status" aria-live="polite" style={{ color: showMatch && passwordsMatch ? '#166534' : undefined }}>
+                    {showMatch ? passwordsMatch ? 'Passwords match.' : 'Passwords do not match.' : ' '}
+                  </span>} />
+                <Button type="submit" variant="contained" disabled={saving || password.length < 8 || !passwordsMatch}>
+                  {saving ? 'Saving…' : 'Save new password'}
+                </Button>
               </Stack>
             )}
           </Stack>

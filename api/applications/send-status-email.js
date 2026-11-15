@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { renderApplicationStatusEmail } from '../../lib/emails/application-status.js';
 import { createClient } from '@supabase/supabase-js';
 
@@ -88,19 +89,21 @@ export async function handleStatusEmail(request, response, { env = process.env, 
     data.note && `Note: ${data.note}`,
   ].filter(Boolean);
   const html = renderApplicationStatusEmail({ ...data, interview_date: interviewDate }, appName);
+  const emailBody = JSON.stringify({
+    from: `${fromName} <${fromAddress}>`, to: [data.email],
+    subject: `Application/requirements status update: ${data.status}`, html,
+    text: `Hello ${name},\n\nApplicant ID: ${data.applicant_id}\nYour application/requirements status is now: ${data.status}.\n${details.join('\n')}\n\nPlease keep your Applicant ID for tracking.\n\n${appName}`,
+  });
+  const retryKey = `hired-status/${data.applicant_id}/${createHash('sha256').update(emailBody).digest('hex')}`;
   try {
     const result = await fetcher('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json',
-        ...(data.status === 'Hired' && { 'Idempotency-Key': `hired-status/${data.applicant_id}` }),
+        ...(data.status === 'Hired' && { 'Idempotency-Key': retryKey }),
       },
       signal: AbortSignal.timeout(10000),
-      body: JSON.stringify({
-        from: `${fromName} <${fromAddress}>`, to: [data.email],
-        subject: `Application/requirements status update: ${data.status}`, html,
-        text: `Hello ${name},\n\nApplicant ID: ${data.applicant_id}\nYour application/requirements status is now: ${data.status}.\n${details.join('\n')}\n\nPlease keep your Applicant ID for tracking.\n\n${appName}`,
-      }),
+      body: emailBody,
     });
     const provider = await result.json().catch(() => null);
     if (!result.ok || !provider?.id) {

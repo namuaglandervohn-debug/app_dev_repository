@@ -45,7 +45,7 @@ test('renders missing requirements, interview details and terminal statuses safe
 
 test('Hired sends a checked final timeline step and uses its own retry key', async () => {
   const response = await invoke(async (_url, options) => {
-    assert.equal(options.headers['Idempotency-Key'], 'hired-status/APP-2026-0016');
+    assert.match(options.headers['Idempotency-Key'], /^hired-status\/APP-2026-0016\/[a-f0-9]{64}$/);
     const mail = JSON.parse(options.body);
     assert.deepEqual(mail.to, [payload.email]);
     assert.match(mail.subject, /Hired$/);
@@ -53,6 +53,20 @@ test('Hired sends a checked final timeline step and uses its own retry key', asy
     return Response.json({ id: 'hired-status-mail' });
   }, { ...payload, status: 'Hired' });
   assert.equal(response.body.sent, true);
+});
+
+test('Hired status retries keep the key for identical mail and change it when the mail changes', async () => {
+  const keys = [];
+  const provider = async (_url, options) => {
+    keys.push(options.headers['Idempotency-Key']);
+    return Response.json({ id: 'hired-status-mail' });
+  };
+  const hired = { ...payload, status: 'Hired' };
+  await invoke(provider, hired);
+  await invoke(provider, hired);
+  await invoke(provider, { ...hired, interview_location: 'Updated location' });
+  assert.equal(keys[0], keys[1]);
+  assert.notEqual(keys[1], keys[2]);
 });
 
 test('rejects invalid request bodies before contacting the provider', async () => {
