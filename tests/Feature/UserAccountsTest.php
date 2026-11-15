@@ -29,7 +29,7 @@ class UserAccountsTest extends TestCase
             if ($request->method() === 'GET') {
                 return match (true) {
                     $path === '/auth/v1/user' => Http::response(['id' => 'hr-auth', 'email' => 'hr@example.test']),
-                    isset($query['or']) => Http::response([['role' => 'hr_admin']]),
+                    ($query['auth_user_id'] ?? '') === 'eq.hr-auth' => Http::response([['role' => 'hr_admin', 'email' => 'hr@example.test']]),
                     default => Http::response([]),
                 };
             }

@@ -652,6 +652,7 @@ export default function RecruitmentManagement() {
   const [saving, setSaving] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [sendingHiredStatus, setSendingHiredStatus] = useState(false);
+  const [onboardingRetry, setOnboardingRetry] = useState(0);
   const [onboarding, setOnboarding] = useState<{
     id: string; account_ready?: boolean; password_set?: boolean; setup_email_sent_at?: string; error?: string;
   } | null>(null);
@@ -711,6 +712,8 @@ export default function RecruitmentManagement() {
   useEffect(() => {
     if (!onboardingId || creatingAccount) return;
     let active = true;
+    const request = new AbortController();
+    const timeout = AbortSignal.timeout(20000);
     setOnboarding(null);
     void (async () => {
       try {
@@ -720,16 +723,21 @@ export default function RecruitmentManagement() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + data.session.access_token },
           body: JSON.stringify({ applicant_id: onboardingId, action: 'status' }),
+          signal: AbortSignal.any([request.signal, timeout]),
         });
         const result = await response.json().catch(() => null);
         if (!response.ok) throw new Error(apiErrorMessage(result, response.status, 'Could not check employee setup.'));
+        if (typeof result?.account_ready !== 'boolean') throw new Error('Could not verify the employee setup status. Try again.');
         if (active) setOnboarding({ ...result, id: onboardingId });
       } catch (error) {
-        if (active) setOnboarding({ id: onboardingId, error: error instanceof Error ? error.message : 'Could not check employee setup.' });
+        if (active) setOnboarding({
+          id: onboardingId,
+          error: timeout.aborted ? 'Checking employee setup took too long. Try again.' : readableErrorMessage(error, 'Could not check employee setup. Try again.'),
+        });
       }
     })();
-    return () => { active = false; };
-  }, [onboardingId, creatingAccount]);
+    return () => { active = false; request.abort(); };
+  }, [onboardingId, creatingAccount, onboardingRetry]);
   const hasLoadedApplicationsRef = useRef(false);
   const fetchRequestIdRef = useRef(0);
   const profileFetchRequestIdRef = useRef(0);
@@ -1041,6 +1049,7 @@ export default function RecruitmentManagement() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({ applicant_id: app.id }),
+        signal: AbortSignal.timeout(35000),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(apiErrorMessage(result, response.status, 'Employee account setup failed. Please retry.'));
@@ -1050,7 +1059,10 @@ export default function RecruitmentManagement() {
       setViewDialog(false);
       void fetchApplications({ silent: true });
     } catch (e: any) {
-      setSnackbar({ open: true, message: [`Failed: ${e.message}`, await statusMessage()].filter(Boolean).join(' '), severity: 'error' });
+      const detail = e?.name === 'TimeoutError' || e instanceof TypeError
+        ? 'Employee setup could not be confirmed. Check the onboarding status before retrying.'
+        : readableErrorMessage(e, 'Employee setup could not be confirmed.');
+      setSnackbar({ open: true, message: [detail, await statusMessage()].filter(Boolean).join(' '), severity: 'error' });
     } finally {
       hiringInProgress.current = false;
       setCreatingAccount(false);
@@ -2316,6 +2328,10 @@ export default function RecruitmentManagement() {
                   <div>Setup email · {onboarding.setup_email_sent_at ? `Accepted for delivery ${formatDisplayDateTime(onboarding.setup_email_sent_at)}` : 'No delivery recorded'}</div>
                   <div>Employee password · {onboarding.password_set ? 'Set' : 'Waiting for employee'}</div>
                 </>
+              )}
+              {onboarding?.id === onboardingId && onboarding.error && (
+                <Button size="small" sx={{ mt: 1 }} disabled={creatingAccount}
+                  onClick={() => setOnboardingRetry(previous => previous + 1)}>Retry Status Check</Button>
               )}
               <Button size="small" sx={{ mt: 1 }} disabled={sendingHiredStatus || creatingAccount || !selectedApp?.email}
                 onClick={() => selectedApp && void resendHiredStatus(selectedApp)}>

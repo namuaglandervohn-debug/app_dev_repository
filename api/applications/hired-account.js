@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
+import { accountServiceUnavailable, createSupabaseFetch } from '../../lib/supabase-request.js';
 
 class AccountError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -56,8 +57,14 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
       const key = env.SUPABASE_SERVICE_ROLE_KEY;
       if (!url || !key) throw new AccountError(503, 'Employee account creation is not configured on this server. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the hosting environment, then redeploy.');
       // The service key stays on the server; never sign in or replace the HR session.
-      const admin = clientFactory(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+      const admin = clientFactory(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { fetch: createSupabaseFetch() },
+      });
       const verified = await admin.auth.getUser(token);
+      if (verified.error && (!verified.error.status || verified.error.status >= 500 || verified.error.status === 429)) {
+        throw new AccountError(503, accountServiceUnavailable);
+      }
       if (verified.error || !verified.data?.user) throw new AccountError(401, 'Your admin session has expired. Please sign in again.');
       const actor = verified.data.user;
       let actorProfile = check(await admin.from('user_accounts').select('user_id,role,email').eq('auth_user_id', actor.id).eq('is_active', true).maybeSingle());
@@ -165,8 +172,8 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
         ? 'Employee account ready. The welcome email was accepted for delivery.'
         : 'Employee account ready. The welcome email could not be sent. Use Resend Setup Email to retry.' });
     } catch (error) {
-      const status = error instanceof AccountError ? error.status : 502;
-      return send(status, { message: error.message || 'Employee account creation failed. Please retry.' });
+      if (error instanceof AccountError) return send(error.status, { message: error.message });
+      return send(503, { message: accountServiceUnavailable });
     }
   };
 }

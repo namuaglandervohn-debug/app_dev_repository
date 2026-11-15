@@ -17,7 +17,9 @@ export async function sendApplicationStatusEmail(payload: StatusEmailPayload, ac
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(30000),
+  }).catch(() => {
+    throw new Error('Could not confirm the status email. Wait a moment and try again.');
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {

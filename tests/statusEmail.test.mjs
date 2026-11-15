@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { handleStatusEmail } from '../api/applications/send-status-email.js';
+import { createSupabaseFetch } from '../lib/supabase-request.js';
 import { sendApplicationStatusEmail } from '../resources/ts/app/lib/sendApplicationStatusEmail.ts';
 import { readableErrorMessage } from '../resources/ts/app/lib/apiError.ts';
 
@@ -116,4 +117,19 @@ test('client only reports success when sending was acknowledged', async () => {
   for (const response of [Response.json({ sent: false }), new Response('<html>SPA fallback</html>')]) {
     await assert.rejects(sendApplicationStatusEmail(payload, 'staff-token', async () => response), /did not confirm/);
   }
+});
+
+test('Supabase transport retries a transient read once and never replays a write', async () => {
+  let attempts = 0;
+  const recoverRead = createSupabaseFetch(async (_url, options) => {
+    assert.ok(options.signal instanceof AbortSignal);
+    if (++attempts === 1) return new Response(null, { status: 503 });
+    return Response.json({ id: 'verified-employee' });
+  });
+  assert.equal((await recoverRead('https://supabase.test/auth/v1/user')).status, 200);
+  assert.equal(attempts, 2);
+  attempts = 0;
+  const timedOutWrite = createSupabaseFetch(async () => { attempts++; throw new TypeError('Simulated connection failure'); });
+  await assert.rejects(timedOutWrite('https://supabase.test/auth/v1/admin/users', { method: 'POST' }), /Simulated connection failure/);
+  assert.equal(attempts, 1);
 });

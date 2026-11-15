@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { renderApplicationStatusEmail } from '../../lib/emails/application-status.js';
 import { createClient } from '@supabase/supabase-js';
+import { accountServiceUnavailable, createSupabaseFetch } from '../../lib/supabase-request.js';
 
 const sendJson = (response, status, body) => {
   response.status(status).setHeader('Content-Type', 'application/json');
@@ -14,8 +15,12 @@ async function authorizeStatusEmail(request, data, env) {
   const url = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return 503;
-  const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: createSupabaseFetch() },
+  });
   const { data: identity, error: authError } = await admin.auth.getUser(token);
+  if (authError && (!authError.status || authError.status >= 500 || authError.status === 429)) return 503;
   if (authError || !identity.user?.email) return 401;
 
   const email = identity.user.email.toLowerCase();
@@ -72,7 +77,7 @@ export async function handleStatusEmail(request, response, { env = process.env, 
       401: 'Sign in again to send an application status email.',
       403: 'Only HR and General Manager accounts can send application status emails.',
       409: 'This application changed. Refresh it before sending a status email.',
-      503: 'Could not verify the application status email request.',
+      503: accountServiceUnavailable,
     };
     return sendJson(response, permission, { sent: false, message: messages[permission] });
   }

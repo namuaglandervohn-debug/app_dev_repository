@@ -692,7 +692,7 @@ export default function PerformanceEvaluation() {
       if (templateErr) throw templateErr;
       const evaluationId = String(evalId);
 
-      const { error: updateErr } = await supabase
+      const { data: assigned, error: updateErr } = await supabase
         .from("employee_evaluations")
         .update({
           employee_name: employee.name,
@@ -705,9 +705,13 @@ export default function PerformanceEvaluation() {
           remarks: `Assigned by ${currentUserName}.`,
           updated_at: new Date().toISOString(),
         })
-        .eq("evaluation_id", evaluationId);
+        .eq("evaluation_id", evaluationId)
+        .in("status", ["Draft", "Returned"])
+        .select("evaluation_id")
+        .maybeSingle();
 
       if (updateErr) throw updateErr;
+      if (!assigned) throw new Error("This evaluation moved to review while you were assigning it. Refresh and check its current status.");
 
       const { error: notificationError } = await supabase.from("notifications").insert({
         recipient_role: "supervisor",

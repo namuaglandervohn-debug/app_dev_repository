@@ -1,6 +1,11 @@
 <?php
 
 use Illuminate\Http\Request;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
@@ -93,6 +98,30 @@ function supabaseServiceRoleKey(): string
     return $key;
 }
 
+function sendSupabaseRequest(PendingRequest $request, string $method, string $url, ?array $payload = null): Response
+{
+    $request->connectTimeout(3)->timeout(5);
+    if ($method === 'GET') {
+        $request->retry(2, 250, fn ($error) => $error instanceof ConnectionException
+            || ($error instanceof RequestException && in_array($error->response->status(), [502, 503, 504], true)), throw: false);
+    }
+
+    try {
+        $response = $request->send($method, $url, in_array($method, ['POST', 'PATCH'], true) ? ['json' => $payload ?? []] : []);
+    } catch (ConnectionException) {
+        $response = null;
+    }
+
+    if (! $response || $response->serverError() || $response->status() === 429) {
+        throw new HttpResponseException(response()->json([
+            'code' => 'SUPABASE_TEMPORARILY_UNAVAILABLE',
+            'message' => 'Could not reach the HRIS account service. Wait a moment and try again.',
+        ], 503));
+    }
+
+    return $response;
+}
+
 function supabaseRest(string $method, string $path, array $payload = null, array $query = []): array
 {
     $request = Http::withHeaders([
@@ -107,12 +136,7 @@ function supabaseRest(string $method, string $path, array $payload = null, array
         $url .= '?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 
-    $response = match (strtoupper($method)) {
-        'GET' => $request->get($url),
-        'POST' => $request->post($url, $payload ?? []),
-        'PATCH' => $request->patch($url, $payload ?? []),
-        default => throw new InvalidArgumentException("Unsupported Supabase REST method: {$method}"),
-    };
+    $response = sendSupabaseRequest($request, strtoupper($method), $url, $payload);
 
     if ($response->failed()) {
         throw ValidationException::withMessages([
@@ -133,10 +157,11 @@ function requireSupabaseAdmin(Request $request): array
     }
 
     $accessToken = trim(substr($authorization, 7));
-    $userResponse = Http::withHeaders([
+    $userRequest = Http::withHeaders([
         'apikey' => supabaseAnonKey(),
         'Authorization' => 'Bearer '.$accessToken,
-    ])->acceptJson()->get(supabaseBaseUrl().'/auth/v1/user');
+    ])->acceptJson();
+    $userResponse = sendSupabaseRequest($userRequest, 'GET', supabaseBaseUrl().'/auth/v1/user');
 
     if ($userResponse->failed()) {
         throw ValidationException::withMessages([
@@ -145,22 +170,25 @@ function requireSupabaseAdmin(Request $request): array
     }
 
     $authUser = $userResponse->json();
-    $authUserId = $authUser['id'] ?? null;
-    $email = strtolower((string) ($authUser['email'] ?? ''));
-
-    $filters = $authUserId
-        ? ['or' => "(auth_user_id.eq.{$authUserId},email.eq.{$email})", 'is_active' => 'eq.true', 'limit' => 1]
-        : ['email' => "eq.{$email}", 'is_active' => 'eq.true', 'limit' => 1];
-
-    $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, array_merge($filters, [
+    $authUserId = $authUser['id'] ?? '';
+    $email = strtolower(trim((string) ($authUser['email'] ?? '')));
+    if (! $authUserId || ! $email) {
+        throw ValidationException::withMessages(['auth' => 'Sign in again to verify your HRIS session.']);
+    }
+    $filters = [
         'select' => 'user_id,auth_user_id,email,role,is_active',
-    ]));
-
-    $account = $accounts[0] ?? null;
+        'is_active' => 'eq.true',
+        'limit' => 2,
+    ];
+    $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, $filters + ['auth_user_id' => "eq.{$authUserId}"]);
+    if (! $accounts) {
+        $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, $filters + ['auth_user_id' => 'is.null', 'email' => "eq.{$email}"]);
+    }
+    $account = count($accounts) === 1 ? $accounts[0] : null;
     $role = strtolower((string) ($account['role'] ?? ''));
     $allowedRoles = ['hr', 'hr_admin', 'admin', 'gm', 'general_manager'];
 
-    if (! $account || ! in_array($role, $allowedRoles, true)) {
+    if (! $account || strtolower(trim($account['email'] ?? '')) !== $email || ! in_array($role, $allowedRoles, true)) {
         throw ValidationException::withMessages([
             'auth' => 'Only HR/Admin/GM accounts can create users.',
         ]);
@@ -400,7 +428,7 @@ Route::post('/applications/hired-account', function (Request $request) {
 
     $name = $app['name'] ?: trim(($app['first_name'] ?? '').' '.($app['last_name'] ?? '')) ?: 'Employee';
     $key = supabaseServiceRoleKey();
-    $authApi = fn () => Http::withToken($key)->withHeader('apikey', $key)->acceptJson()->timeout(10);
+    $authApi = fn () => Http::withToken($key)->withHeader('apikey', $key)->acceptJson();
     $authUrl = supabaseBaseUrl().'/auth/v1/admin/users';
     $separate = ! empty($existing['auth_user_id']) && $existing['auth_user_id'] !== ($app['auth_user_id'] ?? null)
         && strtolower($existing['email']) !== $recipient;
@@ -409,7 +437,7 @@ Route::post('/applications/hired-account', function (Request $request) {
         return response()->json(['account_ready' => false, 'password_set' => false, 'setup_email_sent_at' => null]);
     }
     if ($separate) {
-        $auth = $authApi()->get($authUrl.'/'.$existing['auth_user_id']);
+        $auth = sendSupabaseRequest($authApi(), 'GET', $authUrl.'/'.$existing['auth_user_id']);
         $user = $auth->json('user') ?? $auth->json();
         if ($auth->failed() || strtolower($user['email'] ?? '') !== strtolower($existing['email'])) {
             return response()->json(['message' => 'The employee login could not be verified. Review it in User Accounts.'], 409);
@@ -430,7 +458,7 @@ Route::post('/applications/hired-account', function (Request $request) {
             if ($email === $recipient || supabaseRest('GET', '/rest/v1/user_accounts', null, ['select' => 'user_id', 'email' => "eq.{$email}"])) {
                 continue;
             }
-            $created = $authApi()->post($authUrl, [
+            $created = sendSupabaseRequest($authApi(), 'POST', $authUrl, [
                 'email' => $email, 'password' => 'Bv!'.\Illuminate\Support\Str::uuid(), 'email_confirm' => true,
                 'app_metadata' => ['hris_temporary_password' => true, 'hris_hired_application' => $id],
                 'user_metadata' => ['full_name' => $name, 'role' => 'employee', 'employee_id' => $employeeId],
@@ -468,7 +496,7 @@ Route::post('/applications/hired-account', function (Request $request) {
                 'auth_user_id' => 'eq.'.$user['id'],
             ])[0] ?? null;
             if (! $saved) {
-                $authApi()->delete($authUrl.'/'.$user['id']);
+                sendSupabaseRequest($authApi(), 'DELETE', $authUrl.'/'.$user['id']);
                 return response()->json(['message' => 'Employee setup could not finish. Refresh and try again.'], 409);
             }
         }
@@ -479,7 +507,7 @@ Route::post('/applications/hired-account', function (Request $request) {
     $setupLink = null;
     if ($needsSetup && trim((string) config('services.resend.key')) !== '') {
         try {
-            $link = $authApi()->post(supabaseBaseUrl().'/auth/v1/admin/generate_link?'.http_build_query([
+            $link = sendSupabaseRequest($authApi(), 'POST', supabaseBaseUrl().'/auth/v1/admin/generate_link?'.http_build_query([
                 'redirect_to' => 'https://app-dev-repository.vercel.app/login',
             ]), [
                 'type' => 'recovery', 'email' => $user['email'],
