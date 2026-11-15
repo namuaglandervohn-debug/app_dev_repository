@@ -1291,6 +1291,7 @@ async function saveImportTask(task: SaveImportTask): Promise<ImportSaveResult> {
   const logId = undefined;
   const payload = buildAttendancePayload(task.row, employee, logId);
   payload.source = "Biometric Import";
+  if (task.kind === "update" && payload.validation_status === "Validated") payload.validation_status = "Corrected";
 
   const query = task.kind === "update" && task.existingId
     ? supabase.from("attendance_logs").update(payload).eq("log_id", task.existingId).select().single()
@@ -1325,6 +1326,7 @@ export default function AttendanceMonitoring() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialog, setImportDialog] = useState(false);
   const [importPreview, setImportPreview] = useState<Partial<Attendance>[]>([]);
+  const [skippedImportRows, setSkippedImportRows] = useState<{ employee: string; date: string; reason: string }[]>([]);
   const [importText, setImportText] = useState("");
   const [importFormat, setImportFormat] = useState("");
   const [parsingImport, setParsingImport] = useState(false);
@@ -1590,11 +1592,12 @@ export default function AttendanceMonitoring() {
     if (importPreview.length === 0 || importing || parsingImport) return;
 
     setImporting(true);
+    setSkippedImportRows([]);
     setImportProgress({ current: 0, total: importPreview.length, failed: 0 });
 
     let successCount = 0;
     let updatedCount = 0;
-    let duplicateCount = 0;
+    const skippedRows: typeof skippedImportRows = [];
     let failedCount = 0;
 
     const newRecords: Attendance[] = [];
@@ -1638,7 +1641,11 @@ export default function AttendanceMonitoring() {
         const key = employee && date ? attendanceKeyFromParts(employee.employee_id, date) : "";
 
         if (!employee || !date || importedKeys.has(key)) {
-          duplicateCount++;
+          skippedRows.push({
+            employee: employee?.name || row.employee || row.biometricUserId || "Unknown employee",
+            date,
+            reason: !employee ? "Employee could not be matched" : !date ? "Invalid date" : "Repeated employee and date in this file",
+          });
         } else {
           importedKeys.add(key);
           resolvedRows.push({
@@ -1708,9 +1715,7 @@ export default function AttendanceMonitoring() {
       for (const resolved of resolvedRows) {
         const existing = existingByKey.get(resolved.key);
 
-        if (existing && isRawAttendanceImport) {
-          duplicateCount++;
-        } else if (existing && (isAbnormalImport || isVerificationImport)) {
+        if (existing && !isRawAttendanceImport && (isAbnormalImport || isVerificationImport)) {
           tasks.push({
             kind: "update",
             key: resolved.key,
@@ -1723,7 +1728,7 @@ export default function AttendanceMonitoring() {
             },
           });
         } else if (existing) {
-          duplicateCount++;
+          skippedRows.push({ employee: resolved.employee.name, date: resolved.date, reason: "Attendance already exists for this date" });
         } else {
           tasks.push({
             kind: "create",
@@ -1744,7 +1749,10 @@ export default function AttendanceMonitoring() {
       return;
     }
 
+    setSkippedImportRows(skippedRows);
+    const duplicateCount = skippedRows.length;
     if (tasks.length === 0) {
+      if (duplicateCount) setImportDialog(false);
       setImporting(false);
       setImportProgress({
         current: importPreview.length,
@@ -2338,6 +2346,21 @@ export default function AttendanceMonitoring() {
           }
         >
           {error}
+        </Alert>
+      )}
+
+      {skippedImportRows.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setSkippedImportRows([])}>
+          <Box component="details">
+            <Box component="summary" sx={{ cursor: "pointer", fontWeight: 700 }}>
+              Review {skippedImportRows.length} skipped import rows
+            </Box>
+            <Box component="ul" sx={{ pl: 3, maxHeight: 200, overflowY: "auto" }}>
+              {skippedImportRows.map((row, index) => (
+                <li key={index}>{row.employee} · {formatDisplayDate(row.date, "No valid date")} · {row.reason}</li>
+              ))}
+            </Box>
+          </Box>
         </Alert>
       )}
 
