@@ -41,12 +41,15 @@ import FileUploadField from '../FileUploadField';
 import { useAuth } from '../../context/AuthContext';
 import ActionSnackbar from '../ActionSnackbar';
 import { APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
+import { NO_OUTLET, OUTLETS } from '../../lib/constants';
 import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
 import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
 interface DocFile {
   name: string; type: string; data: string;
 }
+
+const salaryFormatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 
 type ApplicationFormDetails = {
   applicantId?: string;
@@ -324,11 +327,11 @@ export default function EmployeeProfile() {
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .from("employees")
-        .select("*")
-        .eq("employee_id", id)
-        .single();
+      const [{ data, error }, { data: account }] = await Promise.all([
+        supabase.from("employees").select("*").eq("employee_id", id).single(),
+        supabase.from("user_accounts").select("outlet").eq("employee_id", id)
+          .eq("is_active", true).order("user_id").limit(1).maybeSingle(),
+      ]);
 
       if (error) throw error;
 
@@ -401,7 +404,7 @@ export default function EmployeeProfile() {
         last_name: data.last_name ?? "",
         suffix: data.suffix ?? "",
         position: data.position ?? "",
-        outlet: data.outlet ?? "",
+        outlet: account?.outlet?.trim() || data.outlet?.trim() || "",
         status: data.status ?? "Active",
         contact: data.phone_number ?? "",
         email: data.email ?? "",
@@ -490,7 +493,6 @@ export default function EmployeeProfile() {
       address: editForm.address,
       department: editForm.department,
       position: editForm.position,
-      outlet: editForm.outlet ?? "",
       status: editForm.status,
       supervisor: editForm.supervisor,
       hire_date: editForm.dateHired,
@@ -509,6 +511,10 @@ export default function EmployeeProfile() {
       pagibig: editForm.pagibig,
       documents: updatedDocs,
     };
+    const outletChanged = editForm.outlet !== employee?.outlet;
+    if (outletChanged) {
+      employeeUpdate.outlet = editForm.outlet === NO_OUTLET ? "" : editForm.outlet;
+    }
 
     let data: any = null;
     for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -525,7 +531,7 @@ export default function EmployeeProfile() {
       }
 
       const missingColumn = getMissingColumnFromSupabaseError(result.error);
-      if (!missingColumn || !(missingColumn in employeeUpdate)) throw result.error;
+      if (!missingColumn || missingColumn === "outlet" || !(missingColumn in employeeUpdate)) throw result.error;
 
       delete employeeUpdate[missingColumn];
     }
@@ -533,7 +539,7 @@ export default function EmployeeProfile() {
     if (!data) throw new Error("Employee profile could not be saved with the available employee columns.");
 
     const appForm = editForm.applicationForm;
-    if (appForm?.applicantId) {
+    if (appForm?.applicantId && appForm !== employee?.applicationForm) {
       const applicantName = `${appForm.firstName ?? ""} ${appForm.middleName ?? ""} ${appForm.lastName ?? ""} ${appForm.suffix ?? ""}`.replace(/\s+/g, " ").trim();
       const coverLetterData = {
         ...appForm,
@@ -599,7 +605,7 @@ export default function EmployeeProfile() {
   last_name: data.last_name ?? "",
   suffix: data.suffix ?? "",
   position: data.position ?? "",
-  outlet: data.outlet ?? editForm.outlet ?? "",
+  outlet: outletChanged ? data.outlet ?? "" : editForm.outlet,
   status: data.status ?? "Active",
   contact: data.phone_number ?? "",
   email: data.email ?? "",
@@ -897,7 +903,17 @@ export default function EmployeeProfile() {
             </Box>
             <Box>
               <Typography variant="h5" sx={{ color: GREEN_UI.text, fontWeight: 700 }}>{employee.name || 'Employee Profile'}</Typography>
-              <Typography variant="body2" color="text.secondary">{employee.id} • {employee.position || 'No position set'}</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.75, rowGap: 0.25 }}>
+                <Typography variant="body2" color="text.secondary">{employee.id}</Typography>
+                <Typography variant="body2" color="text.secondary">{employee.position || 'No position set'}</Typography>
+                {user?.role !== 'supervisor' && (
+                  <Typography variant="body2" color="text.secondary">
+                    Salary {employee.salary != null && employee.salary !== '' && Number.isFinite(Number(employee.salary))
+                      ? salaryFormatter.format(Number(employee.salary)) : 'not set'}
+                  </Typography>
+                )}
+                <Typography variant="body2" color="text.secondary">{employee.outlet && employee.outlet !== NO_OUTLET ? employee.outlet : 'No Outlet'}</Typography>
+              </Box>
             </Box>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1278,6 +1294,18 @@ export default function EmployeeProfile() {
                   <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('How applicant heard about opening', editApplication.hearAbout, (value) => updateApplicationForm({ hearAbout: value }), HEAR_ABOUT_OPTIONS)}</Grid>
                   {editApplication.hearAbout === 'Other' && <Grid size={{ xs: 12, md: 6 }}>{editAppField('Please specify', editApplication.hearAboutOther, (value) => updateApplicationForm({ hearAboutOther: value }))}</Grid>}
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Date hired', editForm.dateHired, (value) => setEditForm({ ...editForm, dateHired: value }), { type: 'date' })}</Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField fullWidth select label="Select an outlet" value={editForm.outlet}
+                      onChange={event => setEditForm({ ...editForm, outlet: event.target.value })}
+                      InputLabelProps={{ shrink: true }} sx={applicationTextFieldSx}>
+                      <MenuItem value="" disabled>Select an outlet</MenuItem>
+                      <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
+                      {editForm.outlet && editForm.outlet !== NO_OUTLET && !OUTLETS.includes(editForm.outlet) && (
+                        <MenuItem value={editForm.outlet}>{editForm.outlet}</MenuItem>
+                      )}
+                      {OUTLETS.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
+                    </TextField>
+                  </Grid>
                 </Grid>
               </Paper>
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>

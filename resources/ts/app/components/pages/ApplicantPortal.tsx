@@ -98,6 +98,7 @@ export default function ApplicantPortal() {
   const [profileOwner, setProfileOwner] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [registrationReceipt, setRegistrationReceipt] = useState('');
   const [applications, setApplications] = useState<ApplicantSubmission[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [trackingId, setTrackingId] = useState<string | null>(null);
@@ -108,6 +109,7 @@ export default function ApplicantPortal() {
   const hasApplicationDestination = /^\/apply(?:\?|$)/.test(requestedNext);
   const next = hasApplicationDestination ? requestedNext : '/apply';
   const loginPath = hasApplicationDestination ? `/login?next=${encodeURIComponent(next)}` : '/login';
+  const continueToSignIn = () => navigate(loginPath, { replace: true, state: { registrationEmail: registrationReceipt } });
   useEffect(() => {
     if (user?.role !== 'applicant') return;
     let active = true;
@@ -203,7 +205,12 @@ export default function ApplicantPortal() {
         const registrationEmail = email.trim().toLowerCase();
         const result = await supabase.auth.signUp({ email: registrationEmail, password, options: { emailRedirectTo: applicantConfirmationRedirect(window.location.origin), data: { registration_kind: 'applicant', applicant_profile: completeApplicantAddress(profile) } } });
         if (result.error && !['user_already_exists', 'email_exists'].includes(result.error.code ?? '')) throw result.error;
-        navigate(loginPath, { replace: true, state: { registrationEmail } });
+        if (result.data.session) {
+          navigate(loginPath, { replace: true, state: { registrationEmail } });
+        } else {
+          setPassword('');
+          setRegistrationReceipt(registrationEmail);
+        }
       }
     } catch (e: any) {
       setError(e.message || 'Could not complete this action.');
@@ -400,7 +407,20 @@ export default function ApplicantPortal() {
           </InputAdornment>,
         }} />
       {renderFields(fields)}
-      <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Please wait...' : 'Create applicant account'}</Button>
+      <Button type="submit" variant="contained" disabled={busy || Boolean(registrationReceipt)}>{busy ? 'Please wait...' : 'Create applicant account'}</Button>
     </Stack></Box>
+    <Dialog open={Boolean(registrationReceipt)} maxWidth="xs" fullWidth aria-labelledby="applicant-activation-title"
+      onClose={continueToSignIn}>
+      <DialogTitle id="applicant-activation-title">Check your email</DialogTitle>
+      <DialogContent>
+        <Typography>Registration submitted. Check your inbox or spam folder for the link to activate your applicant account.</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, overflowWrap: 'anywhere' }}>{registrationReceipt}</Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="contained" onClick={continueToSignIn}>
+          Continue to sign in
+        </Button>
+      </DialogActions>
+    </Dialog>
   </Paper></Container></AuthBackground>;
 }
