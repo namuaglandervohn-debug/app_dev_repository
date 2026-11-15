@@ -73,6 +73,9 @@ interface Attendance {
   overtime: string;
   status: "Present" | "Late" | "Absent" | "On Leave";
   discrepancy: string;
+  source?: string;
+  validationStatus?: string;
+  reviewedBy?: string;
 }
 
 type AttendanceDraft = Omit<Attendance, "id" | "displayId" | "employeeId">;
@@ -894,6 +897,9 @@ function mapAttendanceLogToRow(row: any, index = 0): Attendance {
     date,
     ...mapped,
     discrepancy: getAttendanceDiscrepancy({ ...row, ...mapped }),
+    source: row?.source,
+    validationStatus: row?.validation_status,
+    reviewedBy: row?.reviewed_by_name,
   };
 }
 
@@ -1284,6 +1290,7 @@ async function saveImportTask(task: SaveImportTask): Promise<ImportSaveResult> {
   // The UI still displays the friendly ATT-YYYY-0001 format through displayId.
   const logId = undefined;
   const payload = buildAttendancePayload(task.row, employee, logId);
+  payload.source = "Biometric Import";
 
   const query = task.kind === "update" && task.existingId
     ? supabase.from("attendance_logs").update(payload).eq("log_id", task.existingId).select().single()
@@ -1354,6 +1361,7 @@ export default function AttendanceMonitoring() {
 
   const normalizedUserRole = String(user?.role ?? "").toLowerCase();
   const canManageAttendance = ["hr", "hr_admin", "general_manager", "admin"].includes(normalizedUserRole) || normalizedUserRole.includes("hr") || normalizedUserRole.includes("admin");
+  const canReviewAttendance = canManageAttendance || normalizedUserRole.includes("supervisor");
 
   const fetchEmployeeOptions = async () => {
     const { data, error } = await supabase
@@ -1378,7 +1386,7 @@ export default function AttendanceMonitoring() {
     try {
       const { data, error } = await supabase
         .from("attendance_logs")
-        .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, validation_status, created_at")
+        .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, source, validation_status, reviewed_by_name, created_at")
         .order("attendance_date", { ascending: false })
         .order("created_at", { ascending: false });
 
@@ -1675,7 +1683,7 @@ export default function AttendanceMonitoring() {
       if (employeeIds.length > 0 && dates.length > 0) {
         const { data, error } = await supabase
           .from("attendance_logs")
-          .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, validation_status, created_at")
+          .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, source, validation_status, reviewed_by_name, created_at")
           .in("attendance_date", dates);
 
         if (error) throw error;
@@ -1862,7 +1870,8 @@ export default function AttendanceMonitoring() {
           ? hasLateMetric || normalizeStatusForFilter(a.status) === "late"
           : normalizeStatusForFilter(a.status) === filterStatus);
 
-      return dateMatch && employeeMatch && statusMatch;
+      const reviewMatch = filterStatus === "review" && ["Needs Review", "Invalid", "Unprocessed", "Corrected"].includes(a.validationStatus ?? "");
+      return dateMatch && employeeMatch && (statusMatch || reviewMatch);
     });
   }, [attendances, filterDate, filterEmployee, filterStatus]);
 
@@ -1956,7 +1965,7 @@ export default function AttendanceMonitoring() {
 
       const { data, error } = await supabase
         .from("attendance_logs")
-        .update({ ...payload, validation_status: "Corrected" })
+        .update({ ...payload, source: editRecord.source || payload.source, validation_status: "Corrected" })
         .eq("log_id", editRecord.id)
         .select()
         .single();
@@ -1969,7 +1978,7 @@ export default function AttendanceMonitoring() {
       setEditDialog(false);
       setSnackbar({
         open: true,
-        message: "✅ Attendance record corrected and reprocessed!",
+        message: "Attendance corrected. Review it before payroll.",
         severity: "success",
       });
     } catch (e: any) {
@@ -1983,6 +1992,22 @@ export default function AttendanceMonitoring() {
     }
   };
 
+
+  const reviewAttendance = async (att: Attendance) => {
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.from("attendance_logs")
+        .update({ validation_status: "Validated" })
+        .eq("log_id", att.id).eq("validation_status", att.validationStatus ?? "").select().maybeSingle();
+      if (error || !data) throw error || new Error("The entry changed. Refresh the attendance list.");
+      setAttendances(previous => previous.map(record => record.id === att.id ? mapAttendanceLogToRow(data) : record));
+      setSnackbar({ open: true, message: "Attendance marked as reviewed.", severity: "success" });
+    } catch (error) {
+      setSnackbar({ open: true, message: error instanceof Error ? error.message : "Could not review attendance.", severity: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const openEdit = (att: Attendance) => {
     setEditRecord(att);
@@ -2374,6 +2399,7 @@ export default function AttendanceMonitoring() {
               sx={softTextFieldSx}
             >
               <MenuItem key="all" value="all">All Status</MenuItem>
+              <MenuItem value="review">Needs Payroll Review</MenuItem>
               <MenuItem key="present" value="present">Present</MenuItem>
               <MenuItem key="late" value="late">Late</MenuItem>
               <MenuItem key="absent" value="absent">Absent</MenuItem>
@@ -2646,6 +2672,13 @@ export default function AttendanceMonitoring() {
                           },
                         }}
                       />
+                      <Typography variant="caption" display="block">
+                        {att.source || "Unknown source"} · {att.validationStatus || "Unprocessed"}
+                        {att.reviewedBy && ` · Reviewed by ${att.reviewedBy}`}
+                      </Typography>
+                      {canReviewAttendance && ["Needs Review", "Unprocessed", "Corrected"].includes(att.validationStatus ?? "") && (
+                        <Button size="small" disabled={saving} onClick={() => reviewAttendance(att)}>Mark Reviewed</Button>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Chip

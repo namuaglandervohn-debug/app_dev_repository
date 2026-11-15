@@ -358,6 +358,7 @@ export default function PerformanceEvaluation() {
   const [error, setError] = useState<string | null>(null);
 
   const [evalDialogOpen, setEvalDialogOpen] = useState(false);
+  const [pendingOnly, setPendingOnly] = useState(false);
   const jobTitleOptions = useJobTitleOptions(evalDialogOpen);
   const [form, setForm] = useState<FormState>(() => buildEmptyForm([]));
   const selectedFormEmployee = form.employee_id
@@ -366,6 +367,7 @@ export default function PerformanceEvaluation() {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [assignForm, setAssignForm] = useState({
     employee_id: "",
+    supervisorId: "",
     periodStart: monthStart(),
     periodEnd: monthEnd(),
     periodLabel: "",
@@ -583,10 +585,9 @@ export default function PerformanceEvaluation() {
     }
 
     if (isSupervisor) {
-      return evaluations.filter((e) => {
-        if (currentUserId && e.evaluator_user_id === currentUserId) return true;
-        return String(e.evaluator_role || "").toLowerCase().includes("supervisor");
-      });
+      return evaluations.filter(e => e.evaluator_user_id
+        ? e.evaluator_user_id === currentUserId
+        : String(e.evaluator_role || "").toLowerCase().includes("supervisor"));
     }
 
     return evaluations;
@@ -598,9 +599,14 @@ export default function PerformanceEvaluation() {
     [employees, jobTitleOptions],
   );
   const assignedDraftEvaluations = useMemo(
-    () => displayedEvaluations.filter((evaluation) => evaluation.status === "Draft"),
+    () => displayedEvaluations.filter(evaluation => ["Draft", "Returned"].includes(evaluation.status)),
     [displayedEvaluations]
   );
+  const pendingEvaluations = displayedEvaluations.filter(evaluation => {
+    if (isSupervisor) return ["Draft", "Returned"].includes(evaluation.status);
+    return ["Submitted", "Reviewed"].includes(evaluation.status);
+  });
+  const visibleEvaluations = pendingOnly ? pendingEvaluations : displayedEvaluations;
   const showEvaluationScores = !isHR || displayedEvaluations.some((evaluation) => evaluation.status !== "Draft");
   const evaluationScoreColumnCount = showEvaluationScores ? criteria.length + 2 : 0;
 
@@ -642,6 +648,7 @@ export default function PerformanceEvaluation() {
   const openAssignDialog = () => {
     setAssignForm({
       employee_id: "",
+      supervisorId: supervisors.length === 1 ? supervisors[0].user_id : "",
       periodStart: monthStart(),
       periodEnd: monthEnd(),
       periodLabel: `${new Date().toLocaleString("default", { month: "long" })} ${new Date().getFullYear()} Evaluation`,
@@ -660,8 +667,13 @@ export default function PerformanceEvaluation() {
     }
 
     const employee = employees.find((emp) => emp.employee_id === assignForm.employee_id);
+    const supervisor = supervisors.find(account => account.user_id === assignForm.supervisorId);
     if (!employee) {
       showMessage("Selected employee could not be found.", "error");
+      return;
+    }
+    if (!supervisor) {
+      showMessage("Please select an active supervisor.", "warning");
       return;
     }
 
@@ -672,8 +684,8 @@ export default function PerformanceEvaluation() {
         p_period_start: assignForm.periodStart,
         p_period_end: assignForm.periodEnd,
         p_period_label: assignForm.periodLabel || null,
-        p_evaluator_user_id: null,
-        p_evaluator_name: "Supervisor",
+        p_evaluator_user_id: supervisor.user_id,
+        p_evaluator_name: supervisor.name,
         p_evaluator_role: "supervisor",
       });
 
@@ -686,8 +698,8 @@ export default function PerformanceEvaluation() {
           employee_name: employee.name,
           position: employee.position,
           outlet: employee.outlet,
-          evaluator_user_id: null,
-          evaluator_name: "Supervisor",
+          evaluator_user_id: supervisor.user_id,
+          evaluator_name: supervisor.name,
           evaluator_role: "supervisor",
           status: "Draft",
           remarks: `Assigned by ${currentUserName}.`,
@@ -699,26 +711,12 @@ export default function PerformanceEvaluation() {
 
       const { error: notificationError } = await supabase.from("notifications").insert({
         recipient_role: "supervisor",
+        recipient_employee_id: supervisor.employee_id || null,
         title: "Employee Assigned for Evaluation",
         message: `${currentUserName} submitted ${employee.name} for performance evaluation.`,
         type: "performance_evaluation",
       });
       if (notificationError) console.warn("Evaluation assignment notification failed:", notificationError.message);
-
-      await supabase.rpc("create_system_log", {
-        p_user_id: null,
-        p_user_name: currentUserName,
-        p_user_role: (user as any)?.role || null,
-        p_action: "ASSIGN_EVALUATION",
-        p_module: "Performance Evaluation",
-        p_record_id: evaluationId,
-        p_record_table: "employee_evaluations",
-        p_description: `Submitted ${employee.name} to Supervisor for evaluation.`,
-        p_old_data: null,
-        p_new_data: { employee_id: employee.employee_id, evaluator_role: "supervisor" },
-        p_ip_address: null,
-        p_user_agent: navigator.userAgent,
-      });
 
       setAssignDialogOpen(false);
       showMessage(`${employee.name} was submitted to Supervisor for evaluation.`, "success");
@@ -760,7 +758,7 @@ export default function PerformanceEvaluation() {
           p_period_start: form.periodStart,
           p_period_end: form.periodEnd,
           p_period_label: form.periodLabel || null,
-          p_evaluator_user_id: null, // kept null to avoid FK errors if custom login user_id is not in user_accounts
+          p_evaluator_user_id: currentUserId || null,
           p_evaluator_name: currentUserName,
           p_evaluator_role: (user as any)?.role || "Supervisor",
         });
@@ -793,28 +791,13 @@ export default function PerformanceEvaluation() {
           status: "Submitted",
           remarks: form.remarks || null,
           submitted_at: new Date().toISOString(),
-          evaluator_user_id: null,
+          evaluator_user_id: currentUserId || null,
           evaluator_name: currentUserName,
           evaluator_role: (user as any)?.role || "Supervisor",
         })
         .eq("evaluation_id", evaluationId);
 
       if (evalUpdateErr) throw evalUpdateErr;
-
-      await supabase.rpc("create_system_log", {
-        p_user_id: null,
-        p_user_name: currentUserName,
-        p_user_role: (user as any)?.role || null,
-        p_action: "SUBMIT_EVALUATION",
-        p_module: "Performance Evaluation",
-        p_record_id: evaluationId,
-        p_record_table: "employee_evaluations",
-        p_description: `Submitted evaluation for ${form.employee_name || form.employee_id}.`,
-        p_old_data: null,
-        p_new_data: { employee_id: form.employee_id, final_preview_score: previewScore },
-        p_ip_address: null,
-        p_user_agent: navigator.userAgent,
-      });
 
       setEvalDialogOpen(false);
       showMessage(`Evaluation submitted. Final score: ${previewScore.toFixed(2)}%.`, "success");
@@ -839,21 +822,6 @@ export default function PerformanceEvaluation() {
 
       if (err) throw err;
 
-      await supabase.rpc("create_system_log", {
-        p_user_id: null,
-        p_user_name: currentUserName,
-        p_user_role: (user as any)?.role || null,
-        p_action: "APPROVE_EVALUATION",
-        p_module: "Performance Evaluation",
-        p_record_id: evaluationId,
-        p_record_table: "employee_evaluations",
-        p_description: "Approved employee evaluation.",
-        p_old_data: null,
-        p_new_data: { status: "Approved" },
-        p_ip_address: null,
-        p_user_agent: navigator.userAgent,
-      });
-
       showMessage("Evaluation approved.", "success");
       await refreshAll();
     } catch (err: any) {
@@ -868,21 +836,6 @@ export default function PerformanceEvaluation() {
     try {
       const { error: err } = await supabase.from("employee_evaluations").delete().eq("evaluation_id", evaluationId);
       if (err) throw err;
-
-      await supabase.rpc("create_system_log", {
-        p_user_id: null,
-        p_user_name: currentUserName,
-        p_user_role: (user as any)?.role || null,
-        p_action: "DELETE_EVALUATION",
-        p_module: "Performance Evaluation",
-        p_record_id: evaluationId,
-        p_record_table: "employee_evaluations",
-        p_description: "Deleted employee evaluation.",
-        p_old_data: null,
-        p_new_data: null,
-        p_ip_address: null,
-        p_user_agent: navigator.userAgent,
-      });
 
       showMessage("Evaluation deleted.", "success");
       await refreshAll();
@@ -970,21 +923,6 @@ export default function PerformanceEvaluation() {
           if (updateErr) throw updateErr;
         }
       }
-
-      await supabase.rpc("create_system_log", {
-        p_user_id: null,
-        p_user_name: currentUserName,
-        p_user_role: (user as any)?.role || null,
-        p_action: "UPDATE_EVALUATION_CRITERIA",
-        p_module: "Performance Evaluation",
-        p_record_id: null,
-        p_record_table: "evaluation_criteria",
-        p_description: "Updated evaluation criteria and weights.",
-        p_old_data: null,
-        p_new_data: { total_weight: total, criteria_count: criteriaDraft.length },
-        p_ip_address: null,
-        p_user_agent: navigator.userAgent,
-      });
 
       setCriteriaDialogOpen(false);
       showMessage("Evaluation criteria updated successfully.", "success");
@@ -1283,7 +1221,7 @@ export default function PerformanceEvaluation() {
               </Box>
               <Box>
                 <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
-                  Assigned Evaluations
+                  Pending Actions · Assigned Evaluations
                 </Typography>
                 <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
                   Evaluate only employees assigned to you by HR/Admin.
@@ -1373,6 +1311,12 @@ export default function PerformanceEvaluation() {
         </Paper>
       )}
 
+      {(isHR || isGM || isSupervisor || isEmployee) && (
+        <Button size="small" sx={{ mb: 1 }} variant={pendingOnly ? "contained" : "outlined"}
+          aria-pressed={pendingOnly} onClick={() => setPendingOnly(value => !value)}>
+          {pendingOnly ? "Show All Evaluations" : `Pending Actions (${pendingEvaluations.length})`}
+        </Button>
+      )}
       <TableContainer
         component={Paper}
         elevation={0}
@@ -1414,7 +1358,7 @@ export default function PerformanceEvaluation() {
             </TableHead>
 
             <TableBody>
-              {displayedEvaluations.length === 0 ? (
+              {visibleEvaluations.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5 + evaluationScoreColumnCount + (isHR || isGM ? 1 : 0)} align="center" sx={{ py: 7 }}>
                     <Box sx={{ maxWidth: 380, mx: "auto" }}>
@@ -1431,7 +1375,7 @@ export default function PerformanceEvaluation() {
                   </TableCell>
                 </TableRow>
               ) : (
-                displayedEvaluations.map((r, i) => (
+                visibleEvaluations.map((r, i) => (
                   <TableRow key={r.evaluation_id} hover sx={{ bgcolor: i === 0 ? "rgba(255, 255, 255, 0.36)" : "inherit" }}>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
                       <Typography fontWeight={600} sx={{ color: GREEN_UI.text }}>
@@ -1541,7 +1485,7 @@ export default function PerformanceEvaluation() {
                 Assign Employee for Evaluation
               </Typography>
               <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                Choose the employee and evaluation period. The supervisor is assigned automatically.
+                Choose the employee, supervisor, and evaluation period.
               </Typography>
             </Box>
           </Box>
@@ -1568,6 +1512,14 @@ export default function PerformanceEvaluation() {
               </TextField>
             </Grid>
 
+            <Grid size={12}>
+              <TextField fullWidth select label="Supervisor" value={assignForm.supervisorId}
+                onChange={event => setAssignForm(previous => ({ ...previous, supervisorId: event.target.value }))}
+                InputLabelProps={{ shrink: true }} sx={softTextFieldSx}>
+                <MenuItem value="">Select supervisor…</MenuItem>
+                {supervisors.map(account => <MenuItem key={account.user_id} value={account.user_id}>{account.name}</MenuItem>)}
+              </TextField>
+            </Grid>
             <Grid size={{ xs: 12, md: 6 }}>
               <TextField
                 fullWidth

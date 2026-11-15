@@ -22,6 +22,12 @@ function fixture() {
           return ok({ users: state.authUsers.slice((page - 1) * perPage, page * perPage) });
         },
         async getUserById(id) { return ok({ user: state.authUsers.find((user) => user.id === id) ?? null }); },
+        async generateLink({ type, email, options }) {
+          assert.equal(type, 'recovery');
+          assert.ok(state.authUsers.some(user => user.email === email));
+          assert.match(options.redirectTo, /\/login$/);
+          return ok({ properties: { action_link: 'https://example.invalid/verify?token=fixture&type=recovery' } });
+        },
         async createUser(payload) {
           state.mutations.push('create');
           if (state.authUsers.some(user => user.email === payload.email)) return { error: { code: 'email_exists' } };
@@ -94,7 +100,14 @@ test('creates a separate employee identity and emails the original applicant add
   assert.deepEqual(f.state.mail[0].to, ['applicant@example.test']);
   assert.match(f.state.mail[0].html, /Hello New &lt;Employee&gt;!/);
   assert.match(f.state.mail[0].html, /#1ea44e/);
-  assert.ok(f.state.mail[0].text.includes(f.state.authUsers[0].password));
+  assert.match(f.state.mail[0].text, /token=fixture&type=recovery/);
+  assert.doesNotMatch(f.state.mail[0].html, /Temporary password/);
+  assert.ok(!f.state.mail[0].text.includes(f.state.authUsers[0].password));
+  const status = await f.invoke({ body: { ...f.body, action: 'status' } });
+  assert.equal(status.body.account_ready, true);
+  assert.equal(status.body.password_set, false);
+  assert.ok(status.body.setup_email_sent_at);
+  assert.equal(f.state.mail.length, 1);
   assert.ok(!JSON.stringify(response.body).includes(f.state.authUsers[0].password));
   assert.equal(response.headers['Cache-Control'], 'no-store');
 });
@@ -126,10 +139,10 @@ test('emails sign-in details to repeat hires without changing the existing login
   assert.match(f.state.mail[0].html, /employee\.new@buenaventura\.com/);
   assert.match(f.state.mail[0].html, /Use your current employee password/);
   assert.doesNotMatch(f.state.mail[0].html, /Temporary password/);
-  assert.equal(f.state.mail[0].key, 'hired-existing/APP-2026-0001/existing-auth');
+  assert.match(f.state.mail[0].key, /^hired-welcome\/APP-2026-0001\//);
 });
 
-test('mail retries use the same account, password and delivery key', async () => {
+test('provider retries share a delivery key and a later resend keeps the same account', async () => {
   const f = fixture();
   f.state.mailStatus = 502;
   assert.equal((await f.invoke()).body.welcome_email_sent, false);
@@ -137,7 +150,7 @@ test('mail retries use the same account, password and delivery key', async () =>
   f.state.mailStatus = 200;
   assert.equal((await f.invoke()).body.welcome_email_sent, true);
   assert.deepEqual(f.state.mail[0], f.state.mail[1]);
-  assert.deepEqual(f.state.mail[1], f.state.mail[2]);
+  assert.notEqual(f.state.mail[1].key, f.state.mail[2].key);
   assert.deepEqual(f.state.mutations, ['create']);
   f.state.authUsers[0].app_metadata.hris_temporary_password = false;
   assert.equal((await f.invoke()).body.welcome_email_sent, true);

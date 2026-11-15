@@ -302,6 +302,9 @@ export default function Reports() {
   const [reportType, setReportType] = useState('employees');
   const [dateFrom, setDateFrom] = useState(() => `${getReportYear()}-01-01`);
   const [dateTo, setDateTo] = useState(() => `${getReportYear()}-12-31`);
+  const [logDate, setLogDate] = useState('');
+  const [logUser, setLogUser] = useState('');
+  const [logModule, setLogModule] = useState('');
   const [allData, setAllData] = useState<ReportData>({});
   const [loadingAll, setLoadingAll] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -542,17 +545,23 @@ export default function Reports() {
 
   useEffect(() => {
     setPage(0);
-  }, [reportType, dateFrom, dateTo, rowsPerPage]);
+  }, [reportType, dateFrom, dateTo, rowsPerPage, logDate, logUser, logModule]);
 
   const selected = REPORT_TYPES.find(r => r.value === reportType) ?? REPORT_TYPES[0];
   const currentData: any[] = allData[reportType] ?? [];
   const cols = COLUMNS[reportType] ?? [];
 
   const filtered = useMemo(() => {
-    return currentData.filter(row => isWithinReportRange(row, dateFrom, dateTo));
-  }, [currentData, dateFrom, dateTo]);
+    return currentData.filter(row => {
+      if (reportType !== 'systemLogs') return isWithinReportRange(row, dateFrom, dateTo);
+      return (logDate ? row.date === logDate : isWithinReportRange(row, dateFrom, dateTo))
+        && (!logUser || row.userName === logUser)
+        && (!logModule || row.module === logModule);
+    });
+  }, [currentData, reportType, dateFrom, dateTo, logDate, logUser, logModule]);
 
   const getFilteredRowsForType = (type: string) => {
+    if (type === reportType) return filtered;
     const rows = allData[type] ?? [];
     return rows.filter(row => isWithinReportRange(row, dateFrom, dateTo));
   };
@@ -613,7 +622,12 @@ export default function Reports() {
   };
 
   const handlePrint = () => {
-    const content = printRef.current?.innerHTML ?? '';
+    const isLogReport = reportType === 'systemLogs';
+    const reportDates = isLogReport && logDate ? formatDisplayDate(logDate)
+      : `${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)}`;
+    const content = isLogReport ? `<table><thead><tr>${cols.map(col => `<th>${escapeHtml(labelize(col))}</th>`).join('')}</tr></thead>
+      <tbody>${filtered.map(row => `<tr>${cols.map(col => `<td>${escapeHtml(formatValue(col, row[col]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+      : printRef.current?.innerHTML ?? '';
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) return;
 
@@ -631,7 +645,7 @@ export default function Reports() {
         .footer { color: #777; font-size: 10px; text-align: center; margin-top: 20px; }
       </style></head><body>
       <h2>Buenaventura Estate HRIS — ${selected.label} Report</h2>
-      <p>Period: ${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)} &nbsp;|&nbsp; Total records: ${filtered.length} &nbsp;|&nbsp; Generated: ${formatDisplayDateTime(new Date())}</p>
+      <p>Period: ${escapeHtml(reportDates)} &nbsp;|&nbsp; Total records: ${filtered.length} &nbsp;|&nbsp; Generated: ${formatDisplayDateTime(new Date())}</p>
       ${content}
       <div class="footer">Buenaventura Estate HRIS &nbsp;·&nbsp; Printed: ${formatDisplayDateTime(new Date())} &nbsp;·&nbsp; Confidential</div>
       </body></html>
@@ -965,6 +979,9 @@ export default function Reports() {
                 const year = getReportYear();
                 setDateFrom(`${year}-01-01`);
                 setDateTo(`${year}-12-31`);
+                setLogDate('');
+                setLogUser('');
+                setLogModule('');
               }}
             >
               Reset
@@ -972,6 +989,26 @@ export default function Reports() {
           </Grid>
         </Grid>
 
+        {reportType === 'systemLogs' && (
+          <Grid container spacing={1.5} sx={{ mt: 2 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth type="date" label="Log Date" value={logDate}
+                onChange={event => setLogDate(event.target.value)} helperText="Select one day in Manila time." sx={fieldSx} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth select label="Log User" value={logUser} onChange={event => setLogUser(event.target.value)} sx={fieldSx}>
+                <MenuItem value="">All users</MenuItem>
+                {[...new Set(currentData.map(row => row.userName))].sort().map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth select label="Log Module" value={logModule} onChange={event => setLogModule(event.target.value)} sx={fieldSx}>
+                <MenuItem value="">All modules</MenuItem>
+                {[...new Set(currentData.map(row => row.module))].sort().map(module => <MenuItem key={module} value={module}>{module}</MenuItem>)}
+              </TextField>
+            </Grid>
+          </Grid>
+        )}
         <Divider sx={{ my: 2, borderColor: GREEN_UI.border }} />
 
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>

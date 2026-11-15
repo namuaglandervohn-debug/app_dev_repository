@@ -5,7 +5,7 @@ import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, Dialog,
   DialogTitle, DialogContent, DialogActions, Grid, CircularProgress,
-  Alert, Tooltip, IconButton, MenuItem, InputAdornment,
+  Alert, Tooltip, IconButton, MenuItem, InputAdornment, Checkbox, FormControlLabel,
 } from '@mui/material';
 import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings, CalendarMonth } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
@@ -52,6 +52,8 @@ interface Payroll {
   position: string;
   outlet?: string;
   period: string;
+  periodStart?: string;
+  periodEnd?: string;
   payPeriodLabel: string;
   payRate: string;
   cutoffLabel?: string;
@@ -390,7 +392,7 @@ function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; show
   const [employeeError, setEmployeeError] = useState('');
   const [report, setReport] = useState<{
     key: string;
-    rows: { dates: string; hours: number; cutoff: string; status: string }[];
+    rows: { dates: string; hours: number; cutoff: string; status: string; hoursCheck: string }[];
     hasAttendance: boolean;
     error?: string;
   } | null>(null);
@@ -422,8 +424,8 @@ function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; show
 
     void Promise.all([
       supabase.from('attendance_logs').select('attendance_date, total_hours')
-        .eq('employee_id', employeeId).gte('attendance_date', start).lte('attendance_date', end),
-      supabase.from('payroll_summaries').select('period_start, period_end, status, payroll_items!inner(employee_id)')
+        .eq('employee_id', employeeId).gte('attendance_date', cutoffs[0].start).lte('attendance_date', cutoffs[2].end),
+      supabase.from('payroll_summaries').select('period_start, period_end, status, payroll_items!inner(employee_id,total_work_hours)')
         .in('period_start', cutoffs.map(cutoff => cutoff.start))
         .eq('payroll_items.employee_id', employeeId),
     ]).then(([attendance, payroll]) => {
@@ -441,14 +443,21 @@ function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; show
         }, 0);
         const entry = payroll.data?.find(item => item.period_start === cutoff.start && item.period_end === cutoff.end);
         const status = entry ? dbStatusToUi(entry.status) : 'Not generated';
+        const savedHours = entry?.payroll_items[0]?.total_work_hours;
+        const cutoffHours = roundMoney(logs.reduce((sum, log) =>
+          log.attendance_date >= cutoff.start && log.attendance_date <= cutoff.end ? sum + toNumber(log.total_hours) : sum, 0));
+        const hoursCheck = savedHours == null || (!showDrafts && status === 'Draft') ? '—'
+          : roundMoney(toNumber(savedHours)) === cutoffHours ? 'Matches DTR'
+            : `Review · ${toNumber(savedHours).toFixed(2)} saved / ${cutoffHours.toFixed(2)} DTR`;
         return {
           dates: payslipPeriod(cutoff.workedStart, cutoff.workedEnd),
           hours: roundMoney(hours),
           cutoff: getPayrollPeriod(cutoff.start, cutoff.end, cutoff.cutoffLabel).label,
           status: !showDrafts && status === 'Draft' ? 'Not sent to Accounting' : status,
+          hoursCheck,
         };
       });
-      setReport({ key: reportKey, rows, hasAttendance: logs.length > 0 });
+      setReport({ key: reportKey, rows, hasAttendance: logs.some(log => log.attendance_date >= start && log.attendance_date <= end) });
     });
     return () => { active = false; };
   }, [employeeId, month, reportKey, showDrafts]);
@@ -489,6 +498,7 @@ function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; show
                     <TableCell align="right">Hours incl. OT</TableCell>
                     <TableCell>Payroll Cutoff</TableCell>
                     <TableCell>Payroll Status</TableCell>
+                    <TableCell>Full Cutoff Check</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -498,12 +508,13 @@ function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; show
                       <TableCell align="right">{row.hours.toFixed(2)}</TableCell>
                       <TableCell>{row.cutoff}</TableCell>
                       <TableCell>{row.status}</TableCell>
+                      <TableCell>{row.hoursCheck}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
-            <Typography variant="body2" color="text.secondary">Hours are from the selected month’s DTR, including overtime.</Typography>
+            <Typography variant="body2" color="text.secondary">The hours column shows work done in this month, including overtime. The cutoff check compares saved payroll with DTR for the full cutoff.</Typography>
           </>
         )}
       </DialogContent>
@@ -563,6 +574,13 @@ export default function PayrollComputation() {
   const [generating, setGenerating] = useState(false);
   const [filterPeriod, setFilterPeriod] = useState('');
   const [monthlyHoursOpen, setMonthlyHoursOpen] = useState(false);
+  const [releaseCutoff, setReleaseCutoff] = useState<Payroll | null>(null);
+  const [releaseOptions, setReleaseOptions] = useState<Payroll[]>([]);
+  const [releaseReview, setReleaseReview] = useState<{ employees: string[]; exceptions: number; differences: number } | null>(null);
+  const [releaseError, setReleaseError] = useState('');
+  const [releasing, setReleasing] = useState(false);
+  const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
+  const releaseHasIssues = Boolean(releaseReview && (releaseReview.exceptions || releaseReview.differences));
   const [filterStatus, setFilterStatus] = useState('all');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
   const { user } = useAuth();
@@ -785,6 +803,8 @@ export default function PayrollComputation() {
       position: item.position || employee?.position || '',
       outlet: String(item.outlet ?? '').trim() || getEmployeeOutlet(employee, accountOutletsByEmployeeId.get(item.employee_id)),
       period: period.month,
+      periodStart: summary?.period_start,
+      periodEnd: summary?.period_end,
       payPeriodLabel: payslipPeriod(summary?.period_start, summary?.period_end),
       payRate: item.salary_rate == null ? '—' : money(item.salary_rate),
       cutoffLabel: period.label,
@@ -1439,8 +1459,69 @@ export default function PayrollComputation() {
     }
   };
 
-  const handleReleaseSalary = async (ids?: string[]) => {
-    const targets = ids ? payrolls.filter(p => ids.includes(p.id)) : filtered.filter(p => p.status === 'For Review' || p.status === 'Processed');
+  const handleReleaseSalary = (ids?: string[]) => {
+    const eligible = (ids ? payrolls.filter(p => ids.includes(p.id)) : filtered)
+      .filter(p => p.payrollId && p.periodStart && p.periodEnd && ['For Review', 'Processed'].includes(p.status));
+    const options = [...new Map(eligible.map(row => [row.payrollId, row])).values()];
+    if (!options.length) {
+      setSnackbar({ open: true, message: 'No payroll cutoffs ready for release.', severity: 'success' });
+      return;
+    }
+    setReleaseOptions(options);
+    setReleaseReview(null);
+    setReleaseError('');
+    setReviewAcknowledged(false);
+    setReleaseCutoff(options[0]);
+  };
+
+  useEffect(() => {
+    if (!releaseCutoff?.payrollId || !releaseCutoff.periodStart || !releaseCutoff.periodEnd) return;
+    const { payrollId, periodStart, periodEnd } = releaseCutoff;
+    let active = true;
+    async function loadReview() {
+      try {
+        const pageSize = 500;
+        const items = [];
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await supabase.from('payroll_items')
+            .select('employee_id, employee_name, total_work_hours').eq('payroll_id', payrollId)
+            .order('payroll_item_id').range(offset, offset + pageSize - 1);
+          if (error) throw error;
+          items.push(...data);
+          if (data.length < pageSize) break;
+        }
+        if (!items.length) throw new Error('No employees are in this cutoff.');
+        const employees = new Map(items.map(item => [item.employee_id, { hours: 0, exceptions: 0 }]));
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error: logError } = await supabase.from('attendance_logs')
+            .select('employee_id,total_hours,validation_status')
+            .gte('attendance_date', periodStart).lte('attendance_date', periodEnd)
+            .order('log_id').range(offset, offset + pageSize - 1);
+          if (logError) throw logError;
+          for (const log of data ?? []) {
+            const employee = employees.get(log.employee_id);
+            if (!employee) continue;
+            employee.hours += toNumber(log.total_hours);
+            if (log.validation_status !== 'Validated') employee.exceptions++;
+          }
+          if (!data || data.length < pageSize) break;
+        }
+        if (active) setReleaseReview({
+          employees: items.map(item => item.employee_name || item.employee_id).sort(),
+          exceptions: [...employees.values()].reduce((sum, employee) => sum + employee.exceptions, 0),
+          differences: items.filter(item => roundMoney(employees.get(item.employee_id)?.hours ?? 0) !== toNumber(item.total_work_hours)).length,
+        });
+      } catch {
+        if (active) setReleaseError('Could not verify this cutoff. Close the review and try again.');
+      }
+    }
+    void loadReview();
+    return () => { active = false; };
+  }, [releaseCutoff]);
+
+  const confirmRelease = async () => {
+    if (!releaseReview || !releaseCutoff?.payrollId || releasing || (releaseHasIssues && !reviewAcknowledged)) return;
+    const targets = payrolls.filter(p => p.payrollId === releaseCutoff.payrollId);
     if (targets.length === 0) {
       setSnackbar({ open: true, message: 'No payrolls ready for release.', severity: 'success' });
       return;
@@ -1449,26 +1530,35 @@ export default function PayrollComputation() {
     const today = new Date().toISOString().split('T')[0];
     const payrollIds = [...new Set(targets.map(p => p.payrollId).filter(Boolean))];
 
+    setReleasing(true);
     try {
-      const { error: updateError } = await supabase
+      const { data, error: updateError } = await supabase
         .from('payroll_summaries')
         .update({
           status: 'Endorsed',
           endorsed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .in('payroll_id', payrollIds);
+        .eq('payroll_id', releaseCutoff.payrollId).in('status', ['Reviewed', 'Approved']).select('payroll_id').maybeSingle();
 
       if (updateError) throw updateError;
+      if (!data) {
+        setReleaseReview(null);
+        setReleaseError('The cutoff status changed. Close this window and refresh payroll.');
+        return;
+      }
 
       setPayrolls(prev => prev.map(x => payrollIds.includes(x.payrollId) ? { ...x, status: 'Released' as any, payslipDate: today } : x));
       if (selectedPayroll?.payrollId && payrollIds.includes(selectedPayroll.payrollId)) {
         setSelectedPayroll(p => p ? { ...p, status: 'Released', payslipDate: today } : p);
       }
 
-      setSnackbar({ open: true, message: `✅ ${targets.length} salary record(s) marked as Released!`, severity: 'success' });
+      setReleaseCutoff(null);
+      setSnackbar({ open: true, message: `Released payslips for ${releaseReview.employees.length} employee(s).`, severity: 'success' });
     } catch (e: any) {
-      setSnackbar({ open: true, message: `Failed: ${e.message ?? e}`, severity: 'error' });
+      setReleaseError(`Could not release payslips: ${e.message ?? e}`);
+    } finally {
+      setReleasing(false);
     }
   };
 
@@ -2299,6 +2389,51 @@ export default function PayrollComputation() {
       {monthlyHoursOpen && (canManagePayroll || canReleasePayroll) && (
         <MonthlyHoursDialog onClose={() => setMonthlyHoursOpen(false)} showDrafts={canManagePayroll} />
       )}
+
+      <Dialog open={Boolean(releaseCutoff)} onClose={() => { if (!releasing) setReleaseCutoff(null); }} fullWidth maxWidth="sm" aria-labelledby="release-review-title">
+        <DialogTitle id="release-review-title" sx={dialogTitleSx}>Review Payroll Release</DialogTitle>
+        {releaseCutoff && (
+          <DialogContent sx={{ display: 'grid', gap: 2, pt: '20px !important' }}>
+            <TextField select fullWidth label="Payroll Cutoff" value={releaseCutoff.payrollId}
+              disabled={releasing} onChange={event => {
+                setReleaseReview(null);
+                setReleaseError('');
+                setReviewAcknowledged(false);
+                setReleaseCutoff(releaseOptions.find(option => option.payrollId === event.target.value) ?? null);
+              }}>
+              {releaseOptions.map(option => (
+                <MenuItem key={option.payrollId} value={option.payrollId}>{option.cutoffLabel} ({option.payPeriodLabel})</MenuItem>
+              ))}
+            </TextField>
+            {releaseError && <Alert severity="error">{releaseError}</Alert>}
+            {!releaseError && !releaseReview && <Typography role="status">Checking cutoff hours and attendance…</Typography>}
+            {releaseReview && (
+              <>
+                <Typography fontWeight={700}>{releaseReview.employees.length} employees in this cutoff</Typography>
+                <Box component="ul" sx={{ my: 0, pl: 3, maxHeight: 160, overflowY: 'auto' }}>
+                  {releaseReview.employees.map((employee, index) => <li key={index}>{employee}</li>)}
+                </Box>
+                {releaseReview.exceptions > 0 || releaseReview.differences > 0 ? (
+                  <Alert severity="warning">
+                    {releaseReview.exceptions} attendance entries need review. {releaseReview.differences} employees have saved payroll hours that differ from DTR.
+                  </Alert>
+                ) : <Alert severity="success">Saved payroll hours match DTR. No attendance entries need review.</Alert>}
+                {releaseHasIssues && (
+                  <FormControlLabel label="I reviewed the flagged items for this cutoff."
+                    control={<Checkbox checked={reviewAcknowledged} disabled={releasing}
+                      onChange={event => setReviewAcknowledged(event.target.checked)} />} />
+                )}
+              </>
+            )}
+          </DialogContent>
+        )}
+        <DialogActions>
+          <Button disabled={releasing} onClick={() => setReleaseCutoff(null)}>Cancel</Button>
+          <Button variant="contained" disabled={!releaseReview || releasing || (releaseHasIssues && !reviewAcknowledged)} onClick={confirmRelease}>
+            {releasing ? 'Releasing…' : 'Confirm Release'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Generate Payroll Dialog */}
       <Dialog open={generateDialog} onClose={() => { setGenerateDialog(false); setGeneratePosition(''); }} maxWidth="sm" fullWidth PaperProps={{ sx: dialogPaperSx }}>

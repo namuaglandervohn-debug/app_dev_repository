@@ -651,6 +651,9 @@ export default function RecruitmentManagement() {
   const [interviewDialog, setInterviewDialog] = useState(false);
   const [saving, setSaving] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [onboarding, setOnboarding] = useState<{
+    id: string; account_ready?: boolean; password_set?: boolean; setup_email_sent_at?: string; error?: string;
+  } | null>(null);
   const hiringInProgress = useRef(false);
   const [tab, setTab] = useState(0);
   const [archiveView, setArchiveView] = useState<'active' | 'archived'>('active');
@@ -703,6 +706,29 @@ export default function RecruitmentManagement() {
   const canSchedule = canScreen || Boolean(isHR && selectedApp?.status === 'For Interview' && !profileLoading && !selectedApp.isArchived);
   const canDecide = Boolean(isGM && selectedApp?.status === 'For Interview' && !profileLoading && !selectedApp.isArchived
     && selectedApp.interviewDate && selectedApp.interviewTime && selectedApp.interviewLocation?.trim());
+  const onboardingId = viewDialog && (isHR || isGM) && selectedApp?.status === 'Hired' && !selectedApp.isArchived ? selectedApp.id : '';
+  useEffect(() => {
+    if (!onboardingId || creatingAccount) return;
+    let active = true;
+    setOnboarding(null);
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) throw new Error('Sign in again to check employee setup.');
+        const response = await fetch('/api/applications/hired-account', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + data.session.access_token },
+          body: JSON.stringify({ applicant_id: onboardingId, action: 'status' }),
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(apiErrorMessage(result, response.status, 'Could not check employee setup.'));
+        if (active) setOnboarding({ ...result, id: onboardingId });
+      } catch (error) {
+        if (active) setOnboarding({ id: onboardingId, error: error instanceof Error ? error.message : 'Could not check employee setup.' });
+      }
+    })();
+    return () => { active = false; };
+  }, [onboardingId, creatingAccount]);
   const hasLoadedApplicationsRef = useRef(false);
   const fetchRequestIdRef = useRef(0);
   const profileFetchRequestIdRef = useRef(0);
@@ -2268,6 +2294,18 @@ export default function RecruitmentManagement() {
         </DialogTitle>
 
         <DialogContent sx={{ px: { xs: 2, sm: 3 }, py: 2.5, bgcolor: '#fbfff9', maxHeight: { xs: '72vh', sm: '76vh' } }}>
+          {onboardingId && (
+            <Alert severity={onboarding?.error ? 'warning' : 'info'} sx={{ mb: 2 }}>
+              <Typography fontWeight={700}>Employee Onboarding</Typography>
+              {onboarding?.id !== onboardingId || creatingAccount ? 'Checking employee setup…' : onboarding.error || (
+                <>
+                  <div>Employee account · {onboarding.account_ready ? 'Ready' : 'Needs setup'}</div>
+                  <div>Setup email · {onboarding.setup_email_sent_at ? `Accepted for delivery ${formatDisplayDateTime(onboarding.setup_email_sent_at)}` : 'No delivery recorded'}</div>
+                  <div>Employee password · {onboarding.password_set ? 'Set' : 'Waiting for employee'}</div>
+                </>
+              )}
+            </Alert>
+          )}
           {profileLoading && (
             <Box sx={{ mb: 2 }}>
               <LinearProgress sx={{ mb: 1 }} />
@@ -2568,7 +2606,8 @@ export default function RecruitmentManagement() {
               disabled={saving || creatingAccount}
               sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, '&:hover': { bgcolor: GREEN_UI.greenDark } }}
             >
-              {creatingAccount ? 'Preparing Employee Account…' : 'Complete Employee Account Setup'}
+              {creatingAccount ? 'Preparing Employee Account…' :
+                onboarding?.id === onboardingId && onboarding.account_ready ? 'Resend Setup Email' : 'Complete Employee Account Setup'}
             </Button>
           )}
         </DialogActions>

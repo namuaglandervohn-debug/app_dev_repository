@@ -904,6 +904,10 @@ export default function RequestManagement() {
     { label: 'Approved', data: searchedRequests.filter(r => r.status === 'Approved') },
     { label: 'Disapproved', data: searchedRequests.filter(r => r.status === 'Disapproved' || r.status === 'Rejected') },
     { label: 'Cancelled', data: searchedRequests.filter(r => r.status === 'Cancelled') },
+    { label: 'Pending Actions', data: searchedRequests.filter(r =>
+      isSupervisor ? r.status === 'Pending' :
+        isHR ? r.status === 'Supervisor Approved' :
+          isEmployee && ['Pending', 'Supervisor Approved'].includes(r.status)) },
   ];
 
   const displayData = tabData[tab]?.data ?? searchedRequests;
@@ -2197,6 +2201,11 @@ export default function RequestManagement() {
                 ))}
               </Paper>
 
+              {['Pending', 'Supervisor Approved'].includes(selectedReq.status) && (
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  {selectedReq.status === 'Pending' ? 'Waiting for supervisor review.' : 'Waiting for HR approval.'}
+                </Alert>
+              )}
               {selectedReq.supervisorName && (
                 <Alert
                   severity="info"

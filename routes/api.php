@@ -366,10 +366,11 @@ function sendAccountWelcomeEmail(string $name, string $email, string $password, 
 
 Route::post('/applications/hired-account', function (Request $request) {
     requireSupabaseAdmin($request);
-    $data = $request->validate(['applicant_id' => ['required', 'string', 'max:40']]);
+    $data = $request->validate(['applicant_id' => ['required', 'string', 'max:40'], 'action' => ['nullable', 'in:status']]);
     $id = $data['applicant_id'];
+    $statusOnly = ($data['action'] ?? null) === 'status';
     $app = supabaseRest('GET', '/rest/v1/applicants', null, [
-        'select' => 'applicant_id,auth_user_id,status,is_archived,email,name,first_name,middle_name,last_name,suffix',
+        'select' => 'applicant_id,auth_user_id,status,is_archived,email,name,first_name,middle_name,last_name,suffix,employee_setup_email_sent_at',
         'applicant_id' => "eq.{$id}",
     ])[0] ?? null;
     if (($app['status'] ?? null) !== 'Hired' || ! empty($app['is_archived'])) {
@@ -380,6 +381,9 @@ Route::post('/applications/hired-account', function (Request $request) {
     $employee = supabaseRest('GET', '/rest/v1/employees', null, [
         'select' => 'employee_id,outlet', 'applicant_id' => "eq.{$id}",
     ])[0] ?? null;
+    if (! $employee && $statusOnly) {
+        return response()->json(['account_ready' => false, 'password_set' => false, 'setup_email_sent_at' => null]);
+    }
     if (! $employee) {
         return response()->json(['message' => 'Save the employee record before preparing the login.'], 409);
     }
@@ -398,20 +402,28 @@ Route::post('/applications/hired-account', function (Request $request) {
     $key = supabaseServiceRoleKey();
     $authApi = fn () => Http::withToken($key)->withHeader('apikey', $key)->acceptJson()->timeout(10);
     $authUrl = supabaseBaseUrl().'/auth/v1/admin/users';
-    $passwordFor = fn (string $nonce) => 'Bv!'.substr(strtr(base64_encode(hash_hmac('sha256', 'hired-welcome/'.$nonce, $key, true)), '+/', '-_'), 0, 24);
     $separate = ! empty($existing['auth_user_id']) && $existing['auth_user_id'] !== ($app['auth_user_id'] ?? null)
         && strtolower($existing['email']) !== $recipient;
     $saved = $existing;
+    if ($statusOnly && ! $separate) {
+        return response()->json(['account_ready' => false, 'password_set' => false, 'setup_email_sent_at' => null]);
+    }
     if ($separate) {
         $auth = $authApi()->get($authUrl.'/'.$existing['auth_user_id']);
         $user = $auth->json('user') ?? $auth->json();
         if ($auth->failed() || strtolower($user['email'] ?? '') !== strtolower($existing['email'])) {
             return response()->json(['message' => 'The employee login could not be verified. Review it in User Accounts.'], 409);
         }
+        if ($statusOnly) {
+            return response()->json([
+                'account_ready' => true,
+                'password_set' => ($user['app_metadata']['hris_temporary_password'] ?? null) !== true,
+                'setup_email_sent_at' => $app['employee_setup_email_sent_at'] ?? null,
+            ]);
+        }
     } else {
         $normalize = fn (?string $value) => substr(preg_replace('/[^a-z0-9]/', '', strtolower(\Illuminate\Support\Str::ascii($value ?? ''))), 0, 25);
         $base = implode('.', array_filter([$normalize($app['last_name']), $normalize($app['first_name'])])) ?: $normalize($id);
-        $nonce = (string) \Illuminate\Support\Str::uuid();
         $user = null;
         for ($suffix = 1; $suffix <= 30; $suffix++) {
             $email = $base.($suffix === 1 ? '' : '.'.$suffix).'@buenaventura.com';
@@ -419,8 +431,8 @@ Route::post('/applications/hired-account', function (Request $request) {
                 continue;
             }
             $created = $authApi()->post($authUrl, [
-                'email' => $email, 'password' => $passwordFor($nonce), 'email_confirm' => true,
-                'app_metadata' => ['hris_temporary_password' => true, 'hris_hired_welcome' => $nonce, 'hris_hired_application' => $id],
+                'email' => $email, 'password' => 'Bv!'.\Illuminate\Support\Str::uuid(), 'email_confirm' => true,
+                'app_metadata' => ['hris_temporary_password' => true, 'hris_hired_application' => $id],
                 'user_metadata' => ['full_name' => $name, 'role' => 'employee', 'employee_id' => $employeeId],
             ]);
             if (in_array($created->json('error_code'), ['email_exists', 'user_already_exists'], true)) {
@@ -462,17 +474,32 @@ Route::post('/applications/hired-account', function (Request $request) {
         }
     }
 
-    $nonce = $user['app_metadata']['hris_hired_welcome'] ?? null;
-    $password = $nonce && ($user['app_metadata']['hris_hired_application'] ?? null) === $id
-        && ($user['app_metadata']['hris_temporary_password'] ?? null) === true ? $passwordFor($nonce) : null;
-    $deliveryKey = $password ? 'hired-welcome/'.$user['id'] : 'hired-existing/'.$id.'/'.$user['id'];
-    $sent = sendHiredWelcomeEmail($name, $recipient, $user['email'], $password, $deliveryKey);
+    $needsSetup = ($user['app_metadata']['hris_hired_application'] ?? null) === $id
+        && ($user['app_metadata']['hris_temporary_password'] ?? null) === true;
+    $setupLink = null;
+    if ($needsSetup && trim((string) config('services.resend.key')) !== '') {
+        try {
+            $link = $authApi()->post(supabaseBaseUrl().'/auth/v1/admin/generate_link?'.http_build_query([
+                'redirect_to' => 'https://app-dev-repository.vercel.app/login',
+            ]), [
+                'type' => 'recovery', 'email' => $user['email'],
+            ]);
+            $setupLink = $link->successful() ? $link->json('action_link') : null;
+        } catch (Throwable) {
+            $setupLink = null;
+        }
+    }
+    $deliveryKey = 'hired-welcome/'.$id.'/'.\Illuminate\Support\Str::uuid();
+    $sent = (! $needsSetup || $setupLink) && sendHiredWelcomeEmail($name, $recipient, $user['email'], $setupLink, $deliveryKey);
+    if ($sent) {
+        supabaseRest('PATCH', '/rest/v1/applicants', ['employee_setup_email_sent_at' => now()->toIso8601String()], ['applicant_id' => "eq.{$id}"]);
+    }
     return response()->json(['welcome_email_sent' => $sent, 'message' => $sent
         ? 'Employee account ready. The welcome email was accepted for delivery.'
-        : 'Employee account ready. The welcome email could not be sent. Select Complete Employee Account Setup to retry.']);
+        : 'Employee account ready. The welcome email could not be sent. Use Resend Setup Email to retry.']);
 });
 
-function sendHiredWelcomeEmail(string $name, string $recipient, string $email, ?string $password, string $deliveryKey): bool
+function sendHiredWelcomeEmail(string $name, string $recipient, string $email, ?string $setupLink, string $deliveryKey): bool
 {
     $key = trim((string) config('services.resend.key'));
     if ($key === '') {
@@ -480,16 +507,14 @@ function sendHiredWelcomeEmail(string $name, string $recipient, string $email, ?
     }
     try {
         $template = \Illuminate\Support\Facades\File::get(resource_path('views/emails/hired-welcome.html'));
-        $instructions = $password ? 'Change your temporary password on your first sign-in.' : 'Use your current employee password. If you need help signing in, contact HR.';
+        $instructions = $setupLink ? 'Use this expiring link to set your employee password. Contact HR if you need a new link.' : 'Use your current employee password. If you need help signing in, contact HR.';
+        $destination = $setupLink ?: 'https://app-dev-repository.vercel.app/login';
         $values = [
             'name' => e($name), 'email' => e($email),
-            'passwordRow' => $password ? '<tr><td style="padding:8px 14px 12px;overflow-wrap:anywhere;"><strong>Temporary password</strong><br><span style="font-family:monospace;white-space:pre-wrap;">'.e($password).'</span></td></tr>' : '',
+            'destination' => e($destination), 'buttonLabel' => $setupLink ? 'Set employee password' : 'Sign in to HRIS',
             'signInInstructions' => $instructions,
         ];
-        $html = preg_replace_callback('/\[\[(name|email|passwordRow|signInInstructions)\]\]/', fn ($match) => $values[$match[1]], $template);
-        $passwordText = $password ? "Temporary password: {$password}\n\n" : '';
-        $signInText = $password ? 'Sign in at https://app-dev-repository.vercel.app/login and change your temporary password.'
-            : "Sign in at https://app-dev-repository.vercel.app/login. {$instructions}";
+        $html = preg_replace_callback('/\[\[(name|email|destination|buttonLabel|signInInstructions)\]\]/', fn ($match) => $values[$match[1]], $template);
         $response = Http::withToken($key)->withHeader('Idempotency-Key', $deliveryKey)
             ->acceptJson()->timeout(4)->retry(2, 150, function ($exception) {
                 return $exception instanceof \Illuminate\Http\Client\ConnectionException
@@ -499,7 +524,7 @@ function sendHiredWelcomeEmail(string $name, string $recipient, string $email, ?
                 'to' => [$recipient],
                 'subject' => 'You’re hired! Welcome to Buenaventura Estate',
                 'html' => $html,
-                'text' => "Hello {$name}!\n\nYou’re hired! Here’s your employee account.\n\nEmail: {$email}\n\n{$passwordText}{$signInText}",
+                'text' => "Hello {$name}!\n\nYou’re hired! Here’s your employee account.\n\nEmail: {$email}\n\n{$instructions}\n\n{$destination}",
             ]);
         return $response->successful() && ! empty($response->json('id'));
     } catch (Throwable) {

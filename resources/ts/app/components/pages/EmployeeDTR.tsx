@@ -213,7 +213,7 @@ function mapAttendanceLogToDTR(row: AttendanceLogRow): DTRRecord {
     undertime: timeIn || timeOut ? formatDurationHours(derivedUndertimeMinutes) : "",
     total_hours: Number.isFinite(totalHours) && totalHours > 0 ? totalHours.toFixed(2) : "",
     official_hours: timeIn || timeOut ? REQUIRED_DAILY_HOURS.toFixed(2) : "",
-    remarks: "",
+    remarks: row.validation_status && row.validation_status !== "Validated" ? "Pending attendance review" : "",
   };
 }
 

@@ -1,22 +1,26 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
 
 class AccountError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
-async function sendHiredWelcome({ env, fetcher, recipient, name, email, password, deliveryKey }) {
+const loginUrl = 'https://app-dev-repository.vercel.app/login';
+
+async function sendHiredWelcome({ env, fetcher, recipient, name, email, setupLink, deliveryKey }) {
   if (!env.RESEND_API_KEY?.trim()) return false;
   const template = await readFile(new URL('../../resources/views/emails/hired-welcome.html', import.meta.url), 'utf8');
   const escape = value => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-  const instructions = password ? 'Change your temporary password on your first sign-in.' : 'Use your current employee password. If you need help signing in, contact HR.';
+  const instructions = setupLink ? 'Use this expiring link to set your employee password. Contact HR if you need a new link.' : 'Use your current employee password. If you need help signing in, contact HR.';
+  const destination = setupLink || loginUrl;
   const values = {
     name: escape(name),
     email: escape(email),
-    passwordRow: password ? '<tr><td style="padding:8px 14px 12px;overflow-wrap:anywhere;"><strong>Temporary password</strong><br><span style="font-family:monospace;white-space:pre-wrap;">' + escape(password) + '</span></td></tr>' : '',
+    destination: escape(destination),
+    buttonLabel: setupLink ? 'Set employee password' : 'Sign in to HRIS',
     signInInstructions: instructions,
   };
-  const html = template.replace(/\[\[(name|email|passwordRow|signInInstructions)\]\]/g, (_, field) => values[field]);
+  const html = template.replace(/\[\[(name|email|destination|buttonLabel|signInInstructions)\]\]/g, (_, field) => values[field]);
   const request = {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY.trim(), 'Content-Type': 'application/json', 'Idempotency-Key': deliveryKey },
@@ -24,9 +28,7 @@ async function sendHiredWelcome({ env, fetcher, recipient, name, email, password
       from: (env.RESEND_FROM_NAME || 'Buenaventura HRIS') + ' <' + (env.RESEND_FROM_ADDRESS || 'no-reply@buenaventura-hris.me') + '>',
       to: [recipient], subject: 'You’re hired! Welcome to Buenaventura Estate', html,
       text: ['Hello ' + name + '!', 'You’re hired! Here’s your employee account.', 'Email: ' + email,
-        ...(password ? ['Temporary password: ' + password] : []),
-        password ? 'Sign in at https://app-dev-repository.vercel.app/login and change your temporary password.'
-          : 'Sign in at https://app-dev-repository.vercel.app/login. ' + instructions].join('\n\n'),
+        instructions, destination].join('\n\n'),
     }),
   };
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -77,12 +79,14 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
       const applicantId = String(body?.applicant_id ?? '').trim();
       if (!applicantId || applicantId.length > 40) throw new AccountError(422, 'Select a hired applicant.');
       const applicant = check(await admin.from('applicants')
-        .select('applicant_id,auth_user_id,status,is_archived,email,name,first_name,middle_name,last_name,suffix')
+        .select('applicant_id,auth_user_id,status,is_archived,email,name,first_name,middle_name,last_name,suffix,employee_setup_email_sent_at')
         .eq('applicant_id', applicantId).maybeSingle());
       if (applicant?.status !== 'Hired' || applicant.is_archived) throw new AccountError(409, 'Only an active hired application can receive an employee account.');
       const recipient = applicant.email?.trim().toLowerCase();
       if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new AccountError(422, 'The application needs a valid contact email.');
       const employee = check(await admin.from('employees').select('employee_id,outlet').eq('applicant_id', applicantId).maybeSingle());
+      const statusOnly = body.action === 'status';
+      if (!employee && statusOnly) return send(200, { account_ready: false, password_set: false, setup_email_sent_at: null });
       if (!employee) throw new AccountError(409, 'Save the employee record before preparing the login.');
       const existing = check(await admin.from('user_accounts').select('user_id,auth_user_id,email,employee_id,role,outlet,applicant_id,is_active')
         .eq('employee_id', employee.employee_id).maybeSingle());
@@ -90,23 +94,27 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
         throw new AccountError(409, 'Review the linked account in User Accounts before continuing.');
       }
       const name = applicant.name || [applicant.first_name, applicant.last_name].filter(Boolean).join(' ') || 'Employee';
-      const passwordFor = nonce => 'Bv!' + createHmac('sha256', key).update('hired-welcome/' + nonce).digest('base64url').slice(0, 24);
       let authUser;
       let saved = existing;
       const separate = existing?.auth_user_id && existing.auth_user_id !== applicant.auth_user_id && existing.email?.toLowerCase() !== recipient;
+      if (statusOnly && !separate) return send(200, { account_ready: false, password_set: false, setup_email_sent_at: null });
       if (separate) {
         authUser = check(await admin.auth.admin.getUserById(existing.auth_user_id)).user;
         if (authUser?.email?.toLowerCase() !== existing.email?.toLowerCase()) throw new AccountError(409, 'The employee login could not be verified. Review it in User Accounts.');
+        if (statusOnly) return send(200, {
+          account_ready: true,
+          password_set: authUser.app_metadata?.hris_temporary_password !== true,
+          setup_email_sent_at: applicant.employee_setup_email_sent_at ?? null,
+        });
       } else {
         const normalize = value => String(value ?? '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 25);
         const base = [normalize(applicant.last_name), normalize(applicant.first_name)].filter(Boolean).join('.') || normalize(applicantId);
-        const nonce = randomUUID();
         for (let suffix = 1; suffix <= 30; suffix++) {
           const email = base + (suffix === 1 ? '' : '.' + suffix) + '@buenaventura.com';
           if (email === recipient || check(await admin.from('user_accounts').select('user_id').eq('email', email).maybeSingle())) continue;
           const created = await admin.auth.admin.createUser({
-            email, password: passwordFor(nonce), email_confirm: true,
-            app_metadata: { hris_temporary_password: true, hris_hired_welcome: nonce, hris_hired_application: applicantId },
+            email, password: 'Bv!' + randomUUID(), email_confirm: true,
+            app_metadata: { hris_temporary_password: true, hris_hired_application: applicantId },
             user_metadata: { full_name: name, role: 'employee', employee_id: employee.employee_id },
           });
           if (['email_exists', 'user_already_exists'].includes(created.error?.code)) continue;
@@ -137,14 +145,25 @@ export function createHiredAccountHandler({ env = process.env, clientFactory = c
           saved = linked.data;
         } else saved = result.data;
       }
-      const nonce = authUser.app_metadata?.hris_hired_welcome;
-      const password = nonce && authUser.app_metadata?.hris_hired_application === applicantId && authUser.app_metadata?.hris_temporary_password === true
-        ? passwordFor(nonce) : null;
-      const deliveryKey = password ? 'hired-welcome/' + authUser.id : 'hired-existing/' + applicantId + '/' + authUser.id;
-      const sent = await sendHiredWelcome({ env, fetcher, recipient, name, email: authUser.email, password, deliveryKey }).catch(() => false);
+      const needsSetup = authUser.app_metadata?.hris_hired_application === applicantId && authUser.app_metadata?.hris_temporary_password === true;
+      const sent = await (async () => {
+        if (!env.RESEND_API_KEY?.trim()) return false;
+        let setupLink = '';
+        if (needsSetup) {
+          const link = check(await admin.auth.admin.generateLink({
+            type: 'recovery', email: authUser.email, options: { redirectTo: loginUrl },
+          }));
+          setupLink = link?.properties?.action_link;
+          if (!setupLink) return false;
+        }
+        const deliveryKey = 'hired-welcome/' + applicantId + '/' + randomUUID();
+        return sendHiredWelcome({ env, fetcher, recipient, name, email: authUser.email, setupLink, deliveryKey });
+      })().catch(() => false);
+      if (sent) check(await admin.from('applicants').update({ employee_setup_email_sent_at: new Date().toISOString() })
+        .eq('applicant_id', applicantId).select('applicant_id').single());
       return send(200, { user: saved, welcome_email_sent: sent, message: sent
         ? 'Employee account ready. The welcome email was accepted for delivery.'
-        : 'Employee account ready. The welcome email could not be sent. Select Complete Employee Account Setup to retry.' });
+        : 'Employee account ready. The welcome email could not be sent. Use Resend Setup Email to retry.' });
     } catch (error) {
       const status = error instanceof AccountError ? error.status : 502;
       return send(status, { message: error.message || 'Employee account creation failed. Please retry.' });

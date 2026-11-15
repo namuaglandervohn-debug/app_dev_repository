@@ -361,11 +361,7 @@ export default function EmployeePayslips() {
         return;
       }
 
-      const { data: summaries, error: summariesError } = await supabase
-        .from('payroll_summaries')
-        .select('payroll_id, period_start, period_end, status, endorsed_at, reviewed_at, created_at')
-        .in('status', ['Endorsed', 'Exported'])
-        .order('period_start', { ascending: false });
+      const { data: summaries, error: summariesError } = await supabase.rpc('own_payslip_periods');
 
       if (summariesError) throw summariesError;
 
@@ -437,14 +433,15 @@ export default function EmployeePayslips() {
 
   useEffect(() => {
     fetchPayslips();
+    window.addEventListener('focus', fetchPayslips);
 
     const channel = supabase
       .channel('employee-payslips-live-refresh')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payroll_summaries' }, () => fetchPayslips())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payroll_items' }, () => fetchPayslips())
       .subscribe();
 
     return () => {
+      window.removeEventListener('focus', fetchPayslips);
       supabase.removeChannel(channel);
     };
   }, [fetchPayslips]);
