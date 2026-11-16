@@ -661,12 +661,12 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
               {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
             </TextField>
           )}
-          <Button variant="contained" size="small" startIcon={<Print />} onClick={printSchedule}
-            sx={{ bgcolor: '#fff', color: GREEN_UI.greenDark, '&:hover': { bgcolor: GREEN_UI.greenSoft } }}>
+          <Button variant="contained" color="inherit" size="small" startIcon={<Print />} onClick={printSchedule}
+            sx={{ background: '#fff', color: GREEN_UI.greenDark, '&:hover': { background: GREEN_UI.greenSoft } }}>
             Print
           </Button>
-          <Button variant="outlined" size="small" startIcon={<Download />} onClick={downloadCsv}
-            sx={{ color: '#fff', borderColor: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
+          <Button variant="outlined" color="inherit" size="small" startIcon={<Download />} onClick={downloadCsv}
+            sx={{ color: '#fff', borderColor: 'currentColor', '&:hover': { borderColor: 'currentColor', bgcolor: 'rgba(255,255,255,0.12)' } }}>
             Download CSV
           </Button>
         </Box>
