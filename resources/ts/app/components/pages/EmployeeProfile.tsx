@@ -8,7 +8,7 @@ import {
   Box, Typography, Button, Paper, Divider, Chip, Grid,
   CircularProgress, Alert, MenuItem, Dialog, DialogTitle,
   DialogContent, DialogActions, IconButton, Tooltip,
-  Checkbox, FormControlLabel, FormGroup, InputAdornment, Avatar, type TextFieldProps,
+  Checkbox, FormControlLabel, FormGroup, InputAdornment, type TextFieldProps,
 } from '@mui/material';
 import {
   ArrowBackIosNew,
@@ -16,7 +16,6 @@ import {
   Save,
   ArrowBackRounded,
   Add,
-  AccountCircle,
   FileDownload,
   Visibility,
   VisibilityOff,
@@ -49,6 +48,7 @@ import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { formatSalaryInput, readDailyRateEdit } from '../../lib/salaryInput';
 import { saveEmployeeProfilePhoto } from '../../lib/profilePhoto';
 import ProfilePhotoUpload from '../ProfilePhotoUpload';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
 import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
@@ -1072,9 +1072,8 @@ export default function EmployeeProfile() {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar src={employee.profilePhoto ?? undefined} variant="rounded" sx={{ width: 58, height: 58, borderRadius: '18px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark }}>
-              <AccountCircle sx={{ fontSize: 36 }} />
-            </Avatar>
+            <ProfilePhotoAvatar photo={employee.profilePhoto} name={employee.name}
+              sx={{ width: 58, height: 58, borderRadius: '18px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark }} />
             <Box>
               <Typography variant="h5" sx={{ color: GREEN_UI.text, fontWeight: 700 }}>{employee.name || 'Employee Profile'}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.75, rowGap: 0.25 }}>
@@ -1460,9 +1459,8 @@ export default function EmployeeProfile() {
           {editProfileTab === 'Account' && canManageAccount && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 }, display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar src={employee.profilePhoto ?? undefined} sx={{ width: 58, height: 58, bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark }}>
-                  <AccountCircle sx={{ fontSize: 36 }} />
-                </Avatar>
+                <ProfilePhotoAvatar photo={employee.profilePhoto} name={employee.name}
+                  sx={{ width: 58, height: 58, bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark }} />
                 <ProfilePhotoUpload photo={employee.profilePhoto} disabled={saving || updatingPassword} onUpload={uploadProfilePhoto} />
               </Paper>
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>

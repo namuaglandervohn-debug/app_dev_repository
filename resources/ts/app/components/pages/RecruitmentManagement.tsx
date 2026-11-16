@@ -3,6 +3,8 @@ import TextField from '../DateTextField';
 import MobileNumberField from '../MobileNumberField';
 import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
+import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
 import { supabase } from '../../lib/supabaseClient';
 import { loadApplicationFiles } from '../../lib/applicationFiles';
 import { apiErrorMessage, readableErrorMessage } from '../../lib/apiError';
@@ -1223,6 +1225,7 @@ export default function RecruitmentManagement() {
   );
 
   const displayData = tabData[tab]?.data ?? searchedApplications;
+  const applicantPhotos = useProfilePhotoDirectory('applicant', [...displayData.map(app => app.id), selectedApp?.id]);
 
 
   const recruitmentStats = useMemo(
@@ -2142,22 +2145,8 @@ export default function RecruitmentManagement() {
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box
-                          sx={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: '14px',
-                            display: 'grid',
-                            placeItems: 'center',
-                            bgcolor: GREEN_UI.greenSoft,
-                            color: GREEN_UI.greenDark,
-                            flexShrink: 0,
-                            fontWeight: 600,
-                            fontSize: '0.82rem',
-                          }}
-                        >
-                          {app.name?.charAt(0)?.toUpperCase() || 'A'}
-                        </Box>
+                        <ProfilePhotoAvatar photo={applicantPhotos.get(app.id)} name={app.name} initials={app.name?.charAt(0)?.toUpperCase() || 'A'}
+                          sx={{ width: 34, height: 34, borderRadius: '14px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontWeight: 600, fontSize: '0.82rem' }} />
                         <Typography fontWeight={600} sx={{ color: GREEN_UI.text }}>
                           {app.name}
                         </Typography>
@@ -2288,20 +2277,8 @@ export default function RecruitmentManagement() {
         >
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box
-                sx={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: '14px',
-                  display: 'grid',
-                  placeItems: 'center',
-                  bgcolor: GREEN_UI.greenSoft,
-                  color: GREEN_UI.greenDark,
-                  flexShrink: 0,
-                }}
-              >
-                <PersonSearch fontSize="small" />
-              </Box>
+              {selectedApp && <ProfilePhotoAvatar photo={applicantPhotos.get(selectedApp.id)} name={selectedApp.name}
+                sx={{ width: 34, height: 34, borderRadius: '14px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontSize: '0.82rem' }} />}
               <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>
                 Application — {selectedApp?.id}
               </Typography>

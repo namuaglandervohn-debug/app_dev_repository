@@ -5,7 +5,7 @@ import { employeeApplicationFields } from '../../lib/employeeApplicationFields';
 import { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Grid, Chip, Divider, CircularProgress,
-  Alert, Card, CardContent, Avatar, TextField, Button, IconButton,
+  Alert, Card, CardContent, TextField, Button, IconButton,
   Stack, LinearProgress, Tooltip, Dialog, DialogTitle,
   DialogContent, DialogActions, Tab, Tabs,
 } from '@mui/material';
@@ -630,7 +630,7 @@ export default function MyProfile() {
             ) : editing && editTab === 'account' ? (
               <Box id="employee-edit-account" role="tabpanel" aria-labelledby="employee-edit-account-tab">
                 <Stack direction="row" alignItems="center" spacing={2}>
-                  <Avatar src={profilePhoto ?? undefined} sx={{ width: 58, height: 58 }}>{initials}</Avatar>
+                  <ProfilePhotoAvatar photo={profilePhoto} initials={initials} name={profileName} sx={{ width: 58, height: 58 }} />
                   <ProfilePhotoUpload photo={profilePhoto} disabled={saving} onUpload={uploadProfilePhoto} />
                 </Stack>
               </Box>

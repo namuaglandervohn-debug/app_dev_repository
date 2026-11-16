@@ -1,4 +1,6 @@
 import TextField from '../DateTextField';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
+import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
 import MobileNumberField from '../MobileNumberField';
 import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useState, useEffect } from "react";
@@ -394,6 +396,7 @@ export default function EmployeeRecords() {
 };
 
   const filtered = filterEmployeeRecords(employees, search, searchField, columnFilters);
+  const employeePhotos = useProfilePhotoDirectory('employee', filtered.map(employee => employee.id));
 
   // Only HR can add employees; HR and GM can delete
   const canModify = user?.role === "hr";
@@ -711,17 +714,8 @@ export default function EmployeeRecords() {
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                        <Box
-                          sx={{
-                            ...iconTileSx,
-                            width: 36,
-                            height: 36,
-                            borderRadius: '14px',
-                            bgcolor: '#f3fbf0',
-                          }}
-                        >
-                          <AccountCircleRounded fontSize="small" />
-                        </Box>
+                        <ProfilePhotoAvatar photo={employeePhotos.get(emp.id)} name={emp.name}
+                          sx={{ width: 36, height: 36, borderRadius: '14px', bgcolor: '#f3fbf0', color: GREEN_UI.greenDark, fontSize: '0.82rem' }} />
                         <Box>
                           <Typography fontWeight={600} sx={{ color: GREEN_UI.text }}>
                             {emp.name}

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
+import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, Dialog, DialogTitle,
@@ -579,6 +581,7 @@ export default function UserManagement() {
         ].some(value => String(value ?? '').toLowerCase().includes(searchQuery))
       )
     : users;
+  const employeePhotos = useProfilePhotoDirectory('employee', filteredUsers.map(account => account.employeeId));
 
   const summaryCards = [
     { label: 'Total Accounts', value: totalUsers, icon: <AdminPanelSettings fontSize="small" /> },
@@ -891,21 +894,8 @@ export default function UserManagement() {
 
                     <TableCell sx={{ minWidth: 230 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                        <Box
-                          sx={{
-                            width: 38,
-                            height: 38,
-                            borderRadius: '16px',
-                            display: 'grid',
-                            placeItems: 'center',
-                            bgcolor: GREEN_UI.greenSoft,
-                            color: GREEN_UI.greenDark,
-                            fontWeight: 700,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {(u.name || '?').trim().charAt(0).toUpperCase()}
-                        </Box>
+                        <ProfilePhotoAvatar photo={u.employeeId ? employeePhotos.get(u.employeeId) : undefined} name={u.name}
+                          sx={{ width: 38, height: 38, borderRadius: '16px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontWeight: 700, fontSize: '0.9rem' }} />
                         <Box sx={{ minWidth: 0 }}>
                           <Typography fontWeight={600} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }} noWrap>
                             {u.name || 'Unnamed Account'}

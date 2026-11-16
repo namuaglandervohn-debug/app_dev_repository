@@ -1,6 +1,8 @@
 import { formatDisplayDate } from '../../lib/displayDate';
 import { pairAttendancePunches } from '../../lib/payrollPremiums';
 import TextField from '../DateTextField';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
+import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -1905,6 +1907,7 @@ export default function AttendanceMonitoring() {
     const start = page * rowsPerPage;
     return filtered.slice(start, start + rowsPerPage);
   }, [filtered, page, rowsPerPage]);
+  const employeePhotos = useProfilePhotoDirectory('employee', paginatedFiltered.map(record => record.employeeId));
 
   const pageStart = filtered.length === 0 ? 0 : page * rowsPerPage + 1;
   const pageEnd = Math.min((page + 1) * rowsPerPage, filtered.length);
@@ -2497,13 +2500,17 @@ export default function AttendanceMonitoring() {
                       gap: 1,
                     }}
                   >
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography fontWeight={700} noWrap sx={{ color: GREEN_UI.text }}>
-                        {attendanceName(att)}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                        {formatDisplayDate(normalizeDateForFilter(att.date))}{!att.employeeId && ' · Employee link needed'}
-                      </Typography>
+                    <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <ProfilePhotoAvatar photo={att.employeeId ? employeePhotos.get(att.employeeId) : undefined} name={attendanceName(att)}
+                        sx={{ ...iconTileSx, width: 34, height: 34, fontSize: '0.82rem' }} />
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={700} noWrap sx={{ color: GREEN_UI.text }}>
+                          {attendanceName(att)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
+                          {formatDisplayDate(normalizeDateForFilter(att.date))}{!att.employeeId && ' · Employee link needed'}
+                        </Typography>
+                      </Box>
                     </Box>
                     <Chip
                       label={att.status}
@@ -2640,9 +2647,8 @@ export default function AttendanceMonitoring() {
                     </TableCell>
                     <TableCell sx={{ minWidth: 190 }}>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Box sx={{ ...iconTileSx, width: 34, height: 34}}>
-                          <PersonRounded fontSize="small" />
-                        </Box>
+                        <ProfilePhotoAvatar photo={att.employeeId ? employeePhotos.get(att.employeeId) : undefined} name={attendanceName(att)}
+                          sx={{ ...iconTileSx, width: 34, height: 34, fontSize: '0.82rem' }} />
                         <Box>
                           <Typography fontWeight={600} sx={{ color: GREEN_UI.text, whiteSpace: "nowrap" }}>{attendanceName(att)}</Typography>
                           {!att.employeeId && <Typography variant="caption" color="warning.dark">Employee link needed</Typography>}

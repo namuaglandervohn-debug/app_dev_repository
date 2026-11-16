@@ -2,6 +2,8 @@ import { formatDisplayDate } from '../../lib/displayDate';
 import { jobTitleKey } from '../../lib/jobTitles';
 import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import TextField from '../DateTextField';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
+import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
 import { useState, useEffect } from 'react';
 import {
   Box,
@@ -38,7 +40,6 @@ import {
   PendingActions,
   CheckCircleOutline,
   HourglassTop,
-  Person,
   Badge,
   CalendarMonth,
   AccessTime,
@@ -911,6 +912,7 @@ export default function RequestManagement() {
   ];
 
   const displayData = tabData[tab]?.data ?? searchedRequests;
+  const employeePhotos = useProfilePhotoDirectory('employee', displayData.map(request => request.employeeId));
 
   const getAnnualLeaveAllowance = (employeeId: string | null | undefined) => {
     if (!employeeId) return COMPANY_ANNUAL_LEAVE_ALLOWANCE;
@@ -1787,20 +1789,8 @@ export default function RequestManagement() {
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box
-                            sx={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: '14px',
-                              display: 'grid',
-                              placeItems: 'center',
-                              bgcolor: GREEN_UI.greenSoft,
-                              color: GREEN_UI.greenDark,
-                              flexShrink: 0,
-                            }}
-                          >
-                            <Person fontSize="small" />
-                          </Box>
+                          <ProfilePhotoAvatar photo={employeePhotos.get(req.employeeId)} name={req.employee}
+                            sx={{ width: 34, height: 34, borderRadius: '14px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontSize: '0.82rem' }} />
                           <Typography fontWeight={600} sx={{ color: GREEN_UI.text }}>
                             {req.employee}
                           </Typography>

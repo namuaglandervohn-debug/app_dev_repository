@@ -1,5 +1,7 @@
 import { formatDisplayDate, formatDisplayDateRange, formatTypedDateDigits, parseDisplayDate } from '../../lib/displayDate';
 import TextField from '../DateTextField';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
+import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
@@ -1406,6 +1408,7 @@ export default function ScheduleManagement() {
   });
 
   const filteredIds = filtered.map(schedule => schedule.id);
+  const employeePhotos = useProfilePhotoDirectory('employee', filtered.map(schedule => schedule.employeeId));
   const selectedVisibleIds = selectedScheduleIds.filter(id => filteredIds.includes(id));
   const allVisibleSelected = filteredIds.length > 0 && selectedVisibleIds.length === filteredIds.length;
   const partiallyVisibleSelected = selectedVisibleIds.length > 0 && !allVisibleSelected;
@@ -2105,20 +2108,8 @@ export default function ScheduleManagement() {
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box
-                        sx={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: '14px',
-                          display: 'grid',
-                          placeItems: 'center',
-                          bgcolor: GREEN_UI.greenSoft,
-                          color: GREEN_UI.greenDark,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <PersonOutline fontSize="small" />
-                      </Box>
+                      <ProfilePhotoAvatar photo={employeePhotos.get(s.employeeId)} name={s.employee}
+                        sx={{ width: 34, height: 34, borderRadius: '14px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontSize: '0.82rem' }} />
                       <Box>
                         <Typography fontWeight={600} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }}>
                           {s.employee || '—'}

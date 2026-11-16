@@ -1,6 +1,7 @@
 import { formatDisplayDateTime } from '../../lib/displayDate';
 import { Outlet, useNavigate, useLocation, Navigate } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import {
   AppBar, Toolbar, Typography, Drawer, List, ListItem, ListItemButton,
   ListItemIcon, ListItemText, Box, IconButton, Avatar, Menu, MenuItem,
@@ -223,7 +224,8 @@ export default function RootLayout({ children, applicant }: {
       <Box component="footer" sx={{ flexShrink: 0, px: 2, pb: 1.5 }}>
         <Divider sx={{ borderColor: accountColors.onGreenBorder }} />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, pt: 1.75, pb: 1 }}>
-          <Avatar aria-hidden="true" src={profilePhoto ?? undefined} sx={{ bgcolor: accountColors.gold, color: 'primary.contrastText', width: 40, height: 40, fontSize: '0.95rem' }}>{user.name.charAt(0)}</Avatar>
+          <ProfilePhotoAvatar photo={profilePhoto} name={user.name} initials={user.name.charAt(0)}
+            sx={{ bgcolor: accountColors.gold, color: 'primary.contrastText', width: 40, height: 40, fontSize: '0.95rem' }} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="body2" fontWeight={750} noWrap title={user.name}>{user.name}</Typography>
             <Typography variant="caption" color={accountColors.onGreenMuted} noWrap display="block" title={user.email}>
@@ -279,17 +281,22 @@ export default function RootLayout({ children, applicant }: {
               <Badge badgeContent={unreadCount} color="error"><NotificationsNone fontSize="small" /></Badge>
             </IconButton>
           </Tooltip>}
-          <Button
-            aria-label="Account menu"
-            aria-haspopup="menu"
-            aria-expanded={Boolean(anchorEl)}
-            onClick={e => setAnchorEl(e.currentTarget)}
-            sx={{ px: 0.75, minWidth: 0, minHeight: 38, gap: 0.75, color: 'inherit', border: 1, borderColor: accountColors.onGreenBorder, bgcolor: 'rgba(255,255,255,0.12)', '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' } }}
-          >
-            <Avatar aria-hidden="true" src={profilePhoto ?? undefined} sx={{ width: 27, height: 27, bgcolor: accountColors.gold, color: 'primary.contrastText', fontSize: '0.8rem' }}>{user.name.charAt(0)}</Avatar>
-            <Typography noWrap sx={{ display: { xs: 'none', sm: 'block' }, maxWidth: 150, fontSize: '0.84rem', fontWeight: 750 }}>{user.name}</Typography>
-            <KeyboardArrowDown sx={{ display: { xs: 'none', sm: 'block' }, color: accountColors.onGreenMuted, fontSize: 17 }} />
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, pl: profilePhoto ? 0.75 : 0, border: 1,
+            borderColor: accountColors.onGreenBorder, borderRadius: '10px', bgcolor: 'rgba(255,255,255,0.12)' }}>
+            {profilePhoto && <ProfilePhotoAvatar photo={profilePhoto} name={user.name} initials={user.name.charAt(0)}
+              sx={{ width: 27, height: 27, bgcolor: accountColors.gold, color: 'primary.contrastText', fontSize: '0.8rem' }} />}
+            <Button
+              aria-label="Account menu"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(anchorEl)}
+              onClick={e => setAnchorEl(e.currentTarget)}
+              sx={{ px: 0.75, minWidth: 0, minHeight: 36, gap: 0.75, color: 'inherit', '&:hover': { bgcolor: 'rgba(255,255,255,0.10)' } }}
+            >
+              {!profilePhoto && <Avatar aria-hidden="true" sx={{ width: 27, height: 27, bgcolor: accountColors.gold, color: 'primary.contrastText', fontSize: '0.8rem' }}>{user.name.charAt(0)}</Avatar>}
+              <Typography noWrap sx={{ display: { xs: 'none', sm: 'block' }, maxWidth: 150, fontSize: '0.84rem', fontWeight: 750 }}>{user.name}</Typography>
+              <KeyboardArrowDown sx={{ display: { xs: profilePhoto ? 'block' : 'none', sm: 'block' }, color: accountColors.onGreenMuted, fontSize: 17 }} />
+            </Button>
+          </Box>
           <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)} PaperProps={{ sx: { mt: 1, minWidth: 220, borderRadius: 2 } }}>
             <MenuItem disabled><Typography fontWeight={700}>{user.name}</Typography></MenuItem>
             <MenuItem disabled><Typography variant="body2" color="text.secondary">{ROLE_LABELS[user.role]}</Typography></MenuItem>
