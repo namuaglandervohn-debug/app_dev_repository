@@ -49,6 +49,25 @@ import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondar
 
 interface DocFile {
   name: string; type: string; data: string;
+  category?: 'certificate';
+}
+
+const PROFILE_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
+const PROFILE_FILE_TYPES_LABEL = 'PDF, DOC, DOCX, JPG, JPEG, and PNG';
+
+function getProfileFiles(profile: Employee) {
+  const applicantFiles = profile.applicantDocuments ?? [];
+  const applicantCertificates = applicantFiles.filter(file => file.category === 'certificate');
+  const certificates = [...applicantCertificates];
+  const documents = new Map(applicantFiles.filter(file => file.category !== 'certificate').map(file => [file.name, file]));
+
+  for (const file of profile.employeeDocumentsOnly ?? []) {
+    if (applicantCertificates.some(original => original.name === file.name && original.data === file.data)) continue;
+    if (file.category === 'certificate') certificates.push(file);
+    else documents.set(file.name, file);
+  }
+
+  return { certificates, documents: [...documents.values()] };
 }
 
 const salaryFormatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
@@ -142,7 +161,7 @@ interface Employee {
   createdAt?: string;
   updatedAt?: string;
 
-  documents?: DocFile[];
+  applicantDocuments?: DocFile[];
   employeeDocumentsOnly?: DocFile[];
 
   gender?: string;
@@ -317,12 +336,36 @@ export default function EmployeeProfile() {
   const [deleteDialog, setDeleteDialog] = useState(false);
   // New document upload state
   const [newDocFiles, setNewDocFiles] = useState<File[]>([]);
-  const [previewDoc, setPreviewDoc] = useState<{ name: string; data: string; type: string } | null>(null);
+  const [newCertificateFiles, setNewCertificateFiles] = useState<File[]>([]);
+  const [previewDoc, setPreviewDoc] = useState<DocFile | null>(null);
+  const [wordPreview, setWordPreview] = useState<{ file: DocFile; text: string } | null>(null);
   const [profileTab, setProfileTab] = useState('Personal');
   const [editProfileTab, setEditProfileTab] = useState('Personal');
   const [otherSkillsEnabled, setOtherSkillsEnabled] = useState(false);
   const canSeeSalary = Boolean(user && user.role !== 'supervisor');
   const positionKey = jobTitleKey(employee?.position ?? '');
+
+  useEffect(() => {
+    if (previewDoc?.category !== 'certificate' || !/\.docx$/i.test(previewDoc.name)) return;
+
+    const controller = new AbortController();
+    const loadWordPreview = async () => {
+      try {
+        const [mammoth, response] = await Promise.all([
+          import('mammoth'),
+          fetch(previewDoc.data, { signal: controller.signal }),
+        ]);
+        if (!response.ok) throw new Error('Certificate could not be read.');
+        const { value } = await mammoth.extractRawText({ arrayBuffer: await response.arrayBuffer() });
+        if (!controller.signal.aborted) setWordPreview({ file: previewDoc, text: value.trim() });
+      } catch {
+        if (!controller.signal.aborted) setWordPreview({ file: previewDoc, text: '' });
+      }
+    };
+
+    void loadWordPreview();
+    return () => controller.abort();
+  }, [previewDoc]);
 
   useEffect(() => {
     if (!canSeeSalary || !positionKey) return;
@@ -406,8 +449,14 @@ export default function EmployeeProfile() {
               }]
             : [];
 
-        const supportingDocs = Array.isArray(applicantData?.supporting_document_files)
-          ? applicantData.supporting_document_files
+        const certificateNames = new Set([
+          ...(Array.isArray(parsedApplication.certifications) ? parsedApplication.certifications : []),
+          ...(Array.isArray(applicantData?.certifications) ? applicantData.certifications : []),
+        ]);
+        const supportingDocs: DocFile[] = Array.isArray(applicantData?.supporting_document_files)
+          ? applicantData.supporting_document_files.map((file: DocFile) =>
+            certificateNames.has(file.name) ? { ...file, category: 'certificate' } : file
+          )
           : [];
 
         applicantDocs = [...resumeDoc, ...supportingDocs];
@@ -435,11 +484,7 @@ export default function EmployeeProfile() {
         emergencyContact: data.emergency_contact ?? "",
         createdAt: data.created_at ?? "",
         updatedAt: data.updated_at ?? "",
-        documents: [
-  ...new Map(
-    [...applicantDocs, ...employeeDocs].map(doc => [doc.name, doc])
-  ).values(),
-],
+        applicantDocuments: applicantDocs,
         employeeDocumentsOnly: employeeDocs,
 
         gender: data.gender ?? "",
@@ -489,19 +534,11 @@ export default function EmployeeProfile() {
   setSaving(true);
 
   try {
-    let updatedDocs = [...(editForm.employeeDocumentsOnly ?? [])];
-
-    if (newDocFiles.length > 0) {
-      const encoded = await Promise.all(
-        newDocFiles.map(async f => ({
-          name: f.name,
-          type: f.type,
-          data: await fileToBase64(f),
-        }))
-      );
-
-      updatedDocs = [...updatedDocs, ...encoded];
-    }
+    const addedFiles = [
+      ...newDocFiles.map(file => ({ file })),
+      ...newCertificateFiles.map(file => ({ file, category: 'certificate' as const })),
+    ];
+    const documentsChanged = addedFiles.length > 0 || editForm.employeeDocumentsOnly !== employee?.employeeDocumentsOnly;
 
     const employeeUpdate: Record<string, any> = {
       first_name: editForm.first_name ?? "",
@@ -529,8 +566,16 @@ export default function EmployeeProfile() {
       sss: editForm.sss,
       philhealth: editForm.philhealth,
       pagibig: editForm.pagibig,
-      documents: updatedDocs,
     };
+    if (documentsChanged) {
+      const encoded = await Promise.all(addedFiles.map(async ({ file, ...metadata }) => ({
+        name: file.name,
+        type: file.type,
+        data: await fileToBase64(file),
+        ...metadata,
+      })));
+      employeeUpdate.documents = [...(editForm.employeeDocumentsOnly ?? []), ...encoded];
+    }
     const outletChanged = editForm.outlet !== employee?.outlet;
     if (outletChanged) {
       employeeUpdate.outlet = editForm.outlet === NO_OUTLET ? "" : editForm.outlet;
@@ -551,7 +596,7 @@ export default function EmployeeProfile() {
       }
 
       const missingColumn = getMissingColumnFromSupabaseError(result.error);
-      if (!missingColumn || missingColumn === "outlet" || !(missingColumn in employeeUpdate)) throw result.error;
+      if (!missingColumn || missingColumn === "outlet" || missingColumn === "documents" || !(missingColumn in employeeUpdate)) throw result.error;
 
       delete employeeUpdate[missingColumn];
     }
@@ -650,8 +695,7 @@ export default function EmployeeProfile() {
   sss: data.sss ?? "",
   philhealth: data.philhealth ?? "",
   pagibig: data.pagibig ?? "",
-  documents: [...(employee?.documents ?? []).filter(d => !(employee?.employeeDocumentsOnly ?? []).some(ed => ed.name === d.name)), ...updatedDocs],
-  employeeDocumentsOnly: updatedDocs,
+  employeeDocumentsOnly: Array.isArray(data.documents) ? data.documents : [],
   createdAt: data.created_at ?? "",
   updatedAt: data.updated_at ?? employee?.updatedAt ?? "",
 };
@@ -660,6 +704,7 @@ export default function EmployeeProfile() {
     setEditForm(updatedEmployee);
     setEditing(false);
     setNewDocFiles([]);
+    setNewCertificateFiles([]);
 
     setSnackbar({
       open: true,
@@ -706,20 +751,12 @@ export default function EmployeeProfile() {
   setDeleteDialog(false);
 };
 
-  const handleRemoveDoc = (idx: number) => {
-  if (!editForm) return;
-
-  const docToRemove = editForm.documents?.[idx];
-  if (!docToRemove) return;
-
-  setEditForm({
-    ...editForm,
-    documents: editForm.documents?.filter((_, i) => i !== idx),
-    employeeDocumentsOnly: editForm.employeeDocumentsOnly?.filter(
-      (doc) => doc.name !== docToRemove.name
-    ),
-  });
-};
+  const handleRemoveDoc = (file: DocFile) => {
+    setEditForm(current => current && ({
+      ...current,
+      employeeDocumentsOnly: current.employeeDocumentsOnly?.filter(doc => doc !== file),
+    }));
+  };
 
   if (loading) {
     return (
@@ -755,7 +792,41 @@ export default function EmployeeProfile() {
     setEditing(false);
     setEditForm(employee);
     setNewDocFiles([]);
+    setNewCertificateFiles([]);
   };
+
+  const profileFiles = getProfileFiles(employee);
+  const editFiles = getProfileFiles(editForm);
+  const certificateNames = new Set((employee.applicantDocuments ?? [])
+    .filter(file => file.category === 'certificate').map(file => file.name));
+  const isGeneralDocument = (name: string) => !certificateNames.has(name);
+  const submittedDocumentNames = (employee.applicationForm?.submittedDocuments ?? []).filter(isGeneralDocument);
+
+  const renderCertificates = (files: DocFile[], editable = false) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {files.length === 0 && <Typography variant="body2" color="text.secondary">No certificates uploaded yet.</Typography>}
+      {files.map((file, index) => (
+        <Paper key={`${file.name}-${index}`} variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: '16px', borderColor: GREEN_UI.border }}>
+          <DocIcon name={file.name} type={file.type} />
+          <Typography variant="body2" fontWeight={600} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{file.name}</Typography>
+          {file.data && (
+            <Tooltip title="Preview">
+              <IconButton size="small" color="primary" aria-label={`Preview ${file.name}`} onClick={() => { setWordPreview(null); setPreviewDoc(file); }}>
+                <Visibility fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {editable && editForm.employeeDocumentsOnly?.includes(file) && (
+            <Tooltip title="Remove certificate">
+              <IconButton size="small" color="error" aria-label={`Remove ${file.name}`} onClick={() => handleRemoveDoc(file)}>
+                <DeleteOutline fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Paper>
+      ))}
+    </Box>
+  );
 
   const renderSectionTitle = (title: string) => (
     <Grid size={12}>
@@ -958,12 +1029,9 @@ export default function EmployeeProfile() {
                   startIcon={<EditNote />}
                   sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
                   onClick={() => {
-                    setEditForm({
-                      ...employee,
-                      documents: employee?.documents ?? [],
-                      employeeDocumentsOnly: employee?.employeeDocumentsOnly ?? [],
-                    });
+                    setEditForm(employee);
                     setNewDocFiles([]);
+                    setNewCertificateFiles([]);
                     setEditProfileTab('Personal');
                     setOtherSkillsEnabled(Boolean(employee.applicationForm?.otherSkills));
                     setEditing(true);
@@ -1129,9 +1197,9 @@ export default function EmployeeProfile() {
               <>
                 {detailItem('Skills', compactList(application.skills), { xs: 12 })}
                 {detailItem('Other skills', application.otherSkills, { xs: 12 })}
-                {detailItem('Certifications / Trainings', compactList(application.certifications), { xs: 12 })}
               </>
             ))}
+            {profileSection('Certificates / Training', <Grid size={12}>{renderCertificates(profileFiles.certificates)}</Grid>)}
               </>
             )}
 
@@ -1192,13 +1260,13 @@ export default function EmployeeProfile() {
               <>
             {profileSection('Documents', (
               <>
-                {detailItem('Resume / Biodata', employee.documents?.some(doc => /resume|biodata/i.test(doc.name)) ? 'Uploaded' : compactList(application.submittedDocuments?.filter(doc => /resume|biodata/i.test(doc))))}
-                {detailItem('Submitted documents', compactList(application.submittedDocuments))}
+                {detailItem('Resume / Biodata', profileFiles.documents.some(doc => /resume|biodata/i.test(doc.name)) ? 'Uploaded' : compactList(submittedDocumentNames.filter(name => /resume|biodata/i.test(name))))}
+                {detailItem('Submitted documents', compactList(submittedDocumentNames))}
                 {application.otherDocument && detailItem('Other document', application.otherDocument, { xs: 12 })}
                 <Grid size={12}>
-                  {(employee.documents ?? []).length > 0 ? (
+                  {profileFiles.documents.length > 0 ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {(employee.documents ?? []).map((doc, i) => (
+                      {profileFiles.documents.map((doc, i) => (
                         <Paper key={i} variant="outlined" sx={{ p: 1.4, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: '12px', borderColor: GREEN_UI.border }}>
                           <DocIcon name={doc.name} type={doc.type} />
                           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1237,9 +1305,12 @@ export default function EmployeeProfile() {
             )}
           </Box>
         ) : (
-          <Alert severity="info" sx={{ borderRadius: '16px', border: '1px solid ' + GREEN_UI.border }}>
-            No linked application form details were found for this employee.
-          </Alert>
+          <>
+            <Alert severity="info" sx={{ borderRadius: '16px', border: '1px solid ' + GREEN_UI.border }}>
+              No linked application form details were found for this employee.
+            </Alert>
+            {profileFiles.certificates.length > 0 && profileSection('Certificates / Training', <Grid size={12}>{renderCertificates(profileFiles.certificates)}</Grid>)}
+          </>
         )}
 
         {employee.updatedAt && (
@@ -1430,8 +1501,14 @@ export default function EmployeeProfile() {
                     </FormGroup>
                   </Grid>
                   {otherSkillsEnabled && <Grid size={12}>{editAppField('Other skills', editApplication.otherSkills, (value) => updateApplicationForm({ otherSkills: value }))}</Grid>}
-                  <Grid size={12}>{editAppField('Certifications / Trainings', compactList(editApplication.certifications), (value) => updateApplicationForm({ certifications: value.split(',').map(item => item.trim()).filter(Boolean) }), { multiline: true, rows: 2 })}</Grid>
                 </Grid>
+              </Paper>
+              <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
+                <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Certificates / Training</Typography>
+                {renderCertificates(editFiles.certificates, true)}
+                <Typography variant="body2" sx={{ mt: 2, mb: 1, fontWeight: 500 }}>Upload Additional Certificates</Typography>
+                <FileUploadField label="Upload Certificates" accept={PROFILE_FILE_TYPES} multiple files={newCertificateFiles}
+                  onChange={setNewCertificateFiles} browseButtonSx={applicationPrimaryButtonSx} browseFileLabel="Certificates" helperText={PROFILE_FILE_TYPES_LABEL} />
               </Paper>
             </Box>
           )}
@@ -1482,12 +1559,15 @@ export default function EmployeeProfile() {
             <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
               <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Documents</Typography>
               <Grid container spacing={2}>
-                <Grid size={12}>{editAppField('Submitted documents', compactList(editApplication.submittedDocuments), (value) => updateApplicationForm({ submittedDocuments: value.split(',').map(item => item.trim()).filter(Boolean) }), { multiline: true, rows: 2 })}</Grid>
+                <Grid size={12}>{editAppField('Submitted documents', compactList(editApplication.submittedDocuments?.filter(isGeneralDocument)), (value) => updateApplicationForm({ submittedDocuments: [
+                  ...(editApplication.submittedDocuments ?? []).filter(name => certificateNames.has(name)),
+                  ...value.split(',').map(item => item.trim()).filter(Boolean),
+                ] }), { multiline: true, rows: 2 })}</Grid>
                 <Grid size={12}>{editAppField('Other document', editApplication.otherDocument, (value) => updateApplicationForm({ otherDocument: value }))}</Grid>
               </Grid>
-              {(editForm.documents ?? []).length > 0 ? (
+              {editFiles.documents.length > 0 ? (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, my: 2 }}>
-                  {(editForm.documents ?? []).map((doc, i) => (
+                  {editFiles.documents.map((doc, i) => (
                     <Paper key={doc.name + '-' + i} elevation={0} sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: '16px', border: '1px solid ' + GREEN_UI.border, bgcolor: '#fff' }}>
                       <DocIcon name={doc.name} type={doc.type} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1503,11 +1583,13 @@ export default function EmployeeProfile() {
                           </IconButton>
                         </Tooltip>
                       )}
-                      <Tooltip title="Remove document">
-                        <IconButton size="small" color="error" onClick={() => handleRemoveDoc(i)}>
-                          <DeleteOutline fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      {editForm.employeeDocumentsOnly?.includes(doc) && (
+                        <Tooltip title="Remove document">
+                          <IconButton size="small" color="error" onClick={() => handleRemoveDoc(doc)}>
+                            <DeleteOutline fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </Paper>
                   ))}
                 </Box>
@@ -1515,7 +1597,7 @@ export default function EmployeeProfile() {
                 <Typography variant="body2" color="text.secondary" sx={{ my: 2 }}>No documents uploaded yet.</Typography>
               )}
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>Upload Additional Documents</Typography>
-              <FileUploadField label="Upload Documents" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" multiple files={newDocFiles} onChange={setNewDocFiles} browseButtonSx={applicationPrimaryButtonSx} helperText="PDF, DOC, DOCX, JPG, JPEG, and PNG" />
+              <FileUploadField label="Upload Documents" accept={PROFILE_FILE_TYPES} multiple files={newDocFiles} onChange={setNewDocFiles} browseButtonSx={applicationPrimaryButtonSx} helperText={PROFILE_FILE_TYPES_LABEL} />
             </Paper>
           )}
         </DialogContent>
@@ -1552,13 +1634,22 @@ export default function EmployeeProfile() {
         <DialogContent sx={{ flex: 1, overflow: 'hidden', p: 1, display: 'flex', flexDirection: 'column' }}>
           {previewDoc && (() => {
             const isPdf = previewDoc.type === 'application/pdf' || previewDoc.name.toLowerCase().endsWith('.pdf');
-            const isImage = previewDoc.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(previewDoc.name);
+            const isImage = previewDoc.type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(previewDoc.name);
             if (isPdf) return <iframe src={previewDoc.data} title={previewDoc.name} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 8, flex: 1 }} />;
             if (isImage) return (
               <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f0f0f0', borderRadius: 2 }}>
                 <img src={previewDoc.data} alt={previewDoc.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 4 }} />
               </Box>
             );
+            if (previewDoc.category === 'certificate' && /\.docx$/i.test(previewDoc.name)) {
+              if (wordPreview?.file !== previewDoc) return <Box sx={{ m: 'auto' }}><CircularProgress aria-label="Loading certificate preview" /></Box>;
+              if (wordPreview.text) return (
+                <Box sx={{ overflow: 'auto', p: 3 }}>
+                  <Typography variant="caption" color="text.secondary">Text preview. Download the original to view its formatting.</Typography>
+                  <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', mt: 2 }}>{wordPreview.text}</Typography>
+                </Box>
+              );
+            }
             return (
               <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                 <InsertDriveFile sx={{ fontSize: 72, color: 'text.disabled' }} />

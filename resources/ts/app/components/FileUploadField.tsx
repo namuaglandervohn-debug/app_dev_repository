@@ -16,6 +16,7 @@ interface FileUploadFieldProps {
   helperText?: string;
   maxSizeMB?: number;
   browseButtonSx?: ButtonProps['sx'];
+  browseFileLabel?: string;
 }
 
 function getFileIcon(file: File) {
@@ -42,6 +43,7 @@ export default function FileUploadField({
   helperText,
   maxSizeMB = 10,
   browseButtonSx,
+  browseFileLabel = 'Documents',
 }: FileUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -52,6 +54,15 @@ export default function FileUploadField({
   const processFiles = (incoming: FileList | File[]) => {
     setError('');
     const arr = Array.from(incoming);
+    const acceptedTypes = accept.toLowerCase().split(',').map(type => type.trim()).filter(Boolean);
+    const unsupported = arr.filter(file => file.size === 0 || (acceptedTypes.length > 0 && !acceptedTypes.some(type =>
+      type.startsWith('.') ? file.name.toLowerCase().endsWith(type)
+        : type.endsWith('/*') ? file.type.startsWith(type.slice(0, -1)) : file.type === type
+    )));
+    if (unsupported.length) {
+      setError(`Select nonempty files in a supported format. Check ${unsupported.map(file => file.name).join(', ')}.`);
+      return;
+    }
     const oversized = arr.filter(f => f.size > maxBytes);
     if (oversized.length) {
       setError(`${oversized.map(f => f.name).join(', ')} exceed${oversized.length === 1 ? 's' : ''} the ${maxSizeMB} MB limit.`);
@@ -153,7 +164,7 @@ export default function FileUploadField({
           {browseButtonSx && (
             <Button type="button" fullWidth variant="contained" startIcon={<UploadFile />}
               onClick={() => inputRef.current?.click()} sx={browseButtonSx}>
-              {hasFiles ? 'Add Documents' : 'Select Documents'}
+              {hasFiles ? `Add ${browseFileLabel}` : `Select ${browseFileLabel}`}
             </Button>
           )}
 
