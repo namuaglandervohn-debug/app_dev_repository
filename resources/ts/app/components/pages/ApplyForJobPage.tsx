@@ -21,6 +21,8 @@ import {
   FormGroup,
   FormControlLabel,
   Checkbox,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 
 import {
@@ -45,6 +47,8 @@ import {
   ArticleOutlined,
   WorkOutlined,
   LocalPhoneRounded,
+  Visibility,
+  FileDownload,
 } from '@mui/icons-material';
 
 import AuthBackground from '../AuthBackground';
@@ -63,13 +67,63 @@ import { formatDisplayDate } from '../../lib/displayDate';
 
 const ACCEPTED_APPLICATION_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
 const ACCEPTED_APPLICATION_FILE_LABEL = 'PDF, DOC, DOCX, JPG, JPEG, and PNG';
-const CERTIFICATE_FILE_TYPES = new Map(Object.entries({
+const APPLICATION_FILE_TYPES = new Map(Object.entries({
   pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
 }));
-const certificateFileType = (file: File) => CERTIFICATE_FILE_TYPES.get(file.name.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? '');
+const applicationFileType = (file: File) => APPLICATION_FILE_TYPES.get(file.name.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? '');
 const SUPPORTING_DOCUMENT_EXAMPLES = 'Transcript of Records, Birth Certificate, Medical Certificate, valid ID, training certificates, or other required documents';
 
+function ApplicationFilePreview({ file, onClose }: { file: File; onClose: () => void }) {
+  const type = applicationFileType(file);
+  const isDocx = type === APPLICATION_FILE_TYPES.get('docx');
+  const [url, setUrl] = useState('');
+  const [documentText, setDocumentText] = useState<string | null>(null);
+
+  useEffect(() => {
+    const source = URL.createObjectURL(file.slice(0, file.size, type));
+    setUrl(source);
+    let active = true;
+
+    if (isDocx) {
+      void Promise.all([import('mammoth'), file.arrayBuffer()])
+        .then(([mammoth, arrayBuffer]) => mammoth.extractRawText({ arrayBuffer }))
+        .then(({ value }) => { if (active) setDocumentText(value.trim()); })
+        .catch(() => { if (active) setDocumentText(''); });
+    }
+
+    return () => {
+      active = false;
+      URL.revokeObjectURL(source);
+    };
+  }, [file, type, isDocx]);
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="md" aria-labelledby="application-file-preview-title">
+      <DialogTitle id="application-file-preview-title" sx={{ overflowWrap: 'anywhere' }}>{file.name}</DialogTitle>
+      <DialogContent dividers>
+        {url && (type === 'application/pdf' ? (
+          <Box component="iframe" title={file.name} src={url} sx={{ display: 'block', width: '100%', height: '65vh', border: 0 }} />
+        ) : type?.startsWith('image/') ? (
+          <Box component="img" src={url} alt={file.name} sx={{ display: 'block', mx: 'auto', maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }} />
+        ) : isDocx && documentText === null ? (
+          <CircularProgress size={24} aria-label="Loading file preview" />
+        ) : isDocx && documentText ? (
+          <>
+            <Typography variant="caption" color="text.secondary">Text preview. Download the original to view its formatting.</Typography>
+            <Typography sx={{ mt: 1, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{documentText}</Typography>
+          </>
+        ) : (
+          <Typography>Download this file to open it on your device.</Typography>
+        ))}
+      </DialogContent>
+      <DialogActions>
+        {url && <Button component="a" href={url} download={file.name} startIcon={<FileDownload />}>Download</Button>}
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 
 
@@ -205,6 +259,7 @@ export default function ApplyForJobPage() {
   const [otherSkillsEnabled, setOtherSkillsEnabled] = useState(false);
   const [certificateFiles, setCertificateFiles] = useState<File[]>([]);
   const [certificateError, setCertificateError] = useState('');
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
   const certificateInput = useRef<HTMLInputElement>(null);
   const [successDialog, setSuccessDialog] = useState(false);
   const [applicantId, setApplicantId] = useState('');
@@ -553,7 +608,7 @@ export default function ApplyForJobPage() {
     const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = '';
     if (!files.length) return;
-    const valid = files.filter(file => file.size > 0 && certificateFileType(file));
+    const valid = files.filter(file => file.size > 0 && applicationFileType(file));
     setCertificateError(valid.length === files.length ? '' : `Select nonempty certificate files in ${ACCEPTED_APPLICATION_FILE_LABEL} format.`);
     if (valid.length) {
       setCertificateFiles(current => [...current, ...valid]);
@@ -756,7 +811,7 @@ export default function ApplyForJobPage() {
           name = `${file.name.slice(0, dot)} (${copy})${file.name.slice(dot)}`;
         }
         usedNames.add(name);
-        const type = certificateFileType(file);
+        const type = applicationFileType(file);
         return { name, type, data: await fileToDataUrl(new Blob([file], { type })) };
       }));
       const supportingDocumentFiles = [
@@ -916,6 +971,19 @@ export default function ApplyForJobPage() {
       </>
     );
   };
+
+  const fileActions = (file: File, onRemove: () => void, outlined = false) => (
+    <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75} sx={{ flexShrink: 0 }}>
+      <Tooltip title="Preview">
+        <IconButton type="button" size="small" color="primary" aria-label={`Preview ${file.name}`} aria-haspopup="dialog"
+          onClick={() => setPreviewFile(file)}>
+          <Visibility fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Button type="button" size="small" color="error" variant={outlined ? 'outlined' : 'text'} aria-label={`Remove ${file.name}`}
+        onClick={onRemove} sx={outlined ? { textTransform: 'none', fontWeight: 700 } : undefined}>Remove</Button>
+    </Stack>
+  );
 
   if (authLoading || profileLoading) return <Box sx={{ p: 5 }}><CircularProgress /></Box>;
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent('/apply' + window.location.search)}`} replace />;
@@ -1262,7 +1330,7 @@ export default function ApplyForJobPage() {
                     {certificateFiles.map((file, index) => (
                       <Stack key={`${file.name}-${index}`} direction="row" alignItems="center" justifyContent="space-between" gap={1} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
                         <Typography variant="body2" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{file.name}</Typography>
-                        <Button type="button" size="small" color="error" aria-label={`Remove ${file.name}`} onClick={() => setCertificateFiles(current => current.filter((_, fileIndex) => fileIndex !== index))}>Remove</Button>
+                        {fileActions(file, () => setCertificateFiles(current => current.filter((_, fileIndex) => fileIndex !== index)))}
                       </Stack>
                     ))}
                   </Stack>
@@ -1357,7 +1425,7 @@ export default function ApplyForJobPage() {
                           {resumeFiles[0] ? (
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
                               <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{resumeFiles[0].name}</Typography></Stack>
-                              <Button type="button" size="small" color="error" variant="outlined" onClick={() => setResumeFiles([])} sx={{ textTransform: 'none', fontWeight: 700 }}>Remove</Button>
+                              {fileActions(resumeFiles[0], () => setResumeFiles([]), true)}
                             </Stack>
                           ) : (
                             <Typography variant="caption" color="text.secondary">Required before submitting the application.</Typography>
@@ -1385,7 +1453,7 @@ export default function ApplyForJobPage() {
                               {supportingFiles.map((file, fileIndex) => (
                                 <Stack key={`${file.name}-${file.lastModified}-${fileIndex}`} direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
                                   <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{file.name}</Typography></Stack>
-                                  <Button type="button" size="small" color="error" variant="outlined" onClick={() => setSupportingFiles((prev) => prev.filter((_, currentIndex) => currentIndex !== fileIndex))} sx={{ textTransform: 'none', fontWeight: 700 }}>Remove</Button>
+                                  {fileActions(file, () => setSupportingFiles(prev => prev.filter((_, currentIndex) => currentIndex !== fileIndex)), true)}
                                 </Stack>
                               ))}
                             </Stack>
@@ -1412,6 +1480,7 @@ export default function ApplyForJobPage() {
         </Container>
       </Box>
 
+      {previewFile && <ApplicationFilePreview file={previewFile} onClose={() => setPreviewFile(null)} />}
       <Dialog open={successDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '26px', border: '1px solid rgba(22,101,52,0.12)', boxShadow: '0 28px 80px rgba(15,23,42,0.18)' } }}>
         <DialogContent sx={{ textAlign: 'center', p: { xs: 2.5, sm: 4 } }}><Box sx={{ width: { xs: 68, sm: 78 }, height: { xs: 68, sm: 78 }, borderRadius: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', mb: 2, background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)', color: '#166534', boxShadow: '0 16px 34px rgba(22,101,52,0.18)' }}><VerifiedUserOutlined sx={{ fontSize: { xs: 42, sm: 50 } }} /></Box><Typography variant="h5" fontWeight={700} gutterBottom>Application Submitted Successfully</Typography><Typography color="text.secondary" sx={{ mb: 3 }}>Please save your Applicant ID. You will use this to track your application status.</Typography><Paper elevation={0} sx={{ p: 2, borderRadius: 1.5, bgcolor: 'rgba(31,122,71,0.08)', border: '1px solid rgba(31,122,71,0.18)', mb: 2 }}><Typography variant="h6" fontWeight={700} color="primary" sx={{ overflowWrap: 'anywhere' }}>{applicantId}</Typography></Paper>{emailPending && <Alert severity="info" sx={{ mb: 2 }}>Your application is saved. Sending your confirmation email…</Alert>}{!emailPending && !emailNotice && <Alert severity="success" sx={{ mb: 2 }}>A copy of your Applicant ID was sent to your email address.</Alert>}{emailNotice && <Alert severity="warning" sx={{ mb: 2, textAlign: 'left' }}>{emailNotice}</Alert>}{copied && <Alert severity="success" sx={{ mb: 2 }}>Applicant ID copied!</Alert>}{copyFailed && <Alert severity="error" sx={{ mb: 2 }}>Unable to copy Applicant ID.</Alert>}</DialogContent>
         <DialogActions sx={{ p: { xs: 2, sm: 3 }, justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}><Button variant="outlined" startIcon={<ContentCopy />} onClick={handleCopyId} sx={{ ...softButtonSx, borderColor: '#166534', color: '#166534', background: '#ffffff', width: { xs: '100%', sm: 'auto' } }}>Copy Applicant ID</Button><Button variant="contained" onClick={() => navigate('/track')} sx={{ ...softButtonSx, background: 'linear-gradient(135deg, #1F7A47 0%, #3FA46A 100%)', width: { xs: '100%', sm: 'auto' } }}>Track Application</Button><Button onClick={handleCloseDialog} sx={{ ...softButtonSx, width: { xs: '100%', sm: 'auto' } }}>Close</Button></DialogActions>
