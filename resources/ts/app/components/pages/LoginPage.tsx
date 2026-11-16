@@ -396,7 +396,7 @@ export default function LoginPage() {
                   mt: 3,
                   mb: 2,
                   py: 1.45,
-                  borderRadius: "16px",
+                  borderRadius: "999px",
                   textTransform: "none",
                   fontSize: "0.98rem",
                   fontWeight: 700,
@@ -417,27 +417,20 @@ export default function LoginPage() {
                 {signingIn ? 'Signing in…' : loading ? 'Checking session…' : 'Sign In to HRIS'}
               </Button>
             </form>
-            <Stack spacing={1.5} alignItems="center">
-              <Box sx={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1fr)',
-                '@media (min-width: 480px)': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
-                gap: 0.5,
-                width: '100%',
-                maxWidth: 420,
-              }}>
+            <Stack alignItems="center" sx={{ width: '100%' }}>
+              <Stack alignItems="center" spacing={0.5}>
                 <Button size="small" aria-haspopup="dialog" disabled={loading || signingIn || sendingEmail} onClick={() => openEmailDialog('reset')}>Forgot password?</Button>
                 <Button size="small" aria-haspopup="dialog" disabled={loading || signingIn || sendingEmail} onClick={() => openEmailDialog('confirm')}>Resend confirmation email</Button>
-              </Box>
-              <Link
+              </Stack>
+              <Button
                 component={RouterLink}
                 to={registrationPath}
-                underline="always"
-                variant="body2"
-                sx={{ textAlign: 'center', color: '#087443', fontWeight: 700 }}
+                fullWidth
+                variant="outlined"
+                sx={{ mt: { xs: 3.5, sm: 4.5 }, minHeight: 46, borderRadius: '999px', color: '#087443', borderColor: '#087443', fontWeight: 700 }}
               >
-                Create an applicant account here
-              </Link>
+                Create an applicant account
+              </Button>
             </Stack>
           </Box>
         </Paper>
