@@ -42,6 +42,8 @@ import { useAuth } from '../../context/AuthContext';
 import ActionSnackbar from '../ActionSnackbar';
 import { APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { NO_OUTLET, OUTLETS } from '../../lib/constants';
+import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
+import { jobTitleKey } from '../../lib/jobTitles';
 import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
 import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
@@ -305,6 +307,7 @@ export default function EmployeeProfile() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [positionRate, setPositionRate] = useState<{ position: string; rate: number | null } | null>(null);
   const [editForm, setEditForm] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -318,6 +321,23 @@ export default function EmployeeProfile() {
   const [profileTab, setProfileTab] = useState('Personal');
   const [editProfileTab, setEditProfileTab] = useState('Personal');
   const [otherSkillsEnabled, setOtherSkillsEnabled] = useState(false);
+  const canSeeSalary = Boolean(user && user.role !== 'supervisor');
+  const positionKey = jobTitleKey(employee?.position ?? '');
+
+  useEffect(() => {
+    if (!canSeeSalary || !positionKey) return;
+
+    let active = true;
+    loadJobSalaryRates([positionKey])
+      .then(rates => {
+        if (active) setPositionRate({ position: positionKey, rate: rates.get(positionKey) ?? 0 });
+      })
+      .catch(() => {
+        if (active) setPositionRate({ position: positionKey, rate: null });
+      });
+
+    return () => { active = false; };
+  }, [canSeeSalary, positionKey]);
 
   useEffect(() => {
   if (!id) return;
@@ -718,6 +738,19 @@ export default function EmployeeProfile() {
     );
   }
 
+  const postingRate = positionRate?.position === positionKey ? positionRate.rate : undefined;
+  const savedSalary = parseSalaryRate(employee.salary);
+  let salaryLabel = savedSalary ? salaryFormatter.format(savedSalary) : 'Not set';
+  if (positionKey && postingRate === undefined) salaryLabel = 'Loading…';
+  if (postingRate === null && !savedSalary) salaryLabel = 'Unavailable';
+  if (postingRate) salaryLabel = `${salaryFormatter.format(postingRate)}/day`;
+
+  const headerDetails = [
+    { label: 'Position', value: employee.position || 'Not set' },
+    ...(canSeeSalary ? [{ label: 'Salary', value: salaryLabel }] : []),
+    { label: 'Outlet', value: employee.outlet && employee.outlet !== NO_OUTLET ? employee.outlet : 'No Outlet' },
+  ];
+
   const handleCloseEdit = () => {
     setEditing(false);
     setEditForm(employee);
@@ -905,14 +938,14 @@ export default function EmployeeProfile() {
               <Typography variant="h5" sx={{ color: GREEN_UI.text, fontWeight: 700 }}>{employee.name || 'Employee Profile'}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.75, rowGap: 0.25 }}>
                 <Typography variant="body2" color="text.secondary">{employee.id}</Typography>
-                <Typography variant="body2" color="text.secondary">{employee.position || 'No position set'}</Typography>
-                {user?.role !== 'supervisor' && (
-                  <Typography variant="body2" color="text.secondary">
-                    Salary {employee.salary != null && employee.salary !== '' && Number.isFinite(Number(employee.salary))
-                      ? salaryFormatter.format(Number(employee.salary)) : 'not set'}
-                  </Typography>
-                )}
-                <Typography variant="body2" color="text.secondary">{employee.outlet && employee.outlet !== NO_OUTLET ? employee.outlet : 'No Outlet'}</Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1, rowGap: 0.25 }}>
+                  {headerDetails.map(({ label, value }, index) => (
+                    <Typography key={label} variant="body2" color="text.secondary">
+                      {index > 0 && <Box component="span" aria-hidden="true" sx={{ mr: 1 }}>|</Box>}
+                      <strong>{label}:</strong> {value}
+                    </Typography>
+                  ))}
+                </Box>
               </Box>
             </Box>
           </Box>
