@@ -46,6 +46,7 @@ import { NO_OUTLET, OUTLETS } from '../../lib/constants';
 import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import { includeSelectedJobTitle, jobTitleKey } from '../../lib/jobTitles';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
+import { formatSalaryInput, readDailyRateEdit } from '../../lib/salaryInput';
 import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
 import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
@@ -330,8 +331,9 @@ export default function EmployeeProfile() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [employee, setEmployee] = useState<Employee | null>(null);
-  const [positionRate, setPositionRate] = useState<{ position: string; rate: number | null } | null>(null);
+  const [positionRates, setPositionRates] = useState(() => new Map<string, number | null>());
   const [editForm, setEditForm] = useState<Employee | null>(null);
+  const [salaryDraft, setSalaryDraft] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -353,6 +355,10 @@ export default function EmployeeProfile() {
   const canManageAccount = user?.role === 'hr' || user?.role === 'gm';
   const jobTitles = useJobTitleOptions(editing && canManageAccount);
   const positionKey = jobTitleKey(employee?.position ?? '');
+  const editPositionKey = jobTitleKey(editForm?.position ?? '');
+  const alternatePositionKey = editing && editPositionKey !== positionKey ? editPositionKey : '';
+  const savedSalary = parseSalaryRate(employee?.salary);
+  const editSavedSalary = editPositionKey === positionKey ? savedSalary : 0;
 
   useEffect(() => {
     if (previewDoc?.category !== 'certificate' || !/\.docx$/i.test(previewDoc.name)) return;
@@ -377,19 +383,24 @@ export default function EmployeeProfile() {
   }, [previewDoc]);
 
   useEffect(() => {
-    if (!canSeeSalary || !positionKey) return;
+    const keys = [positionKey, alternatePositionKey].filter(Boolean);
+    if (!canSeeSalary || !keys.length) return;
 
     let active = true;
-    loadJobSalaryRates([positionKey])
-      .then(rates => {
-        if (active) setPositionRate({ position: positionKey, rate: rates.get(positionKey) ?? 0 });
-      })
-      .catch(() => {
-        if (active) setPositionRate({ position: positionKey, rate: null });
+    const storeRates = (rates: Map<string, number> | null) => {
+      if (!active) return;
+      setPositionRates(previous => {
+        const next = new Map(previous);
+        for (const key of keys) next.set(key, rates ? rates.get(key) ?? 0 : null);
+        return next;
       });
+    };
+    loadJobSalaryRates(keys)
+      .then(storeRates)
+      .catch(() => storeRates(null));
 
     return () => { active = false; };
-  }, [canSeeSalary, positionKey]);
+  }, [canSeeSalary, positionKey, alternatePositionKey]);
 
   useEffect(() => {
   if (!id) return;
@@ -529,11 +540,10 @@ export default function EmployeeProfile() {
 
   const handleSave = async () => {
   if (!editForm || !id) return;
-    const salaryChanged = editForm.salary !== employee?.salary;
-    const salaryInput = String(editForm.salary ?? '').trim();
-    if (salaryChanged && salaryInput && (!/^\d{1,9}(?:\.\d{1,2})?$/.test(salaryInput) || Number(salaryInput) <= 0)) {
+    const nextOverride = salaryDraft === null ? editSavedSalary : Number(salaryDraft);
+    if (salaryDraft && (!Number.isFinite(nextOverride) || nextOverride <= 0)) {
       setEditProfileTab('Account');
-      setSnackbar({ open: true, message: 'Enter a positive daily salary with up to two decimal places, or leave Salary blank.', severity: 'error' });
+      setSnackbar({ open: true, message: 'Enter a daily salary greater than zero, or clear the field to use the job posting rate.', severity: 'error' });
       return;
     }
     const original = employee?.applicationForm;
@@ -583,7 +593,7 @@ export default function EmployeeProfile() {
       philhealth: editForm.philhealth,
       pagibig: editForm.pagibig,
     };
-    if (salaryChanged) employeeUpdate.salary = salaryInput ? Number(salaryInput) : null;
+    if (nextOverride !== savedSalary) employeeUpdate.salary = nextOverride || null;
     if (documentsChanged) {
       const encoded = await Promise.all(addedFiles.map(async ({ file, ...metadata }) => ({
         name: file.name,
@@ -720,6 +730,7 @@ export default function EmployeeProfile() {
     setEmployee(updatedEmployee);
     setEditForm(updatedEmployee);
     setEditing(false);
+    setSalaryDraft(null);
     setNewDocFiles([]);
     setNewCertificateFiles([]);
     setPasswordFields(EMPTY_PASSWORD_FIELDS);
@@ -819,8 +830,10 @@ export default function EmployeeProfile() {
     );
   }
 
-  const postingRate = positionRate?.position === positionKey ? positionRate.rate : undefined;
-  const savedSalary = parseSalaryRate(employee.salary);
+  const postingRate = positionRates.get(positionKey);
+  const editPostingRate = positionRates.get(editPositionKey);
+  const suggestedSalary = editSavedSalary || editPostingRate;
+  const editSalary = salaryDraft ?? (suggestedSalary ? suggestedSalary.toFixed(2) : '');
   let salaryLabel = savedSalary ? `${salaryFormatter.format(savedSalary)}/day` : 'Not set';
   if (positionKey && postingRate === undefined && !savedSalary) salaryLabel = 'Loading…';
   if (postingRate === null && !savedSalary) salaryLabel = 'Unavailable';
@@ -835,6 +848,7 @@ export default function EmployeeProfile() {
   const handleCloseEdit = () => {
     setEditing(false);
     setEditForm(employee);
+    setSalaryDraft(null);
     setNewDocFiles([]);
     setNewCertificateFiles([]);
     setPasswordFields(EMPTY_PASSWORD_FIELDS);
@@ -1075,6 +1089,7 @@ export default function EmployeeProfile() {
                   sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
                   onClick={() => {
                     setEditForm(employee);
+                    setSalaryDraft(null);
                     setNewDocFiles([]);
                     setNewCertificateFiles([]);
                     setEditProfileTab(canManageAccount ? 'Account' : 'Personal');
@@ -1437,14 +1452,19 @@ export default function EmployeeProfile() {
                 <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Employment details</Typography>
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, md: 4 }}>{editAppChoice('Position', editForm.position,
-                    position => setEditForm({ ...editForm, position }), includeSelectedJobTitle(jobTitles, editForm.position))}</Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>{editAppField('Daily Salary (₱)', String(editForm.salary ?? ''),
-                    salary => setEditForm({ ...editForm, salary }), {
-                      inputProps: { inputMode: 'decimal' },
-                      helperText: jobTitleKey(editForm.position) === positionKey && postingRate
-                        ? `Leave blank to use ${salaryFormatter.format(postingRate)}/day from Job Postings.`
-                        : 'Leave blank to use the position’s rate from Job Postings.',
-                    })}</Grid>
+                    position => {
+                      if (jobTitleKey(position) !== editPositionKey) setSalaryDraft(null);
+                      setEditForm({ ...editForm, position });
+                    }, includeSelectedJobTitle(jobTitles, editForm.position))}</Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField fullWidth label="Daily Salary (₱)" value={formatSalaryInput(editSalary)}
+                      InputLabelProps={{ shrink: true }} inputProps={{ inputMode: 'decimal' }} sx={applicationTextFieldSx}
+                      helperText={editPostingRate ? `Job posting rate is ${salaryFormatter.format(editPostingRate)}/day. Clear to use it.` : undefined}
+                      onChange={event => {
+                        const rate = readDailyRateEdit(event.target as HTMLInputElement, (event.nativeEvent as InputEvent).inputType, 9);
+                        if (rate !== null) setSalaryDraft(rate);
+                      }} />
+                  </Grid>
                   <Grid size={{ xs: 12, md: 4 }}>
                     <TextField fullWidth select label="Select an outlet" value={editForm.outlet}
                       onChange={event => setEditForm({ ...editForm, outlet: event.target.value })}

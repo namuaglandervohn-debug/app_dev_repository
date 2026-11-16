@@ -32,6 +32,7 @@ import {
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import { getJobTitleOptions, jobTitleKey } from "../../lib/jobTitles";
+import { formatSalaryInput, parseDailyRateInput, readDailyRateEdit } from "../../lib/salaryInput";
 import { useJobTitleOptions } from "../../lib/useJobTitleOptions";
 import ActionSnackbar from "../ActionSnackbar";
 
@@ -133,22 +134,6 @@ function getMissingRequiredFields(form: JobForm) {
   return REQUIRED_FIELDS.filter((field) => !form[field].trim());
 }
 
-function formatSalaryInput(value: string) {
-  const cleanedValue = value.replace(/,/g, "");
-
-  return cleanedValue.replace(/\d+(?:\.\d*)?/g, (numberPart) => {
-    const [wholeNumber, decimalPart] = numberPart.split(".");
-    const formattedWholeNumber = wholeNumber.replace(
-      /\B(?=(\d{3})+(?!\d))/g,
-      ",",
-    );
-
-    return decimalPart !== undefined
-      ? `${formattedWholeNumber}.${decimalPart}`
-      : formattedWholeNumber;
-  });
-}
-
 function getSalaryLabel(salary?: string | null) {
   if (!salary?.trim()) return "Salary Negotiable";
 
@@ -156,14 +141,6 @@ function getSalaryLabel(salary?: string | null) {
   return formattedSalary.includes("₱")
     ? formattedSalary
     : `₱ ${formattedSalary}`;
-}
-
-function parseDailyRateInput(value: string) {
-  const amount = value.trim().replace(/^₱\s*/, "");
-  if (!amount) return "";
-  return /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{0,2})?$/.test(amount)
-    ? amount.replace(/,/g, "")
-    : null;
 }
 
 function formatSalary(salary?: string | null) {
@@ -1354,30 +1331,8 @@ export default function JobPostingManagement() {
                         : ""
                   }
                   onChange={e => {
-                    const input = e.target;
-                    const inputType = (e.nativeEvent as InputEvent).inputType;
-                    const rate = parseDailyRateInput(inputType === "insertFromPaste"
-                      ? input.value
-                      : input.value.replace(/,/g, ""));
-                    if (rate === null) return;
-
-                    const charactersBeforeCaret = input.value.slice(0, input.selectionStart ?? input.value.length)
-                      .replace(/[₱,\s]/g, "").length;
-                    const formattedRate = formatSalaryInput(rate);
-                    let caret = 0;
-                    let characters = 0;
-                    while (caret < formattedRate.length && characters < charactersBeforeCaret) {
-                      if (formattedRate[caret] !== ",") characters++;
-                      caret++;
-                    }
-                    if (inputType === "deleteContentForward" && formattedRate[caret] === ",") caret++;
-
-                    updateFormField("salary_range", rate);
-                    requestAnimationFrame(() => {
-                      if (input === document.activeElement && input.value === formattedRate) {
-                        input.setSelectionRange(caret, caret);
-                      }
-                    });
+                    const rate = readDailyRateEdit(e.target as HTMLInputElement, (e.nativeEvent as InputEvent).inputType);
+                    if (rate !== null) updateFormField("salary_range", rate);
                   }}
                   slotProps={{
                     input: { startAdornment: <InputAdornment position="start">₱</InputAdornment> },
