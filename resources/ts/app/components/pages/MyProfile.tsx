@@ -2,7 +2,8 @@ import { formatDisplayDate } from '../../lib/displayDate';
 import MobileNumberField from '../MobileNumberField';
 import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { employeeApplicationFields } from '../../lib/employeeApplicationFields';
-import { parseSalaryRate } from '../../lib/jobSalaryRates';
+import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
+import { jobTitleKey } from '../../lib/jobTitles';
 import { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Grid, Chip, Divider, CircularProgress,
@@ -237,7 +238,8 @@ export default function MyProfile() {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const salaryEmployeeId = user?.role === 'employee' && user.employeeId === employee?.id ? employee?.id : undefined;
-  const salaryKey = salaryEmployeeId && employee?.position ? `${salaryEmployeeId}:${employee.position}` : '';
+  const salaryPosition = jobTitleKey(employee?.position ?? '');
+  const salaryKey = salaryEmployeeId && salaryPosition ? `${salaryEmployeeId}:${salaryPosition}` : '';
   const customSalary = parseSalaryRate(employee?.salary);
 
   useEffect(() => {
@@ -245,14 +247,23 @@ export default function MyProfile() {
 
     let active = true;
     async function loadPositionSalary() {
-      const { data, error } = await supabase.rpc('get_own_position_daily_rate', { p_employee_id: salaryEmployeeId });
-      if (active) setPositionSalary({ key: salaryKey, rate: error ? null : parseSalaryRate(data) });
+      let rate: number | null;
+      try {
+        const { data, error } = await supabase.rpc('get_own_position_daily_rate', { p_employee_id: salaryEmployeeId });
+        if (error) throw error;
+        rate = parseSalaryRate(data);
+      } catch {
+        if (!active) return;
+        const visibleRates = await loadJobSalaryRates([salaryPosition]);
+        rate = visibleRates.get(salaryPosition) ?? null;
+      }
+      if (active) setPositionSalary({ key: salaryKey, rate });
     }
     void loadPositionSalary().catch(() => {
       if (active) setPositionSalary({ key: salaryKey, rate: null });
     });
     return () => { active = false; };
-  }, [customSalary, salaryEmployeeId, salaryKey]);
+  }, [customSalary, salaryEmployeeId, salaryKey, salaryPosition]);
 
   useEffect(() => {
     if (!user) return;
