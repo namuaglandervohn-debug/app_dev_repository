@@ -142,6 +142,33 @@ test('login and its SIGNED_IN event perform one profile query; focus/refresh pre
   h.session.stop();
 });
 
+test('Admin / Staff accepts each staff role and keeps its assigned permissions', async () => {
+  for (const [stored, expected] of [['hr_admin', 'hr'], ['general_manager', 'gm'], ['supervisor', 'supervisor'], ['accounting_finance', 'accounting']]) {
+    const h = harness({ rows: [profile(hr, stored)] });
+    h.session.start();
+    await tick();
+    await h.session.login(hr.email, 'fixture-password', 'staff');
+    assert.equal(h.latest().user.role, expected);
+    h.session.stop();
+  }
+});
+
+test('a mismatched sign-in option never publishes the account or leaves the local login active', async () => {
+  for (const [role, expectedGroup] of [['employee', 'employee'], ['applicant', 'applicant']]) {
+    const h = harness(role === 'employee'
+      ? { rows: [profile(hr, role)] }
+      : { rows: [], applicantRows: [{ auth_user_id: hr.id, profile: { firstName: 'Applicant' } }] });
+    h.session.start();
+    await tick();
+    await assert.rejects(h.session.login(hr.email, 'fixture-password', 'staff'), /different sign-in option/);
+    assert.ok(h.states.every(state => state.user === null));
+    assert.deepEqual(h.authCalls.at(-1), ['logout', { scope: 'local' }]);
+    await h.session.login(hr.email, 'fixture-password', expectedGroup);
+    assert.equal(h.latest().user.role, role);
+    h.session.stop();
+  }
+});
+
 test('a slow GM restore cannot overwrite a completed HR login', async () => {
   const slow = deferred();
   const h = harness({ restored: gm, queryResult: (filters) => filters.auth_user_id === gm.id ? slow.promise : { data: hrProfile, error: null } });

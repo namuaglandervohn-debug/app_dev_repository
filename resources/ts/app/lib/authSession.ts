@@ -1,6 +1,7 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 
 export type UserRole = 'hr' | 'hr_admin' | 'employee' | 'supervisor' | 'gm' | 'general_manager' | 'accounting' | 'accounting_finance' | string;
+export type SignInGroup = 'staff' | 'employee' | 'applicant';
 export interface AuthUser {
   id: string;
   name: string;
@@ -175,7 +176,11 @@ export function createAuthSession(client: Client, publish: (state: AuthState) =>
         if (!data.user) throw new Error('The login did not return a valid session.');
         const profile = await loadAuthProfile(client, data.user);
         if (!current(ticket)) throw new Error('Sign-in was cancelled. Please try again.');
-        if (role && normalizeAppRole(profile.role) !== normalizeAppRole(role)) throw new Error('This account does not have the requested role.');
+        const actualGroup: SignInGroup = profile.role === 'employee' || profile.role === 'applicant' ? profile.role : 'staff';
+        const groupRequested = role === 'staff' || role === 'employee' || role === 'applicant';
+        if (role && (groupRequested ? actualGroup !== role : profile.role !== normalizeAppRole(role))) {
+          throw new Error('This account uses a different sign-in option. Choose the option for your account and try again.');
+        }
         identity = data.user.id;
         publish({ user: profile, loading: false });
       } catch (error) {

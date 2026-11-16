@@ -938,7 +938,7 @@ async function resolveEmployeeForAttendance(
     if (data) return { ...data, name: formatEmployeeName(data) || data.employee_id };
   }
 
-  if (/^EMP-\d{4}-\d+$/i.test(clean)) {
+  if (/^EMP-?\d+(?:-\d+)?$/i.test(clean)) {
     const { data, error } = await supabase
       .from("employees")
       .select("employee_id, first_name, middle_name, last_name, suffix, position, outlet, status, biometric_user_id")
@@ -995,11 +995,11 @@ function findEmployeeOptionForAttendance(
     if (biometricMatch) return biometricMatch;
   }
 
-  if (/^EMP-\d{4}-\d+$/i.test(clean)) {
+  if (/^EMP-?\d+(?:-\d+)?$/i.test(clean)) {
     const idMatch = employees.find(
       (employee) => normalizeCell(employee.employee_id).toLowerCase() === clean.toLowerCase(),
     );
-    if (idMatch) return idMatch;
+    return idMatch ?? null;
   }
 
   const normalizedNeedle = normalizeEmployeeLookupValue(clean);
@@ -1009,7 +1009,7 @@ function findEmployeeOptionForAttendance(
   }) ?? null;
 }
 
-function buildAttendancePayload(row: Partial<Attendance>, employee: EmployeeOption | null, logId?: string) {
+function buildAttendancePayload(row: Partial<Attendance>, employee: EmployeeOption, logId?: string) {
   const status = getStatusValue(row.status);
   const lateMinutes = Math.round(toSafeNumber(row.late));
   const undertimeMinutes = Math.round(toSafeNumber(row.undertime));
@@ -1028,8 +1028,8 @@ function buildAttendancePayload(row: Partial<Attendance>, employee: EmployeeOpti
 
   return {
     ...(logId ? { log_id: logId } : {}),
-    employee_id: employee?.employee_id ?? (String(row.employee ?? "").match(/^EMP-/i) ? String(row.employee) : null),
-    employee_name: employee?.name ?? String(row.employee ?? ""),
+    employee_id: employee.employee_id,
+    employee_name: employee.name,
     attendance_date: normalizeDateForFilter(row.date),
     time_in: toDbTime(String(row.timeIn ?? "")),
     time_out: toDbTime(String(row.timeOut ?? "")),
@@ -1284,6 +1284,7 @@ async function readErrorMessage(res: Response, fallback: string) {
 
 async function saveImportTask(task: SaveImportTask): Promise<ImportSaveResult> {
   const employee = task.employee ?? await resolveEmployeeForAttendance(task.row.employee, task.row.biometricUserId);
+  if (!employee) return { ok: false, key: task.key, error: 'The employee could not be verified.' };
   const date = normalizeDateForFilter(task.row.date);
 
   // For imports, let the database generate the raw log_id to avoid duplicate IDs during concurrent batch saves.
@@ -1359,7 +1360,12 @@ export default function AttendanceMonitoring() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+  const [employeeDirectory, setEmployeeDirectory] = useState<EmployeeOption[]>([]);
+  const employeeOptions = useMemo(() => employeeDirectory.filter(employee =>
+    String(employee.status ?? 'Active').toLowerCase() === 'active'), [employeeDirectory]);
+  const employeeNames = useMemo(() => new Map(employeeDirectory.map(employee =>
+    [employee.employee_id.toLowerCase(), employee.name])), [employeeDirectory]);
+  const attendanceName = (record: Attendance) => employeeNames.get((record.employeeId || record.employee).trim().toLowerCase()) || record.employee;
 
   const normalizedUserRole = String(user?.role ?? "").toLowerCase();
   const canManageAttendance = ["hr", "hr_admin", "general_manager", "admin"].includes(normalizedUserRole) || normalizedUserRole.includes("hr") || normalizedUserRole.includes("admin");
@@ -1373,13 +1379,11 @@ export default function AttendanceMonitoring() {
 
     if (error) {
       console.warn("Could not load active employees:", error.message);
-      setEmployeeOptions([]);
+      setEmployeeDirectory([]);
       return;
     }
 
-    setEmployeeOptions((data ?? [])
-      .filter((row: any) => String(row.status ?? "Active").toLowerCase() === "active")
-      .map(mapEmployeeOption));
+    setEmployeeDirectory((data ?? []).map(mapEmployeeOption));
   };
 
   const fetchAttendance = async () => {
@@ -1449,7 +1453,7 @@ export default function AttendanceMonitoring() {
     }
     setSaving(true);
     try {
-      const employee = employeeOptions.find((emp) => emp.employee_id === form.employee) ?? await resolveEmployeeForAttendance(form.employee);
+      const employee = employeeOptions.find((emp) => emp.employee_id === form.employee);
       if (!employee?.employee_id) throw new Error("Selected employee was not found in the employees table.");
 
       const logId = await getNextAttendanceLogId(form.date);
@@ -1461,6 +1465,9 @@ export default function AttendanceMonitoring() {
         .select()
         .single();
 
+      if (error?.code === '23505' && error.message.includes('attendance_logs_employee_date_key')) {
+        throw new Error('Attendance already exists for this employee on this date. Open the existing entry to make a correction.');
+      }
       if (error) throw error;
 
       const savedRecord = mapAttendanceLogToRow(data);
@@ -1704,18 +1711,19 @@ export default function AttendanceMonitoring() {
           const matchedEmployeeId = recordEmployeeId || employeeNameToId.get(recordEmployeeName);
           if (!matchedEmployeeId || !employeeIdSet.has(matchedEmployeeId)) return;
 
-          const mapped = mapAttendanceLogToRow(record, index);
-          existingByKey.set(
-            attendanceKeyFromParts(matchedEmployeeId, record.attendance_date),
-            { ...mapped, employeeId: matchedEmployeeId },
-          );
+          const key = attendanceKeyFromParts(matchedEmployeeId, record.attendance_date);
+          if (recordEmployeeId || !existingByKey.has(key)) {
+            existingByKey.set(key, mapAttendanceLogToRow(record, index));
+          }
         });
       }
 
       for (const resolved of resolvedRows) {
         const existing = existingByKey.get(resolved.key);
 
-        if (existing && !isRawAttendanceImport && (isAbnormalImport || isVerificationImport)) {
+        if (existing && !existing.employeeId) {
+          skippedRows.push({ employee: resolved.employee.name, date: resolved.date, reason: 'An unlinked entry exists for this date. Link the correct entry in Attendance first.' });
+        } else if (existing && !isRawAttendanceImport && (isAbnormalImport || isVerificationImport)) {
           tasks.push({
             kind: "update",
             key: resolved.key,
@@ -1866,7 +1874,8 @@ export default function AttendanceMonitoring() {
     return attendances.filter((a) => {
       const recordDate = normalizeDateForFilter(a.date);
       const dateMatch = !selectedDate || recordDate === selectedDate;
-      const employeeHaystack = `${a.employee ?? ""} ${a.employeeId ?? ""}`
+      const knownName = employeeNames.get((a.employeeId || a.employee).trim().toLowerCase());
+      const employeeHaystack = `${knownName ?? ''} ${a.employee} ${a.employeeId ?? ""}`
         .toLowerCase()
         .replace(/\s+/g, " ")
         .trim();
@@ -1878,10 +1887,10 @@ export default function AttendanceMonitoring() {
           ? hasLateMetric || normalizeStatusForFilter(a.status) === "late"
           : normalizeStatusForFilter(a.status) === filterStatus);
 
-      const reviewMatch = filterStatus === "review" && ["Needs Review", "Invalid", "Unprocessed", "Corrected"].includes(a.validationStatus ?? "");
+      const reviewMatch = filterStatus === "review" && (!a.employeeId || ["Needs Review", "Invalid", "Unprocessed", "Corrected"].includes(a.validationStatus ?? ""));
       return dateMatch && employeeMatch && (statusMatch || reviewMatch);
     });
-  }, [attendances, filterDate, filterEmployee, filterStatus]);
+  }, [attendances, employeeNames, filterDate, filterEmployee, filterStatus]);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(filtered.length / rowsPerPage)),
@@ -1942,6 +1951,7 @@ export default function AttendanceMonitoring() {
 
   const [editDialog, setEditDialog] = useState(false);
   const [editRecord, setEditRecord] = useState<Attendance | null>(null);
+  const [linkEmployeeId, setLinkEmployeeId] = useState('');
   const [editForm, setEditForm] = useState({
     timeIn: "",
     timeOut: "",
@@ -1956,9 +1966,9 @@ export default function AttendanceMonitoring() {
     if (!editRecord) return;
     setSaving(true);
     try {
-      const employee = editRecord.employeeId
-        ? await resolveEmployeeForAttendance(editRecord.employeeId)
-        : await resolveEmployeeForAttendance(editRecord.employee);
+      const targetEmployeeId = editRecord.employeeId || linkEmployeeId;
+      const employee = employeeDirectory.find(entry => entry.employee_id === targetEmployeeId);
+      if (!employee) throw new Error('Select the correct employee before saving this attendance entry.');
       const payload = buildAttendancePayload(
         {
           ...editRecord,
@@ -1978,6 +1988,9 @@ export default function AttendanceMonitoring() {
         .select()
         .single();
 
+      if (error?.code === '23505' && error.message.includes('attendance_logs_employee_date_key')) {
+        throw new Error('This employee already has a linked entry for this date. Review the existing entry before linking this one.');
+      }
       if (error) throw error;
       const correctedRecord = mapAttendanceLogToRow(data);
       setAttendances((prev) =>
@@ -2019,6 +2032,7 @@ export default function AttendanceMonitoring() {
 
   const openEdit = (att: Attendance) => {
     setEditRecord(att);
+    setLinkEmployeeId('');
     setEditForm({
       timeIn: att.timeIn,
       timeOut: att.timeOut,
@@ -2485,10 +2499,10 @@ export default function AttendanceMonitoring() {
                   >
                     <Box sx={{ minWidth: 0 }}>
                       <Typography fontWeight={700} noWrap sx={{ color: GREEN_UI.text }}>
-                        {att.employee}
+                        {attendanceName(att)}
                       </Typography>
                       <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                        {formatDisplayDate(normalizeDateForFilter(att.date))}
+                        {formatDisplayDate(normalizeDateForFilter(att.date))}{!att.employeeId && ' · Employee link needed'}
                       </Typography>
                     </Box>
                     <Chip
@@ -2629,7 +2643,10 @@ export default function AttendanceMonitoring() {
                         <Box sx={{ ...iconTileSx, width: 34, height: 34}}>
                           <PersonRounded fontSize="small" />
                         </Box>
-                        <Typography fontWeight={600} sx={{ color: GREEN_UI.text, whiteSpace: "nowrap" }}>{att.employee}</Typography>
+                        <Box>
+                          <Typography fontWeight={600} sx={{ color: GREEN_UI.text, whiteSpace: "nowrap" }}>{attendanceName(att)}</Typography>
+                          {!att.employeeId && <Typography variant="caption" color="warning.dark">Employee link needed</Typography>}
+                        </Box>
                       </Box>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
@@ -2699,7 +2716,7 @@ export default function AttendanceMonitoring() {
                         {att.source || "Unknown source"} · {att.validationStatus || "Unprocessed"}
                         {att.reviewedBy && ` · Reviewed by ${att.reviewedBy}`}
                       </Typography>
-                      {canReviewAttendance && ["Needs Review", "Unprocessed", "Corrected"].includes(att.validationStatus ?? "") && (
+                      {canReviewAttendance && att.employeeId && ["Needs Review", "Unprocessed", "Corrected"].includes(att.validationStatus ?? "") && (
                         <Button size="small" disabled={saving} onClick={() => reviewAttendance(att)}>Mark Reviewed</Button>
                       )}
                     </TableCell>
@@ -3288,7 +3305,7 @@ export default function AttendanceMonitoring() {
             }}
           >
             <EditNote color="warning" /> Correct & Reprocess Attendance —{" "}
-            {editRecord?.employee} ({formatDisplayDate(editRecord?.date)})
+            {editRecord && attendanceName(editRecord)} ({formatDisplayDate(editRecord?.date)})
           </Box>
         </DialogTitle>
         <DialogContent
@@ -3303,6 +3320,15 @@ export default function AttendanceMonitoring() {
             Editing this record will mark it as corrected by HR. The original
             data will be overwritten.
           </Alert>
+          {editRecord && !editRecord.employeeId && (
+            <TextField select fullWidth label="Link employee" value={linkEmployeeId}
+              onChange={event => setLinkEmployeeId(event.target.value)}
+              helperText={`Recorded as ${editRecord.employee}. Select the employee whose DTR should include this entry.`}>
+              {employeeDirectory.map(employee => <MenuItem key={employee.employee_id} value={employee.employee_id}>
+                {employee.name} — {employee.employee_id}
+              </MenuItem>)}
+            </TextField>
+          )}
           <Grid container spacing={2}>
             <Grid size={6}>
               <TextField
@@ -3412,7 +3438,7 @@ export default function AttendanceMonitoring() {
             variant="contained"
             color="warning"
             onClick={handleEditSave}
-            disabled={saving}
+            disabled={saving || (!editRecord?.employeeId && !linkEmployeeId)}
             sx={{ ...pillButtonSx }}
             startIcon={
               saving ? (

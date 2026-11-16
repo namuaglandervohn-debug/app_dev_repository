@@ -9,7 +9,6 @@ import {
   Typography,
   Box,
   Alert,
-  MenuItem,
   InputAdornment,
   IconButton,
   Stack,
@@ -23,7 +22,6 @@ import {
 } from "@mui/material";
 import {
   ArrowBackRounded,
-  Search,
   Visibility,
   VisibilityOff,
   Email,
@@ -34,6 +32,13 @@ import BrandLogo from "../BrandLogo";
 import { COMPANY } from "../../lib/constants";
 import { consumeSignupEmailConfirmation, supabase } from "../../lib/supabaseClient";
 import { applicantConfirmationRedirect } from "../../lib/applicantConfirmationRedirect";
+import type { SignInGroup } from "../../lib/authSession";
+
+const signInChoices: { value: SignInGroup; label: string }[] = [
+  { value: 'staff', label: 'Admin / Staff' },
+  { value: 'employee', label: 'Employee' },
+  { value: 'applicant', label: 'Applicant' },
+];
 
 export default function LoginPage() {
   const { state } = useLocation();
@@ -48,7 +53,6 @@ export default function LoginPage() {
   const [emailError, setEmailError] = useState('');
   const [emailNotice, setEmailNotice] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [selectedDemo, setSelectedDemo] = useState("");
   const submitting = useRef(false);
   const [signingIn, setSigningIn] = useState(false);
   const { login, user, loading, logout } = useAuth();
@@ -59,9 +63,11 @@ export default function LoginPage() {
   const nextQuery = /^\/apply(?:\?|$)/.test(next) ? `next=${encodeURIComponent(next)}` : '';
   const applicantPath = nextQuery ? `/applicant?${nextQuery}` : '/applicant';
   const registrationPath = `/applicant?mode=register${nextQuery ? `&${nextQuery}` : ''}`;
+  const [signInGroup, setSignInGroup] = useState<SignInGroup | null>(registrationEmail || nextQuery ? 'applicant' : null);
 
   useEffect(() => {
     if (consumeSignupEmailConfirmation()) {
+      setSignInGroup('applicant');
       setNotice('Email verified. Sign in with your email and password.');
     }
   }, []);
@@ -81,12 +87,16 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading || sendingEmail || submitting.current) return;
+    if (!signInGroup) {
+      setError('Choose how you want to sign in.');
+      return;
+    }
     submitting.current = true;
     setSigningIn(true);
     setError("");
     setNotice('');
     try {
-      await login(email, password);
+      await login(email, password, signInGroup);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Invalid email or password";
       setError(message === 'Invalid login credentials'
@@ -135,34 +145,6 @@ export default function LoginPage() {
       setSendingEmail(false);
     }
   };
-
-  const demoAccounts = [
-    {
-      email: "hr@company.com",
-      password: "password",
-      role: "HR Personnel/Admin",
-    },
-    {
-      email: "employee@company.com",
-      password: "password",
-      role: "Employee",
-    },
-    {
-      email: "supervisor@company.com",
-      password: "password",
-      role: "Supervisor",
-    },
-    {
-      email: "gm@company.com",
-      password: "password",
-      role: "General Manager",
-    },
-    {
-      email: "accounting@company.com",
-      password: "password",
-      role: "Accounting & Finance",
-    },
-  ];
 
   const fieldSx = {
     mt: 1.4,
@@ -326,67 +308,20 @@ export default function LoginPage() {
             )}
 
             <form onSubmit={handleSubmit} noValidate>
-              <TextField
-                select
-                disabled={loading || signingIn}
-                fullWidth
-                label="Quick Demo Account"
-                value={selectedDemo}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const acc = demoAccounts.find((a) => a.email === val);
-                  setSelectedDemo(val);
-                  if (acc) {
-                    setEmail(acc.email);
-                    setPassword(acc.password);
-                  }
-                }}
-                margin="normal"
-                size="medium"
-                InputLabelProps={{ shrink: true }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search sx={{ fontSize: 19, color: "#0A7A43" }} />
-                    </InputAdornment>
-                  ),
-                }}
-                SelectProps={{
-                  displayEmpty: true,
-                  MenuProps: {
-                    PaperProps: {
-                      sx: {
-                        mt: 1,
-                        borderRadius: "18px",
-                        border: "1px solid rgba(45,168,97,0.14)",
-                        boxShadow: "0 18px 40px rgba(17, 48, 34, 0.18)",
-                        "& .MuiMenuItem-root": {
-                          fontSize: "0.9rem",
-                          borderRadius: "12px",
-                          mx: 1,
-                          my: 0.4,
-                        },
-                        "& .MuiMenuItem-root.Mui-selected": {
-                          bgcolor: "#DDF5E5",
-                          color: "#006B3C",
-                        },
-                      },
-                    },
-                  },
-                }}
-                sx={fieldSx}
-              >
-                <MenuItem key="demo-placeholder" value="" disabled>
-                  <em style={{ color: "#8A978D", fontStyle: "normal", fontWeight: 700 }}>
-                    — Select a demo role —
-                  </em>
-                </MenuItem>
-                {demoAccounts.map((account) => (
-                  <MenuItem key={account.email} value={account.email}>
-                    {account.role}
-                  </MenuItem>
+              <Typography id="sign-in-choice-label" variant="subtitle2" sx={{ color: '#125335', mb: 1 }}>Sign in as</Typography>
+              <Box role="group" aria-labelledby="sign-in-choice-label" sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {signInChoices.map(({ value, label }) => (
+                  <Button key={value} type="button" aria-pressed={signInGroup === value}
+                    variant={signInGroup === value ? 'contained' : 'outlined'} disabled={loading || signingIn}
+                    onClick={() => { setSignInGroup(value); setError(''); }}
+                    sx={{ flex: '1 1 auto', borderRadius: '12px', minHeight: 42, whiteSpace: 'nowrap' }}>
+                    {label}
+                  </Button>
                 ))}
-              </TextField>
+              </Box>
+              {signInGroup === 'staff' && <Typography variant="caption" sx={{ color: '#3e604b', display: 'block', mt: 0.75 }}>
+                HR/Admin, General Manager, Supervisor, and Accounting &amp; Finance
+              </Typography>}
 
               <TextField
                 fullWidth
@@ -395,7 +330,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="username"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); setSelectedDemo(''); }}
+                onChange={(e) => setEmail(e.target.value)}
                 margin="normal"
                 required
                 InputProps={{
