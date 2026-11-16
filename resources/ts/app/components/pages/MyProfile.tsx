@@ -20,10 +20,10 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import ActionSnackbar from '../ActionSnackbar';
 import ChangePasswordDialog from '../ChangePasswordDialog';
-import { profileCardSx as softCardSx, profileDetailsSx as innerCardSx, profileFieldSx as softTextFieldSx, profileAvatarSx, profileHeroSx, profileIconSx as sectionIconSx } from '../layouts/profileStyles';
+import { profileCardSx as softCardSx, profileDetailsSx as innerCardSx, profileFieldSx as softTextFieldSx, profileHeroSx, profileIconSx as sectionIconSx } from '../layouts/profileStyles';
 import ProfileSummary from '../layouts/ProfileSummary';
 import ProfilePhotoUpload from '../ProfilePhotoUpload';
-import { saveEmployeeProfilePhoto } from '../../lib/profilePhoto';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 
 interface Employee {
   id: string; name: string; position: string; department?: string;
@@ -31,7 +31,6 @@ interface Employee {
   address?: string; supervisor?: string; dateHired?: string;
   emergencyContact?: string; tin?: string; sss?: string;
   philhealth?: string; pagibig?: string;
-  profilePhoto?: string | null;
 }
 
 interface Application {
@@ -214,7 +213,7 @@ const isPreviewableDoc = (doc: DocFile) => {
 };
 
 export default function MyProfile() {
-  const { user } = useAuth();
+  const { user, profilePhoto, updateProfilePhoto } = useAuth();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [application, setApplication] = useState<Application | null>(null);
   const [applicationFields, setApplicationFields] = useState<ReturnType<typeof employeeApplicationFields>>([]);
@@ -294,7 +293,6 @@ export default function MyProfile() {
             found = {
               id: row.employee_id,
               name: fullName || applicant?.name || user.name,
-              profilePhoto: row.profile_photo ?? null,
               position: firstValue(row.position, applicant?.position_applied) ?? '',
               department: row.department ?? '',
               outlet: firstValue(accountOutlet, row.outlet, (user as any)?.outlet) ?? '',
@@ -382,7 +380,7 @@ export default function MyProfile() {
 
       if (error) throw error;
 
-      setEmployee(current => current && ({ ...current, ...editForm, profilePhoto: current.profilePhoto }));
+      setEmployee(current => current && ({ ...current, ...editForm }));
       setEditing(false);
       setSnackbar({ open: true, message: '✅ Profile updated successfully!', severity: 'success' });
     } catch (e: any) {
@@ -393,8 +391,7 @@ export default function MyProfile() {
   const uploadProfilePhoto = async (photo: string) => {
     const employeeId = user?.employeeId;
     if (!employeeId || employee?.id !== employeeId) throw new Error('Your employee profile could not be verified.');
-    await saveEmployeeProfilePhoto(employeeId, photo);
-    setEmployee(current => current?.id === employeeId ? { ...current, profilePhoto: photo } : current);
+    await updateProfilePhoto(photo);
     setSnackbar({ open: true, message: 'Profile picture updated.', severity: 'success' });
   };
 
@@ -501,9 +498,7 @@ export default function MyProfile() {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-            <Avatar src={employee?.profilePhoto ?? undefined} sx={profileAvatarSx}>
-              {initials}
-            </Avatar>
+            <ProfilePhotoAvatar photo={profilePhoto} initials={initials} />
             <Box sx={{ minWidth: 0 }}>
               <Typography
                 variant="h4"
@@ -635,8 +630,8 @@ export default function MyProfile() {
             ) : editing && editTab === 'account' ? (
               <Box id="employee-edit-account" role="tabpanel" aria-labelledby="employee-edit-account-tab">
                 <Stack direction="row" alignItems="center" spacing={2}>
-                  <Avatar src={employee.profilePhoto ?? undefined} sx={{ width: 58, height: 58 }}>{initials}</Avatar>
-                  <ProfilePhotoUpload photo={employee.profilePhoto} disabled={saving} onUpload={uploadProfilePhoto} />
+                  <Avatar src={profilePhoto ?? undefined} sx={{ width: 58, height: 58 }}>{initials}</Avatar>
+                  <ProfilePhotoUpload photo={profilePhoto} disabled={saving} onUpload={uploadProfilePhoto} />
                 </Stack>
               </Box>
             ) : (

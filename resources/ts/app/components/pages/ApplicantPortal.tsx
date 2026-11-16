@@ -3,7 +3,7 @@ import MobileNumberField from '../MobileNumberField';
 import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { Alert, Avatar, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, IconButton, InputAdornment, MenuItem, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, IconButton, InputAdornment, MenuItem, Paper, Stack, Typography } from '@mui/material';
 import { AccountCircle, ArrowBackRounded, Assignment, BadgeOutlined, CakeOutlined, Close, EditNote, EmailOutlined, FavoriteBorder, HomeOutlined, LockOutlined, LocationCityOutlined, MapOutlined, PersonOutline, PhoneOutlined, PlaceOutlined, Public, Save, TrackChanges, Visibility, VisibilityOff, WcOutlined } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -14,8 +14,9 @@ import { ApplicationTracker } from './TrackApplicationPage';
 import { fileToDataUrl } from '../../lib/applicationFiles';
 import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';
 import { accountColors } from '../layouts/accountColors';
-import { profileAvatarSx, profileCardSx, profileDetailsSx, profileFieldSx, profileHeroSx, profileIconSx } from '../layouts/profileStyles';
+import { profileCardSx, profileDetailsSx, profileFieldSx, profileHeroSx, profileIconSx } from '../layouts/profileStyles';
 import ProfilePhotoUpload from '../ProfilePhotoUpload';
+import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { APPLICANT_COUNTRIES, APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { applicationHistoryColumns, type ApplicationHistoryItem } from '../../lib/applicationHistory';
 import { formatDisplayDate } from '../../lib/displayDate';
@@ -84,13 +85,12 @@ async function loadApplicantApplications(userId: string): Promise<ApplicantSubmi
 }
 
 export default function ApplicantPortal() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, profilePhoto, updateProfilePhoto } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const registering = params.get('mode') === 'register';
   const [profile, setProfile] = useState<Record<string, any>>({ ...initial });
   const [profileBeforeEdit, setProfileBeforeEdit] = useState<Record<string, any> | null>(null);
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -118,12 +118,11 @@ export default function ApplicantPortal() {
     setReady(false);
     void (async () => {
       try {
-        const result = await supabase.from('applicant_profiles').select('profile,profile_photo').eq('auth_user_id', user.id).single();
+        const result = await supabase.from('applicant_profiles').select('profile').eq('auth_user_id', user.id).single();
         if (result.error) throw result.error;
         const list = await loadApplicantApplications(user.id);
         if (active) {
           setProfile({ ...initial, ...completeApplicantAddress(result.data.profile) });
-          setProfilePhoto(result.data.profile_photo ?? null);
           setApplications(list);
           setProfileOwner(user.id);
           setReady(true);
@@ -135,10 +134,7 @@ export default function ApplicantPortal() {
 
   const uploadProfilePhoto = async (photo: string) => {
     if (!user || !profileReady) throw new Error('Sign in again to update your profile picture.');
-    const { error } = await supabase.from('applicant_profiles').update({ profile_photo: photo })
-      .eq('auth_user_id', user.id).select('auth_user_id').single();
-    if (error) throw new Error('Could not save your profile picture. Try again.');
-    setProfilePhoto(photo);
+    await updateProfilePhoto(photo);
     setNotice('Profile picture updated.');
   };
   const refreshApplications = async () => {
@@ -283,7 +279,7 @@ export default function ApplicantPortal() {
           <Paper elevation={0} sx={profileHeroSx}>
             <Stack direction="row" alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" flexWrap="wrap" gap={2} sx={{ position: 'relative', zIndex: 1 }}>
               <Stack direction="row" alignItems="center" gap={2} sx={{ minWidth: 0 }}>
-                <Avatar aria-hidden="true" src={profileReady ? profilePhoto ?? undefined : undefined} sx={profileAvatarSx}>{initials}</Avatar>
+                <ProfilePhotoAvatar photo={profilePhoto} initials={initials} />
                 <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                   <Typography component="h1" variant="h4" fontWeight={700}
                     sx={{ fontSize: { xs: '1.55rem', sm: '2rem', md: '2.35rem' }, color: '#1e2d24', letterSpacing: '-0.04em', lineHeight: 1.08 }}>
