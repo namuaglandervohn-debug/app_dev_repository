@@ -45,6 +45,16 @@ class UserAccountsTest extends TestCase
             && $request->url() === 'https://supabase.test/auth/v1/admin/users/employee-auth'
             && $request['password'] === 'Example-New123'
             && $request['app_metadata']['hris_temporary_password'] === false);
+
+        $this->withToken('test-token')->postJson('/api/admin/user-accounts', [
+            'action' => 'update_account_password',
+            'user_id' => 'USR-2026-0002',
+            'password' => 'Example-Alternate123',
+        ])->assertOk()->assertJsonPath('password_updated', true);
+
+        Http::assertSent(fn (Request $request) => $request->method() === 'PUT'
+            && $request->url() === 'https://supabase.test/auth/v1/admin/users/employee-auth'
+            && $request['password'] === 'Example-Alternate123');
     }
 
     public function test_creates_the_employee_before_linking_the_account(): void

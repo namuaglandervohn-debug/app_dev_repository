@@ -24,7 +24,7 @@ interface UserAccount {
   employeeId?: string; // EMP-2026-0001
   applicantId?: string; // APP-2026-0001
   outlet?: string;
-  password?: string;
+  hasLogin: boolean;
   active?: boolean;
   createdAt?: string;
 }
@@ -43,6 +43,8 @@ const EMPTY_FORM = {
   outlet: '',
   password: '',
 };
+const EMPTY_PASSWORD_FORM = { password: '', confirmation: '', showPassword: false, showConfirmation: false };
+const ACCOUNT_FIELDS = 'user_id,full_name,email,role,employee_id,applicant_id,outlet,is_active,created_at,auth_user_id';
 
 /** Role dropdown options — values must match UserRole */
 const ROLES: { value: UserRole; label: string }[] = [
@@ -166,9 +168,9 @@ export default function UserManagement() {
   const [editForm, setEditForm]     = useState<Partial<UserAccount>>({});
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
   const [search, setSearch]         = useState('');
-  const [newPwd, setNewPwd]         = useState('');
+  const [passwordForm, setPasswordForm] = useState(EMPTY_PASSWORD_FORM);
   const [showPwd, setShowPwd]       = useState(false);
-  const [showEditPwd, setShowEditPwd] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
   const [saving, setSaving]         = useState(false);
   const [snackbar, setSnackbar]     = useState({
     open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning',
@@ -184,7 +186,7 @@ export default function UserManagement() {
   try {
     const { data, error } = await supabase
       .from("user_accounts")
-      .select("*")
+      .select(ACCOUNT_FIELDS)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
@@ -193,7 +195,7 @@ export default function UserManagement() {
   id: u.user_id ?? "",
   name: u.full_name ?? "",
   email: u.email ?? "",
-  password: u.password ?? "",
+  hasLogin: Boolean(u.auth_user_id),
   role: u.role ?? "employee",
   employeeId: u.employee_id ?? "",
   applicantId: u.applicant_id ?? "",
@@ -334,7 +336,7 @@ export default function UserManagement() {
       id: userData.user_id,
       name: userData.full_name,
       email: userData.email,
-      password: "",
+      hasLogin: true,
       role: userData.role,
       employeeId: userData.employee_id,
       applicantId: userData.applicant_id,
@@ -368,7 +370,6 @@ export default function UserManagement() {
   }
 };
 
-  // Edit account profile. Passwords are managed by Supabase Auth, not user_accounts.
   const handleEdit = async () => {
   if (!selectedUser) return;
 
@@ -387,15 +388,11 @@ export default function UserManagement() {
       is_active: editForm.active ?? selectedUser.active ?? true,
     };
 
-    if (newPwd.trim()) {
-      throw new Error("Password resets must be completed in Supabase Auth or through a secure admin backend.");
-    }
-
     let result = await supabase
       .from("user_accounts")
       .update(updateData)
       .eq("user_id", selectedUser.id)
-      .select()
+      .select(ACCOUNT_FIELDS)
       .maybeSingle();
 
     if (!result.data) {
@@ -403,7 +400,7 @@ export default function UserManagement() {
         .from("user_accounts")
         .update(updateData)
         .eq("email", selectedUser.email)
-        .select()
+        .select(ACCOUNT_FIELDS)
         .maybeSingle();
     }
 
@@ -416,7 +413,7 @@ export default function UserManagement() {
       id: data.user_id ?? "",
       name: data.full_name ?? "",
       email: data.email ?? "",
-      password: data.password ?? "",
+      hasLogin: Boolean(data.auth_user_id),
       role: data.role ?? "employee",
       employeeId: data.employee_id ?? "",
       applicantId: data.applicant_id ?? "",
@@ -430,14 +427,11 @@ export default function UserManagement() {
     );
 
     setOpenEdit(false);
-    setNewPwd("");
-    setShowEditPwd(false);
+    setPasswordForm(EMPTY_PASSWORD_FORM);
 
     setSnackbar({
       open: true,
-      message: newPwd.trim()
-        ? "Account updated. Manage password changes in Supabase Auth."
-        : "✅ Account updated!",
+      message: "Account updated.",
       severity: "success",
     });
   } catch (e: any) {
@@ -450,6 +444,40 @@ export default function UserManagement() {
     setSaving(false);
   }
 };
+
+  const canUpdatePassword = Boolean(selectedUser?.hasLogin && selectedUser.active !== false);
+  const passwordsMatch = Boolean(passwordForm.confirmation) && passwordForm.password === passwordForm.confirmation;
+  const passwordValid = passwordsMatch && passwordForm.password.trim().length > 0
+    && passwordForm.password.length >= 8 && new TextEncoder().encode(passwordForm.password).length <= 72;
+
+  const closeEdit = () => {
+    setOpenEdit(false);
+    setPasswordForm(EMPTY_PASSWORD_FORM);
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!selectedUser || !canUpdatePassword || !passwordValid || updatingPassword || saving) return;
+    setUpdatingPassword(true);
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) throw new Error('Sign in again to update the password.');
+      const response = await fetch('/api/admin/user-accounts', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
+        body: JSON.stringify({ action: 'update_account_password', user_id: selectedUser.id, password: passwordForm.password }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.password_updated !== true) {
+        throw new Error(result?.message || 'Could not update the account password.');
+      }
+      setPasswordForm(EMPTY_PASSWORD_FORM);
+      setSnackbar({ open: true, message: result.message, severity: 'success' });
+    } catch (error) {
+      setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Could not update the account password.', severity: 'error' });
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
 
   /** Toggle active/inactive — works from both the table and the Edit dialog */
   const handleToggleActive = async (user: UserAccount) => {
@@ -954,8 +982,7 @@ export default function UserManagement() {
                               active: u.active,
                             });
 
-                            setNewPwd('');
-                            setShowEditPwd(false);
+                            setPasswordForm(EMPTY_PASSWORD_FORM);
                             setOpenEdit(true);
                           }}
                           sx={{
@@ -1166,7 +1193,7 @@ export default function UserManagement() {
       {/* ── Edit Account Dialog (includes Reset Password) ─────────────── */}
       <Dialog
         open={openEdit}
-        onClose={() => { setOpenEdit(false); setNewPwd(''); setShowEditPwd(false); }}
+        onClose={saving || updatingPassword ? undefined : closeEdit}
         maxWidth="sm"
         fullWidth
         PaperProps={{
@@ -1279,27 +1306,37 @@ export default function UserManagement() {
             </Grid>
 
             {renderDialogSectionTitle('III. RESET PASSWORD')}
-            <Grid size={12}>
-              <TextField
-                fullWidth
-                label="Password"
-                placeholder="Manage password changes in Supabase Auth"
-                type={showEditPwd ? 'text' : 'password'}
-                value={newPwd}
-                onChange={e => setNewPwd(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={softTextFieldSx}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={() => setShowEditPwd(s => !s)}>
-                        {showEditPwd ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
+            {canUpdatePassword ? (
+              <>
+                {([
+                  { field: 'password', visible: 'showPassword', label: 'New Password' },
+                  { field: 'confirmation', visible: 'showConfirmation', label: 'Confirm New Password' },
+                ] as const).map(({ field, visible, label }) => (
+                  <Grid key={field} size={12}>
+                    <TextField fullWidth label={label} autoComplete="new-password"
+                      type={passwordForm[visible] ? 'text' : 'password'} value={passwordForm[field]}
+                      onChange={event => setPasswordForm(current => ({ ...current, [field]: event.target.value }))}
+                      disabled={saving || updatingPassword}
+                      error={field === 'confirmation' && Boolean(passwordForm.confirmation) && !passwordsMatch}
+                      helperText={field === 'password' ? 'Use at least 8 characters.' : (passwordForm.confirmation && (passwordsMatch ? 'Passwords match.' : 'Passwords do not match.'))}
+                      InputLabelProps={{ shrink: true }} sx={softTextFieldSx}
+                      InputProps={{ endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton size="small" aria-label={`${passwordForm[visible] ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+                            onClick={() => setPasswordForm(current => ({ ...current, [visible]: !current[visible] }))}>
+                            {passwordForm[visible] ? <VisibilityOff /> : <Visibility />}
+                          </IconButton>
+                        </InputAdornment>
+                      ) }} />
+                  </Grid>
+                ))}
+                <Grid size={12} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button variant="outlined" onClick={handleUpdatePassword} disabled={!passwordValid || saving || updatingPassword} sx={pillButtonSx}>
+                    {updatingPassword ? 'Updating…' : 'Update Password'}
+                  </Button>
+                </Grid>
+              </>
+            ) : <Grid size={12}><Alert severity="info">An active, linked login is required to update the password.</Alert></Grid>}
 
             {renderDialogSectionTitle('IV. ACCOUNT STATUS')}
             <Grid size={12}>
@@ -1330,6 +1367,7 @@ export default function UserManagement() {
                     size="small"
                     variant="outlined"
                     color={selectedUser?.active === false ? 'success' : 'warning'}
+                    disabled={updatingPassword || saving}
                     onClick={() => selectedUser && handleToggleActive(selectedUser)}
                     disabled={saving}
                     sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong }}
@@ -1353,7 +1391,8 @@ export default function UserManagement() {
           }}
         >
           <Button
-            onClick={() => { setOpenEdit(false); setNewPwd(''); setShowEditPwd(false); }}
+            onClick={closeEdit}
+            disabled={saving || updatingPassword}
             sx={{ ...pillButtonSx, color: GREEN_UI.muted }}
           >
             Cancel
@@ -1361,7 +1400,7 @@ export default function UserManagement() {
           <Button
             variant="contained"
             onClick={handleEdit}
-            disabled={saving}
+            disabled={saving || updatingPassword}
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Password />}
             sx={{
               ...pillButtonSx,

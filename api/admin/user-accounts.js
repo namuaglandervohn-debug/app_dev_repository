@@ -49,27 +49,31 @@ async function sendWelcomeEmail({ env, fetcher, name, email, password, authUserI
   return typeof id === 'string' && id ? id : null;
 }
 
-async function updateEmployeePassword(admin, body, send) {
-  const employeeId = clean(body.employee_id);
+async function updateAccountPassword(admin, body, send) {
+  const byAccountId = body.action === 'update_account_password';
+  const targetId = clean(byAccountId ? body.user_id : body.employee_id);
   const password = typeof body.password === 'string' ? body.password : '';
-  if (!employeeId || employeeId.length > 40 || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72 || !password.trim()) {
-    return send(422, { message: 'Enter an employee ID and a password between 8 and 72 characters.' });
+  if (!targetId || targetId.length > 40 || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72 || !password.trim()) {
+    return send(422, { message: 'Select an account and enter a password between 8 and 72 characters.' });
   }
 
-  const [employeeResult, accountResult] = await Promise.all([
-    admin.from('employees').select('employee_id,applicant_id').eq('employee_id', employeeId).maybeSingle(),
-    admin.from('user_accounts').select('auth_user_id,email,role,is_active').eq('employee_id', employeeId).limit(2),
-  ]);
-  const employee = unwrap(employeeResult);
-  const accounts = unwrap(accountResult);
+  const accounts = unwrap(await admin.from('user_accounts').select('auth_user_id,email,role,is_active,employee_id,applicant_id')
+    .eq(byAccountId ? 'user_id' : 'employee_id', targetId).limit(2));
   const account = accounts?.length === 1 ? accounts[0] : null;
-  const unavailable = () => send(409, { message: 'This employee needs one active, linked employee login. Review User Accounts.' });
-  if (!employee || !account?.auth_user_id || !account.is_active || account.role !== 'employee') return unavailable();
+  const unavailable = () => send(409, { message: 'This account needs an active, linked staff login with a matching email.' });
+  const validRole = byAccountId ? [...roles.values(), ...adminRoles].includes(account?.role) : account?.role === 'employee';
+  if (!account?.auth_user_id || !account.is_active || !validRole) return unavailable();
 
-  const [verified, applicant] = await Promise.all([
+  const employeeId = byAccountId ? account.employee_id : targetId;
+  const employee = employeeId ? unwrap(await admin.from('employees').select('employee_id,applicant_id')
+    .eq('employee_id', employeeId).maybeSingle()) : null;
+  if (!byAccountId && !employee) return unavailable();
+  const applicantIds = [...new Set([employee?.applicant_id, account.applicant_id].filter(Boolean))];
+
+  const [verified, applicants] = await Promise.all([
     admin.auth.admin.getUserById(account.auth_user_id),
-    employee.applicant_id ? admin.from('applicants').select('auth_user_id,email')
-      .eq('applicant_id', employee.applicant_id).maybeSingle().then(unwrap) : null,
+    Promise.all(applicantIds.map(id => admin.from('applicants').select('auth_user_id,email')
+      .eq('applicant_id', id).maybeSingle().then(unwrap))),
   ]);
   if (verified.error && (!verified.error.status || verified.error.status >= 500 || verified.error.status === 429)) {
     return send(503, { message: accountServiceUnavailable });
@@ -77,7 +81,7 @@ async function updateEmployeePassword(admin, body, send) {
   const authUser = verified.data?.user;
   if (verified.error || authUser?.id !== account.auth_user_id || !authUser.email || emailKey(authUser.email) !== emailKey(account.email)
     || authUser.user_metadata?.registration_kind === 'applicant'
-    || (applicant && (applicant.auth_user_id === authUser.id || emailKey(applicant.email) === emailKey(authUser.email)))) return unavailable();
+    || applicants.some(applicant => applicant && (applicant.auth_user_id === authUser.id || emailKey(applicant.email) === emailKey(authUser.email)))) return unavailable();
 
   const updated = await admin.auth.admin.updateUserById(authUser.id, {
     password,
@@ -89,7 +93,7 @@ async function updateEmployeePassword(admin, body, send) {
     }
     return send(422, { message: 'The password did not meet the account requirements. Choose a different password and try again.' });
   }
-  return send(200, { message: 'Employee password updated.' });
+  return send(200, byAccountId ? { password_updated: true, message: 'Account password updated.' } : { message: 'Employee password updated.' });
 }
 
 export function createUserAccountsHandler({ env = process.env, clientFactory = createClient, fetcher = fetch } = {}) {
@@ -131,7 +135,13 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
       } catch {
         return send(400, { message: 'Invalid request body.' });
       }
-      if (body?.action === 'update_employee_password') return await updateEmployeePassword(admin, body, send);
+      if (body?.action === 'update_account_password') {
+        if (!['hr', 'hr_admin', 'admin'].includes(actorProfile.role)) {
+          return send(403, { message: 'Only HR administrators can change passwords in User Accounts.' });
+        }
+        return await updateAccountPassword(admin, body, send);
+      }
+      if (body?.action === 'update_employee_password') return await updateAccountPassword(admin, body, send);
       const name = clean(body?.name);
       const email = emailKey(body?.email);
       const password = typeof body?.password === 'string' ? body.password : '';

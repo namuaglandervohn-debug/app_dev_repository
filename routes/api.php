@@ -220,10 +220,16 @@ Route::post('/applications/validate-recipient-email', function (Request $request
 });
 
 Route::post('/admin/user-accounts', function (Request $request) {
-    requireSupabaseAdmin($request);
+    $actor = requireSupabaseAdmin($request);
 
+    if ($request->input('action') === 'update_account_password') {
+        if (! in_array($actor['role'], ['hr', 'hr_admin', 'admin'], true)) {
+            return response()->json(['message' => 'Only HR administrators can change passwords in User Accounts.'], 403);
+        }
+        return updateLinkedAccountPassword($request, 'user_id');
+    }
     if ($request->input('action') === 'update_employee_password') {
-        return updateLinkedEmployeePassword($request);
+        return updateLinkedAccountPassword($request, 'employee_id');
     }
 
     $data = $request->validate([
@@ -368,22 +374,33 @@ Route::post('/admin/user-accounts', function (Request $request) {
     ], 201);
 });
 
-function updateLinkedEmployeePassword(Request $request): JsonResponse
+function updateLinkedAccountPassword(Request $request, string $idField): JsonResponse
 {
     $data = $request->validate([
-        'employee_id' => ['required', 'string', 'max:40'],
+        $idField => ['required', 'string', 'max:40'],
         'password' => ['required', 'string', 'min:8', 'max:72'],
     ]);
     if (strlen($data['password']) > 72 || trim($data['password']) === '') {
         return response()->json(['message' => 'Choose a different password between 8 and 72 characters.'], 422);
     }
 
-    $filter = ['employee_id' => 'eq.'.trim($data['employee_id']), 'limit' => 2];
-    $employee = supabaseRest('GET', '/rest/v1/employees', null, $filter + ['select' => 'employee_id,applicant_id'])[0] ?? null;
-    $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, $filter + ['select' => 'auth_user_id,email,role,is_active']);
+    $targetId = trim($data[$idField]);
+    $byAccountId = $idField === 'user_id';
+    $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, [
+        $idField => 'eq.'.$targetId, 'limit' => 2, 'select' => 'auth_user_id,email,role,is_active,employee_id,applicant_id',
+    ]);
     $account = count($accounts) === 1 ? $accounts[0] : null;
-    $unavailable = fn () => response()->json(['message' => 'This employee needs one active, linked employee login. Review User Accounts.'], 409);
-    if (! $employee || empty($account['auth_user_id']) || empty($account['is_active']) || $account['role'] !== 'employee') {
+    $unavailable = fn () => response()->json(['message' => 'This account needs an active, linked staff login with a matching email.'], 409);
+    $staffRoles = ['hr', 'hr_admin', 'admin', 'employee', 'supervisor', 'gm', 'general_manager', 'accounting_finance'];
+    if (empty($account['auth_user_id']) || empty($account['is_active']) || ! in_array($account['role'], $byAccountId ? $staffRoles : ['employee'], true)) {
+        return $unavailable();
+    }
+
+    $employeeId = $byAccountId ? ($account['employee_id'] ?? null) : $targetId;
+    $employee = $employeeId ? (supabaseRest('GET', '/rest/v1/employees', null, [
+        'employee_id' => 'eq.'.$employeeId, 'select' => 'employee_id,applicant_id', 'limit' => 1,
+    ])[0] ?? null) : null;
+    if (! $byAccountId && ! $employee) {
         return $unavailable();
     }
 
@@ -398,9 +415,9 @@ function updateLinkedEmployeePassword(Request $request): JsonResponse
         return $unavailable();
     }
 
-    if (! empty($employee['applicant_id'])) {
+    foreach (array_unique(array_filter([$employee['applicant_id'] ?? null, $account['applicant_id'] ?? null])) as $applicantId) {
         $applicant = supabaseRest('GET', '/rest/v1/applicants', null, [
-            'select' => 'auth_user_id,email', 'applicant_id' => 'eq.'.$employee['applicant_id'], 'limit' => 1,
+            'select' => 'auth_user_id,email', 'applicant_id' => 'eq.'.$applicantId, 'limit' => 1,
         ])[0] ?? null;
         if ($applicant && (($applicant['auth_user_id'] ?? null) === $user['id'] || strtolower(trim($applicant['email'] ?? '')) === $email)) {
             return $unavailable();
@@ -414,7 +431,9 @@ function updateLinkedEmployeePassword(Request $request): JsonResponse
         return response()->json(['message' => 'The password did not meet the account requirements. Choose a different password and try again.'], 422);
     }
 
-    return response()->json(['message' => 'Employee password updated.'])->header('Cache-Control', 'no-store');
+    return response()->json($byAccountId
+        ? ['password_updated' => true, 'message' => 'Account password updated.']
+        : ['message' => 'Employee password updated.'])->header('Cache-Control', 'no-store');
 }
 
 function sendAccountWelcomeEmail(string $name, string $email, string $password, string $authUserId): ?string
