@@ -7,7 +7,7 @@ import {
   Box, Typography, Paper, Grid, Chip, Divider, CircularProgress,
   Alert, Card, CardContent, Avatar, TextField, Button, IconButton,
   Stack, LinearProgress, Tooltip, Dialog, DialogTitle,
-  DialogContent, DialogActions,
+  DialogContent, DialogActions, Tab, Tabs,
 } from '@mui/material';
 import {
   AccountCircle, BusinessCenter, Phone, Email, LocationOn, CalendarMonth,
@@ -22,6 +22,8 @@ import ActionSnackbar from '../ActionSnackbar';
 import ChangePasswordDialog from '../ChangePasswordDialog';
 import { profileCardSx as softCardSx, profileDetailsSx as innerCardSx, profileFieldSx as softTextFieldSx, profileAvatarSx, profileHeroSx, profileIconSx as sectionIconSx } from '../layouts/profileStyles';
 import ProfileSummary from '../layouts/ProfileSummary';
+import ProfilePhotoUpload from '../ProfilePhotoUpload';
+import { saveEmployeeProfilePhoto } from '../../lib/profilePhoto';
 
 interface Employee {
   id: string; name: string; position: string; department?: string;
@@ -29,6 +31,7 @@ interface Employee {
   address?: string; supervisor?: string; dateHired?: string;
   emergencyContact?: string; tin?: string; sss?: string;
   philhealth?: string; pagibig?: string;
+  profilePhoto?: string | null;
 }
 
 interface Application {
@@ -217,6 +220,7 @@ export default function MyProfile() {
   const [applicationFields, setApplicationFields] = useState<ReturnType<typeof employeeApplicationFields>>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [editTab, setEditTab] = useState<'account' | 'personal'>('personal');
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Employee>>({});
   const [saving, setSaving] = useState(false);
@@ -290,6 +294,7 @@ export default function MyProfile() {
             found = {
               id: row.employee_id,
               name: fullName || applicant?.name || user.name,
+              profilePhoto: row.profile_photo ?? null,
               position: firstValue(row.position, applicant?.position_applied) ?? '',
               department: row.department ?? '',
               outlet: firstValue(accountOutlet, row.outlet, (user as any)?.outlet) ?? '',
@@ -377,13 +382,20 @@ export default function MyProfile() {
 
       if (error) throw error;
 
-      const updated = { ...employee, ...editForm } as Employee;
-      setEmployee(updated);
+      setEmployee(current => current && ({ ...current, ...editForm, profilePhoto: current.profilePhoto }));
       setEditing(false);
       setSnackbar({ open: true, message: '✅ Profile updated successfully!', severity: 'success' });
     } catch (e: any) {
       setSnackbar({ open: true, message: `Failed to save: ${e.message}`, severity: 'error' });
     } finally { setSaving(false); }
+  };
+
+  const uploadProfilePhoto = async (photo: string) => {
+    const employeeId = user?.employeeId;
+    if (!employeeId || employee?.id !== employeeId) throw new Error('Your employee profile could not be verified.');
+    await saveEmployeeProfilePhoto(employeeId, photo);
+    setEmployee(current => current?.id === employeeId ? { ...current, profilePhoto: photo } : current);
+    setSnackbar({ open: true, message: 'Profile picture updated.', severity: 'success' });
   };
 
   const handleFileUpload = async (files: FileList | null) => {
@@ -489,7 +501,7 @@ export default function MyProfile() {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-            <Avatar sx={profileAvatarSx}>
+            <Avatar src={employee?.profilePhoto ?? undefined} sx={profileAvatarSx}>
               {initials}
             </Avatar>
             <Box sx={{ minWidth: 0 }}>
@@ -541,7 +553,7 @@ export default function MyProfile() {
               <Button
                 variant="contained"
                 startIcon={<EditNote />}
-                onClick={() => { setEditing(true); setEditForm(employee); }}
+                onClick={() => { setEditing(true); setEditForm(employee); setEditTab('personal'); }}
                 sx={{
                   ...pillButtonSx,
                   py: 1.1,
@@ -610,12 +622,26 @@ export default function MyProfile() {
             </Box>
             <Divider sx={{ mb: 2.5, borderColor: GREEN_UI.border }} />
 
+            {editing && <Tabs value={editTab} onChange={(_, tab: 'account' | 'personal') => setEditTab(tab)}
+              aria-label="Edit profile sections" sx={{ mb: 2.5 }}>
+              <Tab id="employee-edit-account-tab" aria-controls="employee-edit-account" label="Account" value="account" />
+              <Tab id="employee-edit-personal-tab" aria-controls="employee-edit-personal" label="Personal" value="personal" />
+            </Tabs>}
+
             {!employee ? (
               <Alert severity="info" sx={{ borderRadius: '18px', border: `1px solid ${GREEN_UI.border}` }}>
                 No employee record found for your account. Please contact HR to link your profile.
               </Alert>
+            ) : editing && editTab === 'account' ? (
+              <Box id="employee-edit-account" role="tabpanel" aria-labelledby="employee-edit-account-tab">
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <Avatar src={employee.profilePhoto ?? undefined} sx={{ width: 58, height: 58 }}>{initials}</Avatar>
+                  <ProfilePhotoUpload photo={employee.profilePhoto} disabled={saving} onUpload={uploadProfilePhoto} />
+                </Stack>
+              </Box>
             ) : (
-              <>
+              <Box id={editing ? 'employee-edit-personal' : undefined} role={editing ? 'tabpanel' : undefined}
+                aria-labelledby={editing ? 'employee-edit-personal-tab' : undefined}>
                 <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 }, mb: 2.25 }}>
                   <Typography variant="caption" sx={{ display: 'block', mb: 1.5, color: GREEN_UI.greenDark, fontWeight: 700, letterSpacing: '0.08em' }}>
                     EMPLOYMENT DETAILS · HR MANAGED
@@ -722,7 +748,7 @@ export default function MyProfile() {
                     </Grid>
                   </Paper>
                 ))}
-              </>
+              </Box>
             )}
           </Paper>
 

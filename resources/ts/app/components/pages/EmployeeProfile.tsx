@@ -8,7 +8,7 @@ import {
   Box, Typography, Button, Paper, Divider, Chip, Grid,
   CircularProgress, Alert, MenuItem, Dialog, DialogTitle,
   DialogContent, DialogActions, IconButton, Tooltip,
-  Checkbox, FormControlLabel, FormGroup, InputAdornment, type TextFieldProps,
+  Checkbox, FormControlLabel, FormGroup, InputAdornment, Avatar, type TextFieldProps,
 } from '@mui/material';
 import {
   ArrowBackIosNew,
@@ -47,6 +47,8 @@ import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import { includeSelectedJobTitle, jobTitleKey } from '../../lib/jobTitles';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { formatSalaryInput, readDailyRateEdit } from '../../lib/salaryInput';
+import { saveEmployeeProfilePhoto } from '../../lib/profilePhoto';
+import ProfilePhotoUpload from '../ProfilePhotoUpload';
 import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
 import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
@@ -165,6 +167,7 @@ interface Employee {
   emergencyContact?: string;
   createdAt?: string;
   updatedAt?: string;
+  profilePhoto?: string | null;
 
   applicantDocuments?: DocFile[];
   employeeDocumentsOnly?: DocFile[];
@@ -486,6 +489,7 @@ export default function EmployeeProfile() {
 
       const employeeData: Employee = {
         id: data.employee_id,
+        profilePhoto: data.profile_photo ?? null,
         applicantId: data.applicant_id ?? "",
         name: `${data.first_name ?? ""} ${data.middle_name ?? ""} ${data.last_name ?? ""} ${data.suffix ?? ""}`.replace(/\s+/g, " ").trim(),
         first_name: data.first_name ?? "",
@@ -727,7 +731,7 @@ export default function EmployeeProfile() {
   updatedAt: data.updated_at ?? employee?.updatedAt ?? "",
 };
 
-    setEmployee(updatedEmployee);
+    setEmployee(current => current?.id === updatedEmployee.id ? { ...updatedEmployee, profilePhoto: current.profilePhoto } : updatedEmployee);
     setEditForm(updatedEmployee);
     setEditing(false);
     setSalaryDraft(null);
@@ -750,6 +754,13 @@ export default function EmployeeProfile() {
     setSaving(false);
   }
 };
+
+  const uploadProfilePhoto = async (photo: string) => {
+    if (!id || !canManageAccount) throw new Error('This employee profile cannot be edited.');
+    await saveEmployeeProfilePhoto(id, photo);
+    setEmployee(current => current?.id === id ? { ...current, profilePhoto: photo } : current);
+    setSnackbar({ open: true, message: 'Profile picture updated.', severity: 'success' });
+  };
 
   const passwordMatches = Boolean(passwordFields.confirmation) && passwordFields.password === passwordFields.confirmation;
   const passwordValid = passwordMatches && passwordFields.password.trim().length > 0
@@ -1061,9 +1072,9 @@ export default function EmployeeProfile() {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ width: 58, height: 58, borderRadius: '18px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Avatar src={employee.profilePhoto ?? undefined} variant="rounded" sx={{ width: 58, height: 58, borderRadius: '18px', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark }}>
               <AccountCircle sx={{ fontSize: 36 }} />
-            </Box>
+            </Avatar>
             <Box>
               <Typography variant="h5" sx={{ color: GREEN_UI.text, fontWeight: 700 }}>{employee.name || 'Employee Profile'}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.75, rowGap: 0.25 }}>
@@ -1448,6 +1459,12 @@ export default function EmployeeProfile() {
 
           {editProfileTab === 'Account' && canManageAccount && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 }, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Avatar src={employee.profilePhoto ?? undefined} sx={{ width: 58, height: 58, bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark }}>
+                  <AccountCircle sx={{ fontSize: 36 }} />
+                </Avatar>
+                <ProfilePhotoUpload photo={employee.profilePhoto} disabled={saving || updatingPassword} onUpload={uploadProfilePhoto} />
+              </Paper>
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
                 <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Employment details</Typography>
                 <Grid container spacing={2}>
