@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
 import { createUserAccountsHandler } from '../api/admin/user-accounts.js';
 
-function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse = false, mailStatus = 200 } = {}) {
+function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse = false, mailStatus = 200, passwordUpdate = false, sameApplicantLogin = false } = {}) {
   const calls = [];
   let savedProfile = null;
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -18,6 +18,11 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
     if (url.pathname === '/auth/v1/user') return json({ id: 'admin-auth', email: 'admin@example.test' });
     if (url.pathname === '/auth/v1/admin/users') return json({ id: employeeAuthId }, 201);
     if (url.pathname === `/auth/v1/admin/users/${employeeAuthId}` && method === 'DELETE') return json({});
+    if (url.pathname === `/auth/v1/admin/users/${employeeAuthId}`) return json({ id: employeeAuthId, email: 'employee@example.test' });
+    if (passwordUpdate && url.pathname === '/rest/v1/employees') return json([{ employee_id: 'EMP001', applicant_id: 'APP001' }]);
+    if (passwordUpdate && url.pathname === '/rest/v1/applicants') return json([{
+      auth_user_id: sameApplicantLogin ? employeeAuthId : 'applicant-auth', email: 'applicant@example.test',
+    }]);
     if (url.pathname === '/rest/v1/employees') return method === 'POST' ? new Response(null, { status: 201 }) : json([]);
     if (url.pathname === '/rest/v1/user_accounts') {
       if (method === 'POST') {
@@ -28,6 +33,9 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
       }
       const authId = url.searchParams.get('auth_user_id');
       if (authId === 'eq.admin-auth') return json([{ role, email: 'admin@example.test' }]);
+      if (passwordUpdate && url.searchParams.get('employee_id') === 'eq.EMP001') {
+        return json([{ auth_user_id: employeeAuthId, email: 'employee@example.test', role: 'employee', is_active: true }]);
+      }
       if (authId === `eq.${employeeAuthId}` && savedProfile) return json([savedProfile]);
       return json([]);
     }
@@ -46,7 +54,9 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
   const run = () => handler({
     method: 'POST',
     headers: { authorization: 'Bearer test-token' },
-    body: { name: 'Test Employee', email: 'employee@example.test', password: 'Example<&>123', role: 'employee', employee_id: 'EMP001' },
+    body: passwordUpdate
+      ? { action: 'update_employee_password', employee_id: 'EMP001', password: 'Example<&>123', auth_user_id: 'ignored-id' }
+      : { name: 'Test Employee', email: 'employee@example.test', password: 'Example<&>123', role: 'employee', employee_id: 'EMP001' },
   }, response);
   return { run, calls, response };
 }
@@ -103,4 +113,26 @@ test('keeps a linked account when the insert succeeded and the response was lost
   assert.equal(response.code, 201);
   assert.equal(response.body.user.employee_id, 'EMP001');
   assert.ok(calls.every(call => call.method !== 'DELETE'));
+});
+
+test('updates the linked employee login without returning the password', async () => {
+  const { run, calls, response } = fixture({ role: 'general_manager', passwordUpdate: true });
+  await run();
+  assert.equal(response.code, 200);
+  const [write] = calls.filter(call => call.method !== 'GET');
+  assert.equal(calls.filter(call => call.method !== 'GET').length, 1);
+  assert.equal(write.path, `/auth/v1/admin/users/${employeeAuthId}`);
+  assert.equal(write.method, 'PUT');
+  assert.equal(write.body.password, 'Example<&>123');
+  assert.equal(write.body.app_metadata.hris_temporary_password, false);
+  assert.doesNotMatch(JSON.stringify(response.body), /Example<&>123/);
+});
+
+test('rejects employee password updates from supervisors and rejects shared applicant logins', async () => {
+  for (const [options, expected] of [[{ role: 'supervisor' }, 403], [{ sameApplicantLogin: true }, 409]]) {
+    const { run, calls, response } = fixture({ ...options, passwordUpdate: true });
+    await run();
+    assert.equal(response.code, expected);
+    assert.ok(calls.every(call => call.method === 'GET'));
+  }
 });

@@ -562,7 +562,7 @@ export default function RequestManagement() {
         name: formatEmployeeName(row) || row.employee_id || 'Unnamed Employee',
         position: row.position ?? '',
         department: row.department ?? '',
-        dailyRate: dailyRates.get(jobTitleKey(row.position ?? '')) || parseSalaryRate(row.salary),
+        dailyRate: parseSalaryRate(row.salary) || dailyRates.get(jobTitleKey(row.position ?? '')) || 0,
       }));
   };
 

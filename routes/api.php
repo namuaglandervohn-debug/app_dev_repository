@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
@@ -107,7 +108,7 @@ function sendSupabaseRequest(PendingRequest $request, string $method, string $ur
     }
 
     try {
-        $response = $request->send($method, $url, in_array($method, ['POST', 'PATCH'], true) ? ['json' => $payload ?? []] : []);
+        $response = $request->send($method, $url, in_array($method, ['POST', 'PATCH', 'PUT'], true) ? ['json' => $payload ?? []] : []);
     } catch (ConnectionException) {
         $response = null;
     }
@@ -220,6 +221,10 @@ Route::post('/applications/validate-recipient-email', function (Request $request
 
 Route::post('/admin/user-accounts', function (Request $request) {
     requireSupabaseAdmin($request);
+
+    if ($request->input('action') === 'update_employee_password') {
+        return updateLinkedEmployeePassword($request);
+    }
 
     $data = $request->validate([
         'name' => ['required', 'string', 'max:160'],
@@ -362,6 +367,55 @@ Route::post('/admin/user-accounts', function (Request $request) {
         'welcome_email_id' => $welcomeEmailId,
     ], 201);
 });
+
+function updateLinkedEmployeePassword(Request $request): JsonResponse
+{
+    $data = $request->validate([
+        'employee_id' => ['required', 'string', 'max:40'],
+        'password' => ['required', 'string', 'min:8', 'max:72'],
+    ]);
+    if (strlen($data['password']) > 72 || trim($data['password']) === '') {
+        return response()->json(['message' => 'Choose a different password between 8 and 72 characters.'], 422);
+    }
+
+    $filter = ['employee_id' => 'eq.'.trim($data['employee_id']), 'limit' => 2];
+    $employee = supabaseRest('GET', '/rest/v1/employees', null, $filter + ['select' => 'employee_id,applicant_id'])[0] ?? null;
+    $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, $filter + ['select' => 'auth_user_id,email,role,is_active']);
+    $account = count($accounts) === 1 ? $accounts[0] : null;
+    $unavailable = fn () => response()->json(['message' => 'This employee needs one active, linked employee login. Review User Accounts.'], 409);
+    if (! $employee || empty($account['auth_user_id']) || empty($account['is_active']) || $account['role'] !== 'employee') {
+        return $unavailable();
+    }
+
+    $key = supabaseServiceRoleKey();
+    $auth = fn () => Http::withToken($key)->withHeader('apikey', $key)->acceptJson();
+    $url = supabaseBaseUrl().'/auth/v1/admin/users/'.rawurlencode($account['auth_user_id']);
+    $verified = sendSupabaseRequest($auth(), 'GET', $url);
+    $user = $verified->json('user') ?? $verified->json();
+    $email = strtolower(trim((string) ($user['email'] ?? '')));
+    if ($verified->failed() || ($user['id'] ?? null) !== $account['auth_user_id'] || $email === ''
+        || $email !== strtolower(trim($account['email'] ?? '')) || ($user['user_metadata']['registration_kind'] ?? null) === 'applicant') {
+        return $unavailable();
+    }
+
+    if (! empty($employee['applicant_id'])) {
+        $applicant = supabaseRest('GET', '/rest/v1/applicants', null, [
+            'select' => 'auth_user_id,email', 'applicant_id' => 'eq.'.$employee['applicant_id'], 'limit' => 1,
+        ])[0] ?? null;
+        if ($applicant && (($applicant['auth_user_id'] ?? null) === $user['id'] || strtolower(trim($applicant['email'] ?? '')) === $email)) {
+            return $unavailable();
+        }
+    }
+
+    $updated = sendSupabaseRequest($auth(), 'PUT', $url, [
+        'password' => $data['password'], 'app_metadata' => ['hris_temporary_password' => false],
+    ]);
+    if ($updated->failed()) {
+        return response()->json(['message' => 'The password did not meet the account requirements. Choose a different password and try again.'], 422);
+    }
+
+    return response()->json(['message' => 'Employee password updated.'])->header('Cache-Control', 'no-store');
+}
 
 function sendAccountWelcomeEmail(string $name, string $email, string $password, string $authUserId): ?string
 {

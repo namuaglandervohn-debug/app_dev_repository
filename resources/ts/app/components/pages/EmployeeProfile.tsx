@@ -8,7 +8,7 @@ import {
   Box, Typography, Button, Paper, Divider, Chip, Grid,
   CircularProgress, Alert, MenuItem, Dialog, DialogTitle,
   DialogContent, DialogActions, IconButton, Tooltip,
-  Checkbox, FormControlLabel, FormGroup, type TextFieldProps,
+  Checkbox, FormControlLabel, FormGroup, InputAdornment, type TextFieldProps,
 } from '@mui/material';
 import {
   ArrowBackIosNew,
@@ -19,6 +19,7 @@ import {
   AccountCircle,
   FileDownload,
   Visibility,
+  VisibilityOff,
   InsertDriveFile,
   PictureAsPdf,
   Article,
@@ -43,7 +44,8 @@ import ActionSnackbar from '../ActionSnackbar';
 import { APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
 import { NO_OUTLET, OUTLETS } from '../../lib/constants';
 import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
-import { jobTitleKey } from '../../lib/jobTitles';
+import { includeSelectedJobTitle, jobTitleKey } from '../../lib/jobTitles';
+import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTIONS, RELATIONSHIPS, SKILLS } from '../../lib/applicationFormOptions';
 import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
@@ -54,6 +56,8 @@ interface DocFile {
 
 const PROFILE_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
 const PROFILE_FILE_TYPES_LABEL = 'PDF, DOC, DOCX, JPG, JPEG, and PNG';
+const ACCOUNT_TABS = ['Account', 'Personal', 'Education', 'Work', 'References', 'Documents'];
+const EMPTY_PASSWORD_FIELDS = { password: '', confirmation: '', showPassword: false, showConfirmation: false };
 
 function getProfileFiles(profile: Employee) {
   const applicantFiles = profile.applicantDocuments ?? [];
@@ -331,6 +335,9 @@ export default function EmployeeProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [hasEmployeeLogin, setHasEmployeeLogin] = useState(false);
+  const [passwordFields, setPasswordFields] = useState(EMPTY_PASSWORD_FIELDS);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [deleteDialog, setDeleteDialog] = useState(false);
@@ -343,6 +350,8 @@ export default function EmployeeProfile() {
   const [editProfileTab, setEditProfileTab] = useState('Personal');
   const [otherSkillsEnabled, setOtherSkillsEnabled] = useState(false);
   const canSeeSalary = Boolean(user && user.role !== 'supervisor');
+  const canManageAccount = user?.role === 'hr' || user?.role === 'gm';
+  const jobTitles = useJobTitleOptions(editing && canManageAccount);
   const positionKey = jobTitleKey(employee?.position ?? '');
 
   useEffect(() => {
@@ -392,7 +401,7 @@ export default function EmployeeProfile() {
     try {
       const [{ data, error }, { data: account }] = await Promise.all([
         supabase.from("employees").select("*").eq("employee_id", id).single(),
-        supabase.from("user_accounts").select("outlet").eq("employee_id", id)
+        supabase.from("user_accounts").select("outlet,role,auth_user_id").eq("employee_id", id)
           .eq("is_active", true).order("user_id").limit(1).maybeSingle(),
       ]);
 
@@ -508,6 +517,7 @@ export default function EmployeeProfile() {
 
       setEmployee(employeeData);
       setEditForm(employeeData);
+      setHasEmployeeLogin(Boolean(account?.role === 'employee' && account.auth_user_id));
     } catch (e: any) {
       setError(`Could not load employee: ${e.message}`);
     } finally {
@@ -519,6 +529,13 @@ export default function EmployeeProfile() {
 
   const handleSave = async () => {
   if (!editForm || !id) return;
+    const salaryChanged = editForm.salary !== employee?.salary;
+    const salaryInput = String(editForm.salary ?? '').trim();
+    if (salaryChanged && salaryInput && (!/^\d{1,9}(?:\.\d{1,2})?$/.test(salaryInput) || Number(salaryInput) <= 0)) {
+      setEditProfileTab('Account');
+      setSnackbar({ open: true, message: 'Enter a positive daily salary with up to two decimal places, or leave Salary blank.', severity: 'error' });
+      return;
+    }
     const original = employee?.applicationForm;
     const updated = editForm.applicationForm;
     const changedNumbers = [
@@ -559,7 +576,6 @@ export default function EmployeeProfile() {
       birthdate: editForm.birthdate || null,
       birthplace: editForm.birthplace,
       employment_type: editForm.employmentType,
-      salary: editForm.salary === "" ? null : editForm.salary,
       education: editForm.education,
       experience: editForm.experience,
       tin: editForm.tin,
@@ -567,6 +583,7 @@ export default function EmployeeProfile() {
       philhealth: editForm.philhealth,
       pagibig: editForm.pagibig,
     };
+    if (salaryChanged) employeeUpdate.salary = salaryInput ? Number(salaryInput) : null;
     if (documentsChanged) {
       const encoded = await Promise.all(addedFiles.map(async ({ file, ...metadata }) => ({
         name: file.name,
@@ -596,7 +613,7 @@ export default function EmployeeProfile() {
       }
 
       const missingColumn = getMissingColumnFromSupabaseError(result.error);
-      if (!missingColumn || missingColumn === "outlet" || missingColumn === "documents" || !(missingColumn in employeeUpdate)) throw result.error;
+      if (!missingColumn || ['outlet', 'documents', 'salary', 'position'].includes(missingColumn) || !(missingColumn in employeeUpdate)) throw result.error;
 
       delete employeeUpdate[missingColumn];
     }
@@ -705,6 +722,7 @@ export default function EmployeeProfile() {
     setEditing(false);
     setNewDocFiles([]);
     setNewCertificateFiles([]);
+    setPasswordFields(EMPTY_PASSWORD_FIELDS);
 
     setSnackbar({
       open: true,
@@ -721,6 +739,32 @@ export default function EmployeeProfile() {
     setSaving(false);
   }
 };
+
+  const passwordMatches = Boolean(passwordFields.confirmation) && passwordFields.password === passwordFields.confirmation;
+  const passwordValid = passwordMatches && passwordFields.password.trim().length > 0
+    && passwordFields.password.length >= 8 && new TextEncoder().encode(passwordFields.password).length <= 72;
+
+  const handleUpdatePassword = async () => {
+    if (!id || !canManageAccount || !hasEmployeeLogin || !passwordValid || updatingPassword) return;
+    setUpdatingPassword(true);
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) throw new Error('Sign in again to update the employee password.');
+      const response = await fetch('/api/admin/user-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${data.session.access_token}` },
+        body: JSON.stringify({ action: 'update_employee_password', employee_id: id, password: passwordFields.password }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) throw new Error(result?.message || 'Could not update the employee password. Try again.');
+      setPasswordFields(EMPTY_PASSWORD_FIELDS);
+      setSnackbar({ open: true, message: 'Employee password updated.', severity: 'success' });
+    } catch (error) {
+      setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Could not update the employee password.', severity: 'error' });
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
 
   const handleDelete = async () => {
   if (!id) return;
@@ -777,10 +821,10 @@ export default function EmployeeProfile() {
 
   const postingRate = positionRate?.position === positionKey ? positionRate.rate : undefined;
   const savedSalary = parseSalaryRate(employee.salary);
-  let salaryLabel = savedSalary ? salaryFormatter.format(savedSalary) : 'Not set';
-  if (positionKey && postingRate === undefined) salaryLabel = 'Loading…';
+  let salaryLabel = savedSalary ? `${salaryFormatter.format(savedSalary)}/day` : 'Not set';
+  if (positionKey && postingRate === undefined && !savedSalary) salaryLabel = 'Loading…';
   if (postingRate === null && !savedSalary) salaryLabel = 'Unavailable';
-  if (postingRate) salaryLabel = `${salaryFormatter.format(postingRate)}/day`;
+  if (postingRate && !savedSalary) salaryLabel = `${salaryFormatter.format(postingRate)}/day`;
 
   const headerDetails = [
     { label: 'Position', value: employee.position || 'Not set' },
@@ -793,6 +837,7 @@ export default function EmployeeProfile() {
     setEditForm(employee);
     setNewDocFiles([]);
     setNewCertificateFiles([]);
+    setPasswordFields(EMPTY_PASSWORD_FIELDS);
   };
 
   const profileFiles = getProfileFiles(employee);
@@ -1032,7 +1077,8 @@ export default function EmployeeProfile() {
                     setEditForm(employee);
                     setNewDocFiles([]);
                     setNewCertificateFiles([]);
-                    setEditProfileTab('Personal');
+                    setEditProfileTab(canManageAccount ? 'Account' : 'Personal');
+                    setPasswordFields(EMPTY_PASSWORD_FIELDS);
                     setOtherSkillsEnabled(Boolean(employee.applicationForm?.otherSkills));
                     setEditing(true);
                   }}
@@ -1323,7 +1369,7 @@ export default function EmployeeProfile() {
       {/* Edit Profile Dialog */}
       <Dialog
         open={editing}
-        onClose={saving ? undefined : handleCloseEdit}
+        onClose={saving || updatingPassword ? undefined : handleCloseEdit}
         maxWidth="lg"
         fullWidth
         PaperProps={{
@@ -1363,7 +1409,6 @@ export default function EmployeeProfile() {
               </Box>
               <Box>
                 <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, lineHeight: 1.2 }}>Edit Employee Profile</Typography>
-                <Typography variant="body2" sx={{ color: GREEN_UI.muted, mt: 0.7 }}>Update employee details and documents</Typography>
               </Box>
             </Box>
           </Box>
@@ -1379,12 +1424,75 @@ export default function EmployeeProfile() {
           }}
         >
           <Box sx={{ display: 'flex', gap: 3.25, overflowX: 'auto', px: { xs: 0, sm: 0.5 }, py: 1, mb: 2.25, borderBottom: '1px solid ' + GREEN_UI.border }}>
-            {['Personal', 'Education', 'Work', 'References', 'Documents'].map((tab) => (
+            {(canManageAccount ? ACCOUNT_TABS : ACCOUNT_TABS.slice(1)).map((tab) => (
               <Button key={tab} type="button" variant={editProfileTab === tab ? 'contained' : 'outlined'} aria-pressed={editProfileTab === tab} onClick={() => setEditProfileTab(tab)} sx={{ ...(editProfileTab === tab ? applicationPrimaryButtonSx : applicationSecondaryButtonSx), minHeight: 38, px: 2, flexShrink: 0 }}>
                 {tab}
               </Button>
             ))}
           </Box>
+
+          {editProfileTab === 'Account' && canManageAccount && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
+                <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Employment details</Typography>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, md: 4 }}>{editAppChoice('Position', editForm.position,
+                    position => setEditForm({ ...editForm, position }), includeSelectedJobTitle(jobTitles, editForm.position))}</Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>{editAppField('Daily Salary (₱)', String(editForm.salary ?? ''),
+                    salary => setEditForm({ ...editForm, salary }), {
+                      inputProps: { inputMode: 'decimal' },
+                      helperText: jobTitleKey(editForm.position) === positionKey && postingRate
+                        ? `Leave blank to use ${salaryFormatter.format(postingRate)}/day from Job Postings.`
+                        : 'Leave blank to use the position’s rate from Job Postings.',
+                    })}</Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField fullWidth select label="Select an outlet" value={editForm.outlet}
+                      onChange={event => setEditForm({ ...editForm, outlet: event.target.value })}
+                      InputLabelProps={{ shrink: true }} sx={applicationTextFieldSx}>
+                      <MenuItem value="" disabled>Select an outlet</MenuItem>
+                      <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
+                      {editForm.outlet && editForm.outlet !== NO_OUTLET && !OUTLETS.includes(editForm.outlet) && (
+                        <MenuItem value={editForm.outlet}>{editForm.outlet}</MenuItem>
+                      )}
+                      {OUTLETS.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
+                    </TextField>
+                  </Grid>
+                </Grid>
+              </Paper>
+              <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
+                <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Employee password</Typography>
+                {hasEmployeeLogin ? (
+                  <Grid container spacing={2}>
+                    {([
+                      { field: 'password', visibility: 'showPassword', label: 'New password' },
+                      { field: 'confirmation', visibility: 'showConfirmation', label: 'Confirm new password' },
+                    ] as const).map(({ field, visibility, label }) => (
+                      <Grid key={field} size={{ xs: 12, md: 6 }}>
+                        {editAppField(label, passwordFields[field], value => setPasswordFields(current => ({ ...current, [field]: value })), {
+                          type: passwordFields[visibility] ? 'text' : 'password',
+                          autoComplete: 'new-password',
+                          disabled: updatingPassword || saving,
+                          error: field === 'confirmation' && Boolean(passwordFields.confirmation) && !passwordMatches,
+                          helperText: field === 'password' ? 'Use at least 8 characters.' : passwordFields.confirmation && (passwordMatches ? 'Passwords match.' : 'Passwords do not match.'),
+                          InputProps: { endAdornment: <InputAdornment position="end">
+                            <IconButton edge="end" aria-label={`${passwordFields[visibility] ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+                              onClick={() => setPasswordFields(current => ({ ...current, [visibility]: !current[visibility] }))}>
+                              {passwordFields[visibility] ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment> },
+                        })}
+                      </Grid>
+                    ))}
+                    <Grid size={12} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button variant="outlined" onClick={handleUpdatePassword} disabled={!passwordValid || updatingPassword || saving} sx={applicationSecondaryButtonSx}>
+                        {updatingPassword ? 'Updating…' : 'Update Password'}
+                      </Button>
+                    </Grid>
+                  </Grid>
+                ) : <Alert severity="info">Link an active employee login in User Accounts to update its password.</Alert>}
+              </Paper>
+            </Box>
+          )}
 
           {editProfileTab === 'Personal' && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
@@ -1398,18 +1506,6 @@ export default function EmployeeProfile() {
                   <Grid size={{ xs: 12, md: 6 }}>{editAppChoice('How applicant heard about opening', editApplication.hearAbout, (value) => updateApplicationForm({ hearAbout: value }), HEAR_ABOUT_OPTIONS)}</Grid>
                   {editApplication.hearAbout === 'Other' && <Grid size={{ xs: 12, md: 6 }}>{editAppField('Please specify', editApplication.hearAboutOther, (value) => updateApplicationForm({ hearAboutOther: value }))}</Grid>}
                   <Grid size={{ xs: 12, md: 6 }}>{editAppField('Date hired', editForm.dateHired, (value) => setEditForm({ ...editForm, dateHired: value }), { type: 'date' })}</Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField fullWidth select label="Select an outlet" value={editForm.outlet}
-                      onChange={event => setEditForm({ ...editForm, outlet: event.target.value })}
-                      InputLabelProps={{ shrink: true }} sx={applicationTextFieldSx}>
-                      <MenuItem value="" disabled>Select an outlet</MenuItem>
-                      <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
-                      {editForm.outlet && editForm.outlet !== NO_OUTLET && !OUTLETS.includes(editForm.outlet) && (
-                        <MenuItem value={editForm.outlet}>{editForm.outlet}</MenuItem>
-                      )}
-                      {OUTLETS.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
-                    </TextField>
-                  </Grid>
                 </Grid>
               </Paper>
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
@@ -1558,13 +1654,6 @@ export default function EmployeeProfile() {
           {editProfileTab === 'Documents' && (
             <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
               <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Documents</Typography>
-              <Grid container spacing={2}>
-                <Grid size={12}>{editAppField('Submitted documents', compactList(editApplication.submittedDocuments?.filter(isGeneralDocument)), (value) => updateApplicationForm({ submittedDocuments: [
-                  ...(editApplication.submittedDocuments ?? []).filter(name => certificateNames.has(name)),
-                  ...value.split(',').map(item => item.trim()).filter(Boolean),
-                ] }), { multiline: true, rows: 2 })}</Grid>
-                <Grid size={12}>{editAppField('Other document', editApplication.otherDocument, (value) => updateApplicationForm({ otherDocument: value }))}</Grid>
-              </Grid>
               {editFiles.documents.length > 0 ? (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, my: 2 }}>
                   {editFiles.documents.map((doc, i) => (
@@ -1603,14 +1692,14 @@ export default function EmployeeProfile() {
         </DialogContent>
 
         <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, gap: 1.2, justifyContent: 'space-between', borderTop: `1px solid ${GREEN_UI.border}`, bgcolor: '#ffffff' }}>
-          <Button variant="outlined" onClick={handleCloseEdit} disabled={saving} startIcon={<ArrowBackRounded />} sx={applicationSecondaryButtonSx}>
+          <Button variant="outlined" onClick={handleCloseEdit} disabled={saving || updatingPassword} startIcon={<ArrowBackRounded />} sx={applicationSecondaryButtonSx}>
             Cancel
           </Button>
           <Button
             variant="contained"
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || updatingPassword}
             sx={applicationPrimaryButtonSx}
           >
             {saving ? 'Saving…' : 'Save Changes'}

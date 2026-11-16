@@ -994,7 +994,7 @@ export default function PayrollComputation() {
     Promise.all([loadJobSalaryRates([manualEmployee.position]), loadPayrollRates()]).then(([rates, premiums]) => {
       if (!active) return;
       setManualRates({
-        dailyRate: rates.get(jobTitleKey(manualEmployee.position)) || parseSalaryRate(manualEmployee.salary),
+        dailyRate: parseSalaryRate(manualEmployee.salary) || rates.get(jobTitleKey(manualEmployee.position)) || 0,
         premiums: {
           nsd_percent: premiums.nsd_percent ?? payrollPremiumDefaults.nsd_percent,
           regular_holiday_percent: premiums.regular_holiday_percent ?? payrollPremiumDefaults.regular_holiday_percent,
@@ -1287,7 +1287,7 @@ export default function PayrollComputation() {
       const payrollItems = summaries.map((summary: any) => {
         const employee = employeeMap.get(summary.employee_id);
         const position = String(summary.position || employee?.position || '');
-        const salaryRate = jobSalaryMap.get(jobTitleKey(position)) || fallbackRate || parseSalaryRate(employee?.salary) || 0;
+        const salaryRate = parseSalaryRate(employee?.salary) || jobSalaryMap.get(jobTitleKey(position)) || fallbackRate;
         const hourlyRate = salaryRate > 0 ? salaryRate / payrollHoursPerDay : 0;
         const regularHours = toNumber(summary.regular_hours);
         const overtimeHours = toNumber(summary.overtime_hours);

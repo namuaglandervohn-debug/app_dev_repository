@@ -12,6 +12,41 @@ use Tests\TestCase;
 #[PreserveGlobalState(false)]
 class UserAccountsTest extends TestCase
 {
+    public function test_updates_the_linked_employee_password(): void
+    {
+        config([
+            'services.supabase.url' => 'https://supabase.test',
+            'services.supabase.anon_key' => 'test-anon',
+            'services.supabase.service_role_key' => 'test-service',
+        ]);
+        Http::preventStrayRequests();
+        Http::fake(function (Request $request) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+
+            return match (true) {
+                $path === '/auth/v1/user' => Http::response(['id' => 'hr-auth', 'email' => 'hr@example.test']),
+                ($query['auth_user_id'] ?? '') === 'eq.hr-auth' => Http::response([['role' => 'hr_admin', 'email' => 'hr@example.test']]),
+                $path === '/rest/v1/employees' => Http::response([['employee_id' => 'EMP001']]),
+                $path === '/rest/v1/user_accounts' => Http::response([[
+                    'auth_user_id' => 'employee-auth', 'email' => 'employee@example.test', 'role' => 'employee', 'is_active' => true,
+                ]]),
+                $path === '/auth/v1/admin/users/employee-auth' => Http::response(['id' => 'employee-auth', 'email' => 'employee@example.test']),
+            };
+        });
+
+        $this->withToken('test-token')->postJson('/api/admin/user-accounts', [
+            'action' => 'update_employee_password',
+            'employee_id' => 'EMP001',
+            'password' => 'Example-New123',
+        ])->assertOk()->assertExactJson(['message' => 'Employee password updated.']);
+
+        Http::assertSent(fn (Request $request) => $request->method() === 'PUT'
+            && $request->url() === 'https://supabase.test/auth/v1/admin/users/employee-auth'
+            && $request['password'] === 'Example-New123'
+            && $request['app_metadata']['hris_temporary_password'] === false);
+    }
+
     public function test_creates_the_employee_before_linking_the_account(): void
     {
         config([

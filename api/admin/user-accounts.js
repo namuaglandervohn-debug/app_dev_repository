@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
+import { accountServiceUnavailable, createSupabaseFetch } from '../../lib/supabase-request.js';
 
 const roles = new Map([
   ['hr', 'hr_admin'],
@@ -48,6 +49,49 @@ async function sendWelcomeEmail({ env, fetcher, name, email, password, authUserI
   return typeof id === 'string' && id ? id : null;
 }
 
+async function updateEmployeePassword(admin, body, send) {
+  const employeeId = clean(body.employee_id);
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!employeeId || employeeId.length > 40 || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72 || !password.trim()) {
+    return send(422, { message: 'Enter an employee ID and a password between 8 and 72 characters.' });
+  }
+
+  const [employeeResult, accountResult] = await Promise.all([
+    admin.from('employees').select('employee_id,applicant_id').eq('employee_id', employeeId).maybeSingle(),
+    admin.from('user_accounts').select('auth_user_id,email,role,is_active').eq('employee_id', employeeId).limit(2),
+  ]);
+  const employee = unwrap(employeeResult);
+  const accounts = unwrap(accountResult);
+  const account = accounts?.length === 1 ? accounts[0] : null;
+  const unavailable = () => send(409, { message: 'This employee needs one active, linked employee login. Review User Accounts.' });
+  if (!employee || !account?.auth_user_id || !account.is_active || account.role !== 'employee') return unavailable();
+
+  const [verified, applicant] = await Promise.all([
+    admin.auth.admin.getUserById(account.auth_user_id),
+    employee.applicant_id ? admin.from('applicants').select('auth_user_id,email')
+      .eq('applicant_id', employee.applicant_id).maybeSingle().then(unwrap) : null,
+  ]);
+  if (verified.error && (!verified.error.status || verified.error.status >= 500 || verified.error.status === 429)) {
+    return send(503, { message: accountServiceUnavailable });
+  }
+  const authUser = verified.data?.user;
+  if (verified.error || authUser?.id !== account.auth_user_id || !authUser.email || emailKey(authUser.email) !== emailKey(account.email)
+    || authUser.user_metadata?.registration_kind === 'applicant'
+    || (applicant && (applicant.auth_user_id === authUser.id || emailKey(applicant.email) === emailKey(authUser.email)))) return unavailable();
+
+  const updated = await admin.auth.admin.updateUserById(authUser.id, {
+    password,
+    app_metadata: { hris_temporary_password: false },
+  });
+  if (updated.error) {
+    if (!updated.error.status || updated.error.status >= 500 || updated.error.status === 429) {
+      return send(503, { message: accountServiceUnavailable });
+    }
+    return send(422, { message: 'The password did not meet the account requirements. Choose a different password and try again.' });
+  }
+  return send(200, { message: 'Employee password updated.' });
+}
+
 export function createUserAccountsHandler({ env = process.env, clientFactory = createClient, fetcher = fetch } = {}) {
   return async (request, response) => {
     const send = (status, payload) => {
@@ -64,7 +108,10 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
     if (!url || !key) return send(503, { message: 'Account creation is not configured on this server.' });
 
     try {
-      const admin = clientFactory(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+      const admin = clientFactory(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { fetch: createSupabaseFetch() },
+      });
       const verified = await admin.auth.getUser(token);
       const actor = verified.data?.user;
       if (verified.error || !actor?.id || !actor.email) {
@@ -75,7 +122,7 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
       const actorProfile = unwrap(await activeAccounts().eq('auth_user_id', actor.id).maybeSingle())
         ?? unwrap(await activeAccounts().eq('email', emailKey(actor.email)).is('auth_user_id', null).maybeSingle());
       if (emailKey(actorProfile?.email) !== emailKey(actor.email) || !adminRoles.includes(actorProfile?.role)) {
-        return send(403, { message: 'Only active HR/Admin or General Manager accounts can create users.' });
+        return send(403, { message: 'Only active HR/Admin or General Manager accounts can manage employee logins.' });
       }
 
       let body;
@@ -84,6 +131,7 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
       } catch {
         return send(400, { message: 'Invalid request body.' });
       }
+      if (body?.action === 'update_employee_password') return await updateEmployeePassword(admin, body, send);
       const name = clean(body?.name);
       const email = emailKey(body?.email);
       const password = typeof body?.password === 'string' ? body.password : '';
