@@ -2,6 +2,7 @@ import { formatDisplayDate } from '../../lib/displayDate';
 import MobileNumberField from '../MobileNumberField';
 import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { employeeApplicationFields } from '../../lib/employeeApplicationFields';
+import { parseSalaryRate } from '../../lib/jobSalaryRates';
 import { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Grid, Chip, Divider, CircularProgress,
@@ -11,6 +12,7 @@ import {
 } from '@mui/material';
 import {
   AccountCircle, BusinessCenter, Phone, Email, LocationOn, CalendarMonth,
+  PaymentsOutlined,
   Assignment, TaskAlt, CancelOutlined, HelpOutline, Badge,
   EditNote, Save, Close, CloudUpload, InsertDriveFile, LockReset,
   Cake, Public, Height, Scale, School, AutoAwesome, WorkspacePremium, Draw, Favorite, Place,
@@ -31,6 +33,7 @@ interface Employee {
   address?: string; supervisor?: string; dateHired?: string;
   emergencyContact?: string; tin?: string; sss?: string;
   philhealth?: string; pagibig?: string;
+  salary?: string | number | null;
 }
 
 interface Application {
@@ -43,6 +46,8 @@ interface Application {
 }
 
 interface DocFile { name: string; size: number; uploadedAt: string; dataUrl?: string; }
+
+const salaryFormatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 
 const EDITABLE_FIELDS: { key: keyof Employee; label: string; icon: React.ReactNode }[] = [
   { key: 'contact',          label: 'Contact Number',   icon: <Phone fontSize="small" /> },
@@ -215,6 +220,7 @@ const isPreviewableDoc = (doc: DocFile) => {
 export default function MyProfile() {
   const { user, profilePhoto, updateProfilePhoto } = useAuth();
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [positionSalary, setPositionSalary] = useState<{ key: string; rate: number | null } | null>(null);
   const [application, setApplication] = useState<Application | null>(null);
   const [applicationFields, setApplicationFields] = useState<ReturnType<typeof employeeApplicationFields>>([]);
   const [loading, setLoading] = useState(true);
@@ -230,6 +236,23 @@ export default function MyProfile() {
   const [docs, setDocs] = useState<DocFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const salaryEmployeeId = user?.role === 'employee' && user.employeeId === employee?.id ? employee?.id : undefined;
+  const salaryKey = salaryEmployeeId && employee?.position ? `${salaryEmployeeId}:${employee.position}` : '';
+  const customSalary = parseSalaryRate(employee?.salary);
+
+  useEffect(() => {
+    if (!salaryEmployeeId || !salaryKey || customSalary) return;
+
+    let active = true;
+    async function loadPositionSalary() {
+      const { data, error } = await supabase.rpc('get_own_position_daily_rate', { p_employee_id: salaryEmployeeId });
+      if (active) setPositionSalary({ key: salaryKey, rate: error ? null : parseSalaryRate(data) });
+    }
+    void loadPositionSalary().catch(() => {
+      if (active) setPositionSalary({ key: salaryKey, rate: null });
+    });
+    return () => { active = false; };
+  }, [customSalary, salaryEmployeeId, salaryKey]);
 
   useEffect(() => {
     if (!user) return;
@@ -294,6 +317,7 @@ export default function MyProfile() {
               id: row.employee_id,
               name: fullName || applicant?.name || user.name,
               position: firstValue(row.position, applicant?.position_applied) ?? '',
+              salary: row.salary ?? null,
               department: row.department ?? '',
               outlet: firstValue(accountOutlet, row.outlet, (user as any)?.outlet) ?? '',
               status: row.status ?? 'Active',
@@ -442,6 +466,12 @@ export default function MyProfile() {
   const profileName = user?.name ?? employee?.name ?? 'My Profile';
   const profileStatus = employee?.status ?? 'Active';
   const applicationDocs = application?.documents ?? [];
+  const postingSalary = positionSalary?.key === salaryKey ? positionSalary.rate : undefined;
+  const dailySalary = customSalary || postingSalary;
+  let dailySalaryLabel = 'Salary not set';
+  if (dailySalary) dailySalaryLabel = `${salaryFormatter.format(dailySalary)}/day`;
+  else if (salaryKey && postingSalary === undefined) dailySalaryLabel = 'Loading salary…';
+  else if (postingSalary === null) dailySalaryLabel = 'Salary unavailable';
 
   if (loading) {
     return (
@@ -520,6 +550,13 @@ export default function MyProfile() {
                   size="small"
                   sx={{ bgcolor: '#fbfff9', border: `1px solid ${GREEN_UI.border}`, color: GREEN_UI.text, fontWeight: 600}}
                 />
+                {salaryEmployeeId && <Chip
+                  icon={<PaymentsOutlined sx={{ fontSize: '16px !important' }} />}
+                  label={dailySalaryLabel}
+                  size="small"
+                  aria-label={`Daily salary, ${dailySalaryLabel}`}
+                  sx={{ bgcolor: '#fbfff9', border: `1px solid ${GREEN_UI.border}`, color: GREEN_UI.text, fontWeight: 600 }}
+                />}
                 <Chip
                   icon={<LocationOn sx={{ fontSize: '16px !important' }} />}
                   label={employee?.outlet ?? 'No outlet'}
