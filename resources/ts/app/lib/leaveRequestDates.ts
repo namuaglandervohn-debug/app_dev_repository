@@ -16,3 +16,10 @@ export function leaveDateError(startDate: string, endDate: string, today = curre
   }
   return null;
 }
+
+export function leaveDaysInYear(startDate: string, endDate: string, year: number) {
+  if (!startDate || !endDate) return 0;
+  const start = Date.parse(`${startDate < `${year}-01-01` ? `${year}-01-01` : startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate > `${year}-12-31` ? `${year}-12-31` : endDate}T00:00:00Z`);
+  return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, (end - start) / 86_400_000 + 1) : 0;
+}

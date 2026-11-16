@@ -1,5 +1,7 @@
 import { formatDisplayDate } from '../../lib/displayDate';
 import { pairAttendancePunches } from '../../lib/payrollPremiums';
+import { attendancePunchFields, loadAttendanceCalculator } from '../../lib/loadAttendanceCalculator';
+import { getWorkIntervals, type CalculatedAttendance } from '../../lib/scheduledAttendance';
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
@@ -73,11 +75,12 @@ interface Attendance {
   late: string;
   undertime: string;
   overtime: string;
-  status: "Present" | "Late" | "Absent" | "On Leave";
+  status: "Present" | "Late" | "Undertime" | "Late and Undertime" | "Absent" | "On Leave";
   discrepancy: string;
   source?: string;
   validationStatus?: string;
   reviewedBy?: string;
+  approvedTime?: string;
 }
 
 type AttendanceDraft = Omit<Attendance, "id" | "displayId" | "employeeId">;
@@ -116,7 +119,6 @@ const EMPTY_PUNCHES = { morningIn: '', morningOut: '', afternoonIn: '', afternoo
 const IMPORT_CONCURRENCY = 10;
 const DELETE_CONCURRENCY = 10;
 const PREVIEW_ROW_LIMIT = 50;
-const REQUIRED_DAILY_HOURS = 8;
 
 
 const GREEN_UI = {
@@ -183,6 +185,8 @@ const statusChipSx = (status: Attendance["status"]) => {
   const styles: Record<Attendance["status"], { bg: string; color: string; border: string }> = {
     Present: { bg: "#e5f8e9", color: "#217a43", border: "#a9dfb6" },
     Late: { bg: "#fff7e0", color: "#9b6b00", border: "#f5d786" },
+    Undertime: { bg: "#fff7e0", color: "#9b6b00", border: "#f5d786" },
+    "Late and Undertime": { bg: "#fff7e0", color: "#9b6b00", border: "#f5d786" },
     Absent: { bg: "#ffecec", color: "#b3261e", border: "#f4b6b2" },
     "On Leave": { bg: "#e9f4ff", color: "#1769aa", border: "#b9daf8" },
   };
@@ -217,12 +221,7 @@ type ImportSaveResult =
       error: string;
     };
 
-function computeAttendanceFromPunches(
-  punches: string[],
-  expectedIn?: string,
-  expectedOut?: string,
-  expectedWorkMinutes?: number,
-): Partial<AttendanceDraft> {
+function computeAttendanceFromPunches(punches: string[]): Partial<AttendanceDraft> {
   const minutes = punches
     .map((t) => parseClockToMinutes(t))
     .filter((m): m is number => m !== null);
@@ -240,7 +239,7 @@ function computeAttendanceFromPunches(
     workedMinutes = diffMinutes(minutes[0], minutes[minutes.length - 1]);
   }
 
-  const result: Partial<AttendanceDraft> = {
+  return {
     timeIn,
     timeOut,
     workIntervals: minutes.length % 2 === 0 ? workIntervals : null,
@@ -251,27 +250,7 @@ function computeAttendanceFromPunches(
     status: "Present",
   };
 
-  const scheduledIn = expectedIn ? parseClockToMinutes(expectedIn) : null;
-  const scheduledOut = expectedOut ? parseClockToMinutes(expectedOut) : null;
 
-  if (scheduledIn !== null && scheduledOut !== null && minutes.length >= 2) {
-    const scheduledMinutes = expectedWorkMinutes ?? diffMinutes(scheduledIn, scheduledOut);
-    const lateMin = Math.max(0, minutes[0] - scheduledIn);
-    const undertimeMin = Math.max(
-      0,
-      scheduledOut - minutes[minutes.length - 1],
-    );
-    const overtimeMin = Math.max(0, workedMinutes - scheduledMinutes);
-
-    result.late = String(lateMin);
-    result.undertime = String(undertimeMin);
-    result.overtime = String(overtimeMin);
-    // Keep the attendance status as Present even when late, undertime, or overtime minutes exist.
-    // The metrics are still stored separately and used by payroll computations.
-    result.status = "Present";
-  }
-
-  return result;
 }
 
 function parseClockToMinutes(value: string): number | null {
@@ -797,6 +776,8 @@ function getStatusValue(value: unknown): Attendance["status"] {
   const normalized = normalizeStatusForFilter(value);
 
   if (normalized === "late") return "Late";
+  if (normalized === "undertime") return "Undertime";
+  if (normalized === "lateandundertime") return "Late and Undertime";
   if (normalized === "absent") return "Absent";
   if (normalized === "onleave" || normalized === "leave") return "On Leave";
 
@@ -846,9 +827,12 @@ function formatAttendanceDisplayId(logId?: string | null, date?: string | null, 
 
 function attendanceStatusFromDb(row: any): Attendance["status"] {
   if (row?.is_absent) return "Absent";
-  if (String(row?.remarks ?? "").toLowerCase().includes("leave")) return "On Leave";
-  // Late, undertime, and overtime are payroll/attendance metrics, not the main status.
-  // A record can still be marked Present while keeping non-zero late/undertime/overtime values.
+  if (String(row?.remarks ?? "").toLowerCase().startsWith("on leave")) return "On Leave";
+  const late = toSafeNumber(row?.late_minutes) > 0 || row?.is_late;
+  const undertime = toSafeNumber(row?.undertime_minutes) > 0 || row?.is_undertime;
+  if (late && undertime) return "Late and Undertime";
+  if (late) return "Late";
+  if (undertime) return "Undertime";
   return "Present";
 }
 
@@ -860,7 +844,6 @@ function getAttendanceDiscrepancy(row: Partial<Attendance> & Record<string, any>
   const issues: string[] = [];
   const timeIn = String(row.timeIn ?? row.raw_time_in ?? row.time_in ?? "").trim();
   const timeOut = String(row.timeOut ?? row.raw_time_out ?? row.time_out ?? "").trim();
-  const totalHours = toSafeNumber(row.totalHours ?? row.total_hours);
   const lateMinutes = toSafeNumber(row.late ?? row.late_minutes);
   const undertimeMinutes = toSafeNumber(row.undertime ?? row.undertime_minutes);
 
@@ -868,7 +851,6 @@ function getAttendanceDiscrepancy(row: Partial<Attendance> & Record<string, any>
   if (!timeOut) issues.push("Missing time-out");
   if (lateMinutes > 0 || row.is_late) issues.push(`Late ${Math.round(lateMinutes)} min`);
   if (undertimeMinutes > 0 || row.is_undertime) issues.push(`Undertime ${Math.round(undertimeMinutes)} min`);
-  if (totalHours > 0 && totalHours < REQUIRED_DAILY_HOURS) issues.push("Incomplete required hours");
   if (row.is_incomplete && !issues.some((issue) => issue.startsWith("Missing"))) issues.push("Incomplete punches");
 
   return issues.length > 0 ? issues.join("; ") : "Complete";
@@ -902,7 +884,93 @@ function mapAttendanceLogToRow(row: any, index = 0): Attendance {
     source: row?.source,
     validationStatus: row?.validation_status,
     reviewedBy: row?.reviewed_by_name,
+    approvedTime: formatApprovedTime(row),
   };
+}
+
+function formatApprovedTime(row: Pick<CalculatedAttendance, 'paidOvertime' | 'approvedUndertime'>) {
+  return [
+    row.paidOvertime > 0 ? `HR-approved OT: ${row.paidOvertime} min` : '',
+    row.approvedUndertime > 0 ? `HR-approved undertime: ${row.approvedUndertime} min` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+function getPunches(record: Attendance) {
+  const pairs = record.workIntervals;
+  if (!pairs?.length) {
+    return { ...EMPTY_PUNCHES, morningIn: toDbTime(record.timeIn) ?? '', morningOut: toDbTime(record.timeOut) ?? '' };
+  }
+  const first = pairs[0];
+  const second = pairs[1];
+  return {
+    morningIn: formatMinutesAs24Hour(first[0] % 1440),
+    morningOut: formatMinutesAs24Hour(first[1] % 1440),
+    afternoonIn: second ? formatMinutesAs24Hour(second[0] % 1440) : '',
+    afternoonOut: second ? formatMinutesAs24Hour(pairs[pairs.length - 1][1] % 1440) : '',
+  };
+}
+
+function attendanceFromPunches(
+  calculator: Awaited<ReturnType<typeof loadAttendanceCalculator>> | null,
+  employeeId: string, date: string, punches: typeof EMPTY_PUNCHES,
+  existing?: Attendance | null,
+) {
+  if (!calculator || !employeeId || !date) return null;
+  const { morningIn, morningOut, afternoonIn, afternoonOut } = punches;
+  if (Boolean(morningIn) !== Boolean(morningOut) || Boolean(afternoonIn) !== Boolean(afternoonOut)) return null;
+  const times = [morningIn, morningOut, afternoonIn, afternoonOut].filter(Boolean);
+  const unchanged = existing && Object.values(getPunches(existing)).every((time, index) => time === Object.values(punches)[index]);
+  const intervals = (unchanged ? existing?.workIntervals : null) ?? getWorkIntervals(times);
+  const noWork = !times.length && (existing?.status === 'Absent' || existing?.status === 'On Leave');
+  if (!intervals && !noWork) return null;
+  const timeIn = intervals ? formatMinutesAsTime(intervals[0][0]) : '';
+  const timeOut = intervals ? formatMinutesAsTime(intervals[intervals.length - 1][1]) : '';
+  const calculated = calculator({
+    employee_id: employeeId, attendance_date: date,
+    time_in: timeIn, time_out: timeOut, work_intervals: intervals, is_absent: noWork && existing?.status === 'Absent',
+  }, true);
+  return {
+    timeIn, timeOut, workIntervals: intervals,
+    totalHours: calculated.total_hours.toFixed(2),
+    late: String(calculated.late_minutes),
+    undertime: String(calculated.undertime_minutes),
+    overtime: String(calculated.overtime_minutes),
+    status: noWork && existing?.status === 'On Leave' ? existing.status : attendanceStatusFromDb(calculated),
+    scheduleLabel: calculated.scheduleLabel,
+    approvedTime: formatApprovedTime(calculated),
+  };
+}
+
+function AttendancePunchFields({ punches, setPunches, metrics }: {
+  punches: typeof EMPTY_PUNCHES;
+  setPunches: (punches: typeof EMPTY_PUNCHES) => void;
+  metrics: ReturnType<typeof attendanceFromPunches>;
+}) {
+  return (
+    <>
+      <Grid container spacing={2}>
+        {MANUAL_PUNCHES.map(([field, label]) => (
+          <Grid key={field} size={6}>
+            <TextField label={label} type="time" fullWidth value={punches[field]}
+              onChange={event => setPunches({ ...punches, [field]: event.target.value })}
+              InputLabelProps={{ shrink: true }} />
+          </Grid>
+        ))}
+      </Grid>
+      <TextField label="Total Hours" fullWidth value={metrics?.totalHours ?? ''} InputProps={{ readOnly: true }}
+        InputLabelProps={{ shrink: true }}
+        helperText={metrics && (metrics.scheduleLabel ? `Assigned shift for this date: ${metrics.scheduleLabel}` : 'No timed shift was assigned for this date.')} />
+      <Grid container spacing={2}>
+        {([['late', 'Late (min)'], ['undertime', 'Undertime (min)'], ['overtime', 'Overtime (min)']] as const).map(([key, label]) => (
+          <Grid key={key} size={4}>
+            <TextField label={label} fullWidth value={metrics?.[key] ?? ''} InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} />
+          </Grid>
+        ))}
+      </Grid>
+      <TextField label="Status" fullWidth value={metrics?.status ?? 'Awaiting complete punches'} InputProps={{ readOnly: true }}
+        InputLabelProps={{ shrink: true }} helperText={metrics?.approvedTime} />
+    </>
+  );
 }
 
 async function getNextAttendanceLogId(dateValue: string) {
@@ -1046,7 +1114,7 @@ function buildAttendancePayload(row: Partial<Attendance>, employee: EmployeeOpti
     is_undertime: undertimeMinutes > 0,
     is_overtime: overtimeMinutes > 0,
     is_absent: isAbsent,
-    is_incomplete: needsReview && !isAbsent && !isOnLeave,
+    is_incomplete: !isAbsent && !isOnLeave && (!row.timeIn || !row.timeOut),
     source: "Manual Encoding",
     validation_status: needsReview ? "Needs Review" : "Validated",
     remarks: isOnLeave ? "On Leave" : discrepancy === "Complete" ? null : discrepancy,
@@ -1096,7 +1164,7 @@ function parseSimpleAttendanceRows(rows: SheetRow[]): Partial<Attendance>[] {
       return {
         employee,
         date,
-        ...computeAttendanceFromPunches(punches, "8:00 AM", "5:00 PM"),
+        ...computeAttendanceFromPunches(punches),
       } as Partial<Attendance>;
     })
     .filter((row): row is Partial<Attendance> => row !== null);
@@ -1284,7 +1352,7 @@ async function readErrorMessage(res: Response, fallback: string) {
   }
 }
 
-async function saveImportTask(task: SaveImportTask): Promise<ImportSaveResult> {
+async function saveImportTask(task: SaveImportTask, calculate: Awaited<ReturnType<typeof loadAttendanceCalculator>> | null): Promise<ImportSaveResult> {
   const employee = task.employee ?? await resolveEmployeeForAttendance(task.row.employee, task.row.biometricUserId);
   if (!employee) return { ok: false, key: task.key, error: 'The employee could not be verified.' };
   const date = normalizeDateForFilter(task.row.date);
@@ -1313,7 +1381,7 @@ async function saveImportTask(task: SaveImportTask): Promise<ImportSaveResult> {
   return {
     ok: true,
     kind: task.kind,
-    record: mapAttendanceLogToRow(data),
+    record: mapAttendanceLogToRow(calculate ? calculate(data) : data),
     key: task.key,
   };
 }
@@ -1336,7 +1404,8 @@ export default function AttendanceMonitoring() {
   const [importing, setImporting] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [manualPunches, setManualPunches] = useState(EMPTY_PUNCHES);
-  const manualStatus = toSafeNumber(form.late) > 0 ? 'Late' : 'Present';
+  const [calculator, setCalculator] = useState<Awaited<ReturnType<typeof loadAttendanceCalculator>> | null>(null);
+  const manualMetrics = attendanceFromPunches(calculator, form.employee, form.date, manualPunches);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -1392,15 +1461,17 @@ export default function AttendanceMonitoring() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from("attendance_logs")
-        .select("log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_absent, is_undertime, is_overtime, is_incomplete, remarks, source, validation_status, reviewed_by_name, created_at")
-        .order("attendance_date", { ascending: false })
-        .order("created_at", { ascending: false });
-
+      const [{ data, error }, calculate] = await Promise.all([
+        supabase.from("attendance_logs")
+          .select(`${attendancePunchFields},log_id,employee_name,validation_status,reviewed_by_name,created_at`)
+          .order("attendance_date", { ascending: false }).order("created_at", { ascending: false }),
+        loadAttendanceCalculator(),
+      ]);
       if (error) throw error;
-      setAttendances((data ?? []).map((row: any, index: number) => mapAttendanceLogToRow(row, index)));
+      setCalculator(() => calculate);
+      setAttendances((data ?? []).map((row, index) => mapAttendanceLogToRow(calculate(row), index)));
     } catch (e: any) {
+      setCalculator(null);
       setError(`Could not load attendance: ${e.message}`);
     } finally {
       setLoading(false);
@@ -1416,40 +1487,12 @@ export default function AttendanceMonitoring() {
     setPage(0);
   }, [filterDate, filterEmployee, filterStatus]);
 
-  const getManualAttendance = (punches: typeof EMPTY_PUNCHES) => {
-    const { morningIn, morningOut, afternoonIn, afternoonOut } = punches;
-    if (Boolean(morningIn) !== Boolean(morningOut) || Boolean(afternoonIn) !== Boolean(afternoonOut)) return null;
-    const times = [morningIn, morningOut, afternoonIn, afternoonOut].filter(Boolean);
-    if (!times.length) return null;
-    const computed = computeAttendanceFromPunches(times, "8:00 AM", "5:00 PM", REQUIRED_DAILY_HOURS * 60);
-    const intervals = computed.workIntervals ?? [];
-    if (intervals.length !== times.length / 2 || intervals[intervals.length - 1][1] - intervals[0][0] >= 1440) return null;
-    return computed;
-  };
-
-  const handleTimeChange = (field: keyof typeof EMPTY_PUNCHES, value: string) => {
-    const updated = { ...manualPunches, [field]: value };
-    setManualPunches(updated);
-    const computed = getManualAttendance(updated);
-    const metrics = computed ?? EMPTY;
-    setForm(prev => ({
-      ...prev,
-      timeIn: metrics.timeIn ?? '',
-      timeOut: metrics.timeOut ?? '',
-      workIntervals: metrics.workIntervals ?? null,
-      totalHours: metrics.totalHours ?? '',
-      late: metrics.late ?? '0',
-      undertime: metrics.undertime ?? '0',
-      overtime: metrics.overtime ?? '0',
-    }));
-  };
-
   const handleSave = async () => {
     if (!form.employee || !form.date) {
       setSnackbar({ open: true, message: "Please select an employee and date.", severity: "error" });
       return;
     }
-    if (!form.workIntervals?.length) {
+    if (!manualMetrics?.workIntervals?.length) {
       setSnackbar({ open: true, message: 'Enter a complete Time In and Time Out pair for each worked session. Check that the sessions do not overlap.', severity: 'error' });
       return;
     }
@@ -1458,8 +1501,10 @@ export default function AttendanceMonitoring() {
       const employee = employeeOptions.find((emp) => emp.employee_id === form.employee);
       if (!employee?.employee_id) throw new Error("Selected employee was not found in the employees table.");
 
-      const logId = await getNextAttendanceLogId(form.date);
-      const payload = buildAttendancePayload({ ...form, status: manualStatus }, employee, logId);
+      const [logId, calculate] = await Promise.all([getNextAttendanceLogId(form.date), loadAttendanceCalculator(employee.employee_id, form.date, form.date)]);
+      const metrics = attendanceFromPunches(calculate, employee.employee_id, form.date, manualPunches);
+      if (!metrics?.workIntervals?.length) throw new Error('Enter complete attendance punches.');
+      const payload = buildAttendancePayload({ ...form, ...metrics }, employee, logId);
 
       const { data, error } = await supabase
         .from("attendance_logs")
@@ -1472,7 +1517,7 @@ export default function AttendanceMonitoring() {
       }
       if (error) throw error;
 
-      const savedRecord = mapAttendanceLogToRow(data);
+      const savedRecord = mapAttendanceLogToRow(calculate(data));
       setAttendances((prev) => [savedRecord, ...prev]);
       setDialogOpen(false);
       setForm(EMPTY);
@@ -1785,7 +1830,7 @@ export default function AttendanceMonitoring() {
         const results = await Promise.all(
           batch.map(async (task) => {
             try {
-              return await saveImportTask(task);
+              return await saveImportTask(task, calculator);
             } catch (err: any) {
               return {
                 ok: false,
@@ -1938,7 +1983,7 @@ export default function AttendanceMonitoring() {
     };
 
     for (const record of filtered) {
-      if (record.status === "Present" || record.status === "Late") {
+      if (!["Absent", "On Leave"].includes(record.status)) {
         totals.present++;
       }
 
@@ -1955,15 +2000,9 @@ export default function AttendanceMonitoring() {
   const [editDialog, setEditDialog] = useState(false);
   const [editRecord, setEditRecord] = useState<Attendance | null>(null);
   const [linkEmployeeId, setLinkEmployeeId] = useState('');
-  const [editForm, setEditForm] = useState({
-    timeIn: "",
-    timeOut: "",
-    totalHours: "",
-    late: "0",
-    undertime: "0",
-    overtime: "0",
-    status: "Present" as Attendance["status"],
-  });
+  const [editPunches, setEditPunches] = useState(EMPTY_PUNCHES);
+  const editMetrics = attendanceFromPunches(calculator, editRecord?.employeeId || linkEmployeeId,
+    editRecord?.date ?? '', editPunches, editRecord);
 
   const handleEditSave = async () => {
     if (!editRecord) return;
@@ -1972,17 +2011,10 @@ export default function AttendanceMonitoring() {
       const targetEmployeeId = editRecord.employeeId || linkEmployeeId;
       const employee = employeeDirectory.find(entry => entry.employee_id === targetEmployeeId);
       if (!employee) throw new Error('Select the correct employee before saving this attendance entry.');
-      const payload = buildAttendancePayload(
-        {
-          ...editRecord,
-          ...editForm,
-          workIntervals: editForm.timeIn === editRecord.timeIn && editForm.timeOut === editRecord.timeOut
-            ? editRecord.workIntervals
-            : null,
-          employee: editRecord.employeeId ?? editRecord.employee,
-        },
-        employee,
-      );
+      const calculate = await loadAttendanceCalculator(employee.employee_id, editRecord.date, editRecord.date);
+      const metrics = attendanceFromPunches(calculate, employee.employee_id, editRecord.date, editPunches, editRecord);
+      if (!metrics) throw new Error('Enter a complete Time In and Time Out pair for each worked session.');
+      const payload = buildAttendancePayload({ ...editRecord, ...metrics }, employee);
 
       const { data, error } = await supabase
         .from("attendance_logs")
@@ -1995,7 +2027,7 @@ export default function AttendanceMonitoring() {
         throw new Error('This employee already has a linked entry for this date. Review the existing entry before linking this one.');
       }
       if (error) throw error;
-      const correctedRecord = mapAttendanceLogToRow(data);
+      const correctedRecord = mapAttendanceLogToRow(calculate(data));
       setAttendances((prev) =>
         prev.map((a) => (a.id === editRecord.id ? correctedRecord : a)),
       );
@@ -2024,7 +2056,7 @@ export default function AttendanceMonitoring() {
         .update({ validation_status: "Validated" })
         .eq("log_id", att.id).eq("validation_status", att.validationStatus ?? "").select().maybeSingle();
       if (error || !data) throw error || new Error("The entry changed. Refresh the attendance list.");
-      setAttendances(previous => previous.map(record => record.id === att.id ? mapAttendanceLogToRow(data) : record));
+      setAttendances(previous => previous.map(record => record.id === att.id ? mapAttendanceLogToRow(calculator ? calculator(data) : data) : record));
       setSnackbar({ open: true, message: "Attendance marked as reviewed.", severity: "success" });
     } catch (error) {
       setSnackbar({ open: true, message: error instanceof Error ? error.message : "Could not review attendance.", severity: "error" });
@@ -2036,15 +2068,7 @@ export default function AttendanceMonitoring() {
   const openEdit = (att: Attendance) => {
     setEditRecord(att);
     setLinkEmployeeId('');
-    setEditForm({
-      timeIn: att.timeIn,
-      timeOut: att.timeOut,
-      totalHours: att.totalHours,
-      late: att.late,
-      undertime: att.undertime,
-      overtime: att.overtime,
-      status: att.status,
-    });
+    setEditPunches(getPunches(att));
     setEditDialog(true);
   };
 
@@ -2442,6 +2466,8 @@ export default function AttendanceMonitoring() {
               <MenuItem value="review">Needs Payroll Review</MenuItem>
               <MenuItem key="present" value="present">Present</MenuItem>
               <MenuItem key="late" value="late">Late</MenuItem>
+              <MenuItem value="undertime">Undertime</MenuItem>
+              <MenuItem value="lateandundertime">Late and Undertime</MenuItem>
               <MenuItem key="absent" value="absent">Absent</MenuItem>
               <MenuItem key="onleave" value="onleave">On Leave</MenuItem>
             </TextField>
@@ -2540,6 +2566,7 @@ export default function AttendanceMonitoring() {
                     ))}
                   </Grid>
 
+                  {att.approvedTime && <Typography variant="caption">{att.approvedTime}</Typography>}
                   {canManageAttendance && (
                     <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                       <Chip
@@ -2722,6 +2749,7 @@ export default function AttendanceMonitoring() {
                         {att.source || "Unknown source"} · {att.validationStatus || "Unprocessed"}
                         {att.reviewedBy && ` · Reviewed by ${att.reviewedBy}`}
                       </Typography>
+                      {att.approvedTime && <Typography variant="caption" display="block">{att.approvedTime}</Typography>}
                       {canReviewAttendance && att.employeeId && ["Needs Review", "Unprocessed", "Corrected"].includes(att.validationStatus ?? "") && (
                         <Button size="small" disabled={saving} onClick={() => reviewAttendance(att)}>Mark Reviewed</Button>
                       )}
@@ -2883,7 +2911,7 @@ export default function AttendanceMonitoring() {
           </Box>
           <Grid container spacing={1.5}>
             {[
-              ["Present (incl. Late)", summary.present, "success"],
+              ["Present", summary.present, "success"],
               ["Late", summary.late, "warning"],
               ["Undertime", summary.undertime, "warning"],
               ["Needs Review", summary.discrepancies, "warning"],
@@ -2973,67 +3001,14 @@ export default function AttendanceMonitoring() {
             onChange={(e) => setForm({ ...form, date: e.target.value })}
             InputLabelProps={{ shrink: true }}
           />
-          <Grid container spacing={2}>
-            {MANUAL_PUNCHES.map(([field, label]) => (
-              <Grid key={field} size={6}>
-                <TextField label={label} type="time" fullWidth value={manualPunches[field]}
-                  onChange={event => handleTimeChange(field, event.target.value)}
-                  InputLabelProps={{ shrink: true }} />
-              </Grid>
-            ))}
-          </Grid>
-          <TextField
-            label="Total Hours"
-            fullWidth
-            value={form.totalHours}
-            InputProps={{ readOnly: true }}
-            placeholder="Auto-computed"
-          />
-          <Grid container spacing={2}>
-            <Grid size={4}>
-              <TextField
-                label="Late (min)"
-                fullWidth
-                value={form.late}
-                onChange={(e) => setForm({ ...form, late: e.target.value })}
-              />
-            </Grid>
-            <Grid size={4}>
-              <TextField
-                label="Undertime (min)"
-                fullWidth
-                value={form.undertime}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    undertime: e.target.value,
-                  })
-                }
-              />
-            </Grid>
-            <Grid size={4}>
-              <TextField
-                label="Overtime (min)"
-                fullWidth
-                value={form.overtime}
-                onChange={(e) => setForm({ ...form, overtime: e.target.value })}
-              />
-            </Grid>
-          </Grid>
-          <TextField
-            label="Status"
-            fullWidth
-            value={form.workIntervals?.length ? manualStatus : "Awaiting punches"}
-            InputProps={{ readOnly: true }}
-            InputLabelProps={{ shrink: true }}
-          />
+          <AttendancePunchFields punches={manualPunches} setPunches={setManualPunches} metrics={manualMetrics} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={pillButtonSx}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !manualMetrics}
             sx={{ ...pillButtonSx, bgcolor: GREEN_UI.greenDark, "&:hover": { bgcolor: "#176238" } }}
             startIcon={
               saving ? (
@@ -3335,108 +3310,7 @@ export default function AttendanceMonitoring() {
               </MenuItem>)}
             </TextField>
           )}
-          <Grid container spacing={2}>
-            <Grid size={6}>
-              <TextField
-                label="Time In"
-                fullWidth
-                value={editForm.timeIn}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    timeIn: e.target.value,
-                  })
-                }
-              />
-            </Grid>
-            <Grid size={6}>
-              <TextField
-                label="Time Out"
-                fullWidth
-                value={editForm.timeOut}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    timeOut: e.target.value,
-                  })
-                }
-              />
-            </Grid>
-          </Grid>
-          <TextField
-            label="Total Hours"
-            fullWidth
-            value={editForm.totalHours}
-            onChange={(e) =>
-              setEditForm({
-                ...editForm,
-                totalHours: e.target.value,
-              })
-            }
-          />
-          <Grid container spacing={2}>
-            <Grid size={4}>
-              <TextField
-                label="Late (min)"
-                fullWidth
-                value={editForm.late}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    late: e.target.value,
-                  })
-                }
-              />
-            </Grid>
-            <Grid size={4}>
-              <TextField
-                label="Undertime (min)"
-                fullWidth
-                value={editForm.undertime}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    undertime: e.target.value,
-                  })
-                }
-              />
-            </Grid>
-            <Grid size={4}>
-              <TextField
-                label="Overtime (min)"
-                fullWidth
-                value={editForm.overtime}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    overtime: e.target.value,
-                  })
-                }
-              />
-            </Grid>
-          </Grid>
-          <TextField
-            select
-            fullWidth
-            label="Status"
-            value={editForm.status}
-            onChange={(e) =>
-              setEditForm({
-                ...editForm,
-                status: e.target.value as any,
-              })
-            }
-            InputLabelProps={{ shrink: true }}
-          >
-            <MenuItem key="edit-status-empty" value="">
-              Select Status…
-            </MenuItem>
-            {["Present", "Late", "Absent", "On Leave"].map((s) => (
-              <MenuItem key={s} value={s}>
-                {s}
-              </MenuItem>
-            ))}
-          </TextField>
+          <AttendancePunchFields punches={editPunches} setPunches={setEditPunches} metrics={editMetrics} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEditDialog(false)} sx={pillButtonSx}>Cancel</Button>
@@ -3444,7 +3318,7 @@ export default function AttendanceMonitoring() {
             variant="contained"
             color="warning"
             onClick={handleEditSave}
-            disabled={saving || (!editRecord?.employeeId && !linkEmployeeId)}
+            disabled={saving || !editMetrics}
             sx={{ ...pillButtonSx }}
             startIcon={
               saving ? (

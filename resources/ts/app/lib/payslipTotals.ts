@@ -41,6 +41,25 @@ type PayslipRatesSource = EditableAmounts & Partial<Record<PayslipQuantityField,
 
 const roundMoney = (amount: number) => Number(amount.toFixed(2));
 
+export function calculateAttendancePay(
+  hours: { regularMinutes: number; overtimeMinutes: number; lateMinutes: number; undertimeMinutes: number },
+  dailyRate: number,
+  unpaidAbsences: number,
+) {
+  const hourlyRate = dailyRate / payrollHoursPerDay;
+  const lateDeduction = roundMoney(hours.lateMinutes / 60 * hourlyRate);
+  const undertimeDeduction = roundMoney(hours.undertimeMinutes / 60 * hourlyRate);
+  const absenceDeduction = roundMoney(unpaidAbsences * dailyRate);
+  // Actual regular time excludes missed work. Gross it up before listing the deductions.
+  const basicPay = roundMoney(roundMoney(hours.regularMinutes / 60 * hourlyRate) + lateDeduction + undertimeDeduction + absenceDeduction);
+  return {
+    basicPay,
+    basicPayHours: (hours.regularMinutes + hours.lateMinutes + hours.undertimeMinutes) / 60 + unpaidAbsences * payrollHoursPerDay,
+    overtimePay: roundMoney(hours.overtimeMinutes / 60 * hourlyRate * regularOvertimeMultiplier),
+    lateDeduction, undertimeDeduction, absenceDeduction,
+  };
+}
+
 function amount(value?: string) {
   const parsed = parseFloat(String(value ?? '').replace(/[₱,]/g, ''));
   return Number.isFinite(parsed) ? roundMoney(parsed) : 0;

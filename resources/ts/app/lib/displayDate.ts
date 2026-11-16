@@ -37,20 +37,34 @@ export function formatDisplayDateTime(value?: string | Date | null, fallback = '
   return Number.isFinite(date.getTime()) ? `${dateFormatter.format(date)} ${timeFormatter.format(date)}` : fallback;
 }
 
+export function parseScheduleDateRange(value?: string | null): { start: string; end: string } | null {
+  const label = value?.split(' | Special Duty: ')[0].trim() ?? '';
+  const singleDate = parseDisplayDate(label) || (/^\d{4}-\d{2}-\d{2}$/.test(label) ? parseDisplayDate(formatDisplayDate(label)) : '');
+  if (singleDate) return { start: singleDate, end: singleDate };
+  const numeric = /^(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–—]\s*(\d{1,2}\/\d{1,2}\/\d{4})$/.exec(label);
+  if (numeric) {
+    const start = parseDisplayDate(numeric[1]);
+    const end = parseDisplayDate(numeric[2]);
+    return start && end && start <= end ? { start, end } : null;
+  }
+  const compact = /^([A-Za-z]+)\s+(\d{1,2})\s*[-–—]\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})$/.exec(label);
+  if (!compact) return null;
+  const [, firstMonth, firstDay, lastMonth = firstMonth, lastDay, year] = compact;
+  const first = monthNumbers.get(firstMonth.toLowerCase());
+  const last = monthNumbers.get(lastMonth.toLowerCase());
+  if (!first || !last) return null;
+  const firstYear = Number(year) - (first > last ? 1 : 0);
+  const start = parseDisplayDate(`${first}/${firstDay}/${firstYear}`);
+  const end = parseDisplayDate(`${last}/${lastDay}/${year}`);
+  return start && end && start <= end ? { start, end } : null;
+}
+
 export function formatDisplayDateRange(value?: string | null) {
   if (!value) return '';
-  const compactRange = /^([A-Za-z]+)\s+(\d{1,2})\s*[-–—]\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})$/.exec(value);
-  if (compactRange) {
-    const [, firstMonth, firstDay, lastMonth = firstMonth, lastDay, year] = compactRange;
-    const first = monthNumbers.get(firstMonth.toLowerCase());
-    const last = monthNumbers.get(lastMonth.toLowerCase());
-    if (first && last) {
-      const firstYear = Number(year) - (first > last ? 1 : 0);
-      const start = parseDisplayDate(`${first}/${firstDay}/${firstYear}`);
-      const end = parseDisplayDate(`${last}/${lastDay}/${year}`);
-      if (start && end) return `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`;
-    }
-  }
+  const range = parseScheduleDateRange(value);
+  if (range) return range.start === range.end
+    ? formatDisplayDate(range.start)
+    : `${formatDisplayDate(range.start)} – ${formatDisplayDate(range.end)}`;
   return value.replace(/\b\d{4}-\d{2}-\d{2}\b/g, date => formatDisplayDate(date));
 }
 

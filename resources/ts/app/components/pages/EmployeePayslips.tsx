@@ -47,6 +47,8 @@ interface Payslip {
   payslipDate?: string;
   // Extended receipt fields
   basicPayAmt?: string;
+  basicPayHours?: string;
+  absenceDeductionAmt: string;
   otAmt?: string;
   nsdHours?: string;
   nsdAmt?: string;
@@ -159,6 +161,8 @@ const mapItemToPayslip = (item: any, summariesById: Map<string, any>, displayId?
     releasedAt: summary?.endorsed_at ?? summary?.reviewed_at ?? undefined,
     payslipDate: summary?.endorsed_at ? String(summary.endorsed_at).slice(0, 10) : undefined,
     basicPayAmt: money(item.basic_pay),
+    basicPayHours: details.basicPayHours,
+    absenceDeductionAmt: money(item.absence_deduction),
     otAmt: money(item.overtime_pay),
     tardinessMin: String(item.total_late_minutes ?? ''),
     lateDeductionAmt: money(item.late_deduction),
@@ -481,7 +485,7 @@ export default function EmployeePayslips() {
         <tr><td><b>Position:</b></td><td colspan="2">${slip.position || '—'}</td></tr>
         <tr><td><b>Rate:</b></td><td colspan="2">${slip.payRate}</td></tr>
         <tr class="sec-hdr"><td>Earnings:</td><td class="center" style="width:24%">Days/Hours/Mins.</td><td class="right" style="width:22%">Amount</td></tr>
-        <tr><td>Basic Pay</td><td class="right">${slip.regularHours || '—'}</td><td class="right">${slip.basicPayAmt || fmt(grossAmt)}</td></tr>
+        <tr><td>Basic Pay</td><td class="right">${slip.basicPayHours || slip.regularHours || '—'}</td><td class="right">${slip.basicPayAmt || fmt(grossAmt)}</td></tr>
         <tr><td>Reg.OT</td><td class="right">${slip.overtime && slip.overtime !== '0' ? slip.overtime : '—'}</td><td class="right">${slip.otAmt || '—'}</td></tr>
         <tr><td>NSD</td><td class="right">${slip.nsdHours || '—'}</td><td class="right">${slip.nsdAmt || '—'}</td></tr>
         <tr><td>Regular Holiday</td><td class="right">${slip.regularHolidayDays || '—'}</td><td class="right">${slip.regularHolidayAmt || '—'}</td></tr>
@@ -489,10 +493,11 @@ export default function EmployeePayslips() {
         <tr><td>SIL</td><td class="right">${slip.silDays || '—'}</td><td class="right">${slip.silAmt || '—'}</td></tr>
         <tr><td>Allowance</td><td class="right">—</td><td class="right">${slip.allowanceAmt || '—'}</td></tr>
         <tr><td>RETRO</td><td class="right">—</td><td class="right">${slip.retroAmt || '—'}</td></tr>
-        <tr><td>Tardiness (Mins.)</td><td class="right">${slip.tardinessMin || '—'}</td><td class="right">${fmt(parseAmt(slip.lateDeductionAmt))}</td></tr>
-        <tr><td>Undertime (Hours)</td><td class="right">${slip.undertimeHours || '—'}</td><td class="right">${fmt(parseAmt(slip.undertimeDeductionAmt))}</td></tr>
         <tr class="gross-row"><td colspan="2" class="center">GROSS PAY</td><td class="right">${fmt(grossAmt)}</td></tr>
         <tr class="sec-hdr"><td colspan="3">DEDUCTIONS:</td></tr>
+        <tr><td>Tardiness (Mins.)</td><td class="right">${slip.tardinessMin || '—'}</td><td class="right">${fmt(parseAmt(slip.lateDeductionAmt))}</td></tr>
+        <tr><td>Undertime (Hours)</td><td class="right">${slip.undertimeHours || '—'}</td><td class="right">${fmt(parseAmt(slip.undertimeDeductionAmt))}</td></tr>
+        ${parseAmt(slip.absenceDeductionAmt) ? `<tr><td colspan="2">Absences</td><td class="right">${fmt(parseAmt(slip.absenceDeductionAmt))}</td></tr>` : ''}
         <tr><td colspan="2">SSS Premium</td><td class="right">${slip.sssAmt || '—'}</td></tr>
         <tr><td colspan="2">PHIC Premium</td><td class="right">${slip.phicAmt || '—'}</td></tr>
         <tr><td colspan="2">HDMF Premium</td><td class="right">${slip.hdmfAmt || '—'}</td></tr>
@@ -982,7 +987,7 @@ export default function EmployeePayslips() {
             const valueSx = { fontWeight: 600, color: GREEN_UI.text, fontSize: '0.78rem' };
 
             const earningsRows: [string, string, string][] = [
-              ['Basic Pay',          selected.regularHours || '—',                                         selected.basicPayAmt || fmt(grossAmt)],
+              ['Basic Pay',          selected.basicPayHours || selected.regularHours || '—', selected.basicPayAmt || fmt(grossAmt)],
               ['Reg.OT',             selected.overtime && selected.overtime !== '0' ? selected.overtime : '—', selected.otAmt || '—'],
               ['NSD',                selected.nsdHours  || '—',                                            selected.nsdAmt  || '—'],
               ['Regular Holiday',    selected.regularHolidayDays || '—',                                   selected.regularHolidayAmt || '—'],
@@ -990,11 +995,12 @@ export default function EmployeePayslips() {
               ['SIL',                selected.silDays   || '—',                                            selected.silAmt  || '—'],
               ['Allowance',          '—',                                                                   selected.allowanceAmt || '—'],
               ['RETRO',   '—',                                                                   selected.retroAmt || '—'],
-              ['Tardiness (Mins.)',  selected.tardinessMin   || '—',                                       fmt(parseAmt(selected.lateDeductionAmt))],
-              ['Undertime (Hours)',  selected.undertimeHours || '—',                                       fmt(parseAmt(selected.undertimeDeductionAmt))],
             ];
 
             const deductionRows: [string, string][] = [
+              [`Tardiness (${Number(selected.tardinessMin) || 0} min)`, fmt(parseAmt(selected.lateDeductionAmt))],
+              [`Undertime (${Number(selected.undertimeHours || 0).toFixed(2)} hrs)`, fmt(parseAmt(selected.undertimeDeductionAmt))],
+              ...(parseAmt(selected.absenceDeductionAmt) > 0 ? [['Absences', fmt(parseAmt(selected.absenceDeductionAmt))] as [string, string]] : []),
               ['SSS Premium',              selected.sssAmt      || '—'],
               ['PHIC Premium',             selected.phicAmt     || '—'],
               ['HDMF Premium',             selected.hdmfAmt     || '—'],

@@ -35,6 +35,7 @@ interface EmployeeOption {
   employeeId: string;
   name: string;
   outlet: string;
+  position: string;
 }
 
 const EMPTY_FORM = {
@@ -219,7 +220,7 @@ export default function UserManagement() {
   const fetchEmployeeOptions = async () => {
     const { data, error } = await supabase
       .from("employees")
-      .select("employee_id, first_name, middle_name, last_name, suffix, outlet")
+      .select("employee_id, first_name, middle_name, last_name, suffix, outlet, position")
       .order("first_name", { ascending: true });
 
     if (error) {
@@ -233,6 +234,7 @@ export default function UserManagement() {
         .replace(/\s+/g, " ")
         .trim(),
       outlet: employee.outlet ?? "",
+      position: employee.position ?? "",
     })).filter(employee => employee.employeeId));
   };
 
@@ -836,6 +838,7 @@ export default function UserManagement() {
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>Account Name</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>Email / Username</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>Role</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>Position</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>Status</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap', minWidth: 180 }}>Actions</TableCell>
               </TableRow>
@@ -843,7 +846,7 @@ export default function UserManagement() {
             <TableBody>
               {users.length === 0 || filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 7 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 7 }}>
                     <Box sx={{ maxWidth: 360, mx: 'auto' }}>
                       <Box
                         sx={{
@@ -921,6 +924,8 @@ export default function UserManagement() {
                         sx={roleChipSx(u.role)}
                       />
                     </TableCell>
+
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{getEmployeeOption(u.employeeId)?.position || '—'}</TableCell>
 
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Chip
@@ -1359,7 +1364,6 @@ export default function UserManagement() {
                     color={selectedUser?.active === false ? 'success' : 'warning'}
                     disabled={updatingPassword || saving}
                     onClick={() => selectedUser && handleToggleActive(selectedUser)}
-                    disabled={saving}
                     sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong }}
                   >
                     {selectedUser?.active === false ? 'Activate Account' : 'Deactivate Account'}

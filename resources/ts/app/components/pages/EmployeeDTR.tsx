@@ -1,4 +1,6 @@
-import { formatDisplayDateRange } from '../../lib/displayDate';
+import { attendancePunchFields, loadAttendanceCalculator } from '../../lib/loadAttendanceCalculator';
+import type { CalculatedAttendance } from '../../lib/scheduledAttendance';
+import { formatDisplayDateRange, parseScheduleDateRange } from '../../lib/displayDate';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
@@ -27,7 +29,6 @@ import {
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { COMPANY } from "../../lib/constants";
-import { getAttendanceOvertimeMinutes, REQUIRED_DAILY_HOURS } from "../../lib/attendanceOvertime";
 
 interface AttendanceLogRow {
   log_id: string;
@@ -162,38 +163,24 @@ function formatEmployeeName(row: any) {
     .trim();
 }
 
-function scheduleMatchesMonth(week: string, selectedMonthLabel: string, selectedYear: number) {
-  const normalizedWeek = week.toLowerCase();
-  const monthMatches = normalizedWeek.includes(selectedMonthLabel.toLowerCase());
-  const yearMatches = normalizedWeek.includes(String(selectedYear));
-  return monthMatches && yearMatches;
-}
-
 function getDayName(year: number, month: number, day: number) {
   return new Date(year, month, day).toLocaleDateString("en-US", { weekday: "short" });
 }
 
-function mapAttendanceLogToDTR(row: AttendanceLogRow): DTRRecord {
+function mapAttendanceLogToDTR(row: AttendanceLogRow & CalculatedAttendance): DTRRecord {
   const timeIn = String(row.raw_time_in ?? "").trim() || formatDbTime(row.time_in);
   const timeOut = String(row.raw_time_out ?? "").trim() || formatDbTime(row.time_out);
   const lateMinutes = Number(row.late_minutes ?? 0);
   const undertimeMinutes = Number(row.undertime_minutes ?? 0);
   const totalHours = Number(row.total_hours ?? 0);
-  const derivedOvertimeMinutes = getAttendanceOvertimeMinutes(row);
-  const derivedUndertimeMinutes =
-    undertimeMinutes > 0
-      ? undertimeMinutes
-      : Number.isFinite(totalHours) && totalHours > 0 && totalHours < REQUIRED_DAILY_HOURS
-        ? Math.round((REQUIRED_DAILY_HOURS - totalHours) * 60)
-        : 0;
-  const intervals = row.work_intervals;
+  const derivedOvertimeMinutes = row.overtime_minutes;
+  const intervals = row.workedIntervals;
   const hasRecordedBreak = intervals && intervals.length >= 2;
-  const legacyBreakOut = !intervals && timeIn && timeOut ? addMinutesToClock(timeIn, 4 * 60) : "";
-  const breakOut = hasRecordedBreak ? formatMinutesAsTime(intervals[0][1]) : legacyBreakOut;
-  const breakIn = hasRecordedBreak ? formatMinutesAsTime(intervals[1][0]) : legacyBreakOut ? addMinutesToClock(legacyBreakOut, 60) : "";
+  const breakOut = hasRecordedBreak ? formatMinutesAsTime(intervals[0][1]) : "";
+  const breakIn = hasRecordedBreak ? formatMinutesAsTime(intervals[1][0]) : "";
   const regularOut =
     timeOut && derivedOvertimeMinutes > 0
-      ? addMinutesToClock(timeOut, -derivedOvertimeMinutes)
+      ? (row.overtimeStart === undefined ? addMinutesToClock(timeOut, -derivedOvertimeMinutes) : formatMinutesAsTime(row.overtimeStart))
       : timeOut;
 
   return {
@@ -210,10 +197,17 @@ function mapAttendanceLogToDTR(row: AttendanceLogRow): DTRRecord {
       timeOut && derivedOvertimeMinutes > 0 ? timeOut : timeOut ? "—" : "",
     overtime: timeIn || timeOut ? formatDurationHours(derivedOvertimeMinutes) : "",
     late: timeIn || timeOut ? formatDurationHours(lateMinutes) : "",
-    undertime: timeIn || timeOut ? formatDurationHours(derivedUndertimeMinutes) : "",
+    undertime: timeIn || timeOut ? formatDurationHours(undertimeMinutes) : "",
     total_hours: Number.isFinite(totalHours) && totalHours > 0 ? totalHours.toFixed(2) : "",
-    official_hours: timeIn || timeOut ? REQUIRED_DAILY_HOURS.toFixed(2) : "",
-    remarks: row.validation_status && row.validation_status !== "Validated" ? "Pending attendance review" : "",
+    official_hours: timeIn || timeOut
+      ? row.scheduledMinutes === undefined ? "—" : (row.scheduledMinutes / 60).toFixed(2)
+      : "",
+    remarks: [
+      row.is_absent ? "Absent" : /^on leave\b/i.test(row.remarks ?? '') ? "On Leave" : "",
+      row.validation_status && row.validation_status !== "Validated" ? "Pending attendance review" : "",
+      row.paidOvertime > 0 ? `HR-approved OT: ${row.paidOvertime} min` : "",
+      row.approvedUndertime > 0 ? `HR-approved undertime: ${row.approvedUndertime} min` : "",
+    ].filter(Boolean).join(' · '),
   };
 }
 
@@ -450,33 +444,35 @@ export default function EmployeeDTR() {
 
     setLoading(true);
 
-    const [{ data: employeeData }, { data, error }] = await Promise.all([
-      supabase
-        .from("employees")
-        .select("employee_id, first_name, last_name, position, department, outlet")
+    try {
+      const [{ data: employeeData }, { data, error }, calculate] = await Promise.all([
+        supabase
+          .from("employees")
+          .select("employee_id, first_name, last_name, position, department, outlet")
+          .eq("employee_id", targetEmployeeId)
+          .maybeSingle(),
+        supabase
+        .from("attendance_logs")
+        .select(
+          `${attendancePunchFields},log_id,raw_time_in,raw_time_out,validation_status`
+        )
         .eq("employee_id", targetEmployeeId)
-        .maybeSingle(),
-      supabase
-      .from("attendance_logs")
-      .select(
-        "log_id, employee_id, attendance_date, time_in, time_out, raw_time_in, raw_time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_late, is_undertime, is_overtime, is_absent, is_incomplete, remarks, validation_status"
-      )
-      .eq("employee_id", targetEmployeeId)
-      .gte("attendance_date", periodStart)
-      .lte("attendance_date", periodEnd)
-        .order("attendance_date", { ascending: true }),
-    ]);
+        .gte("attendance_date", periodStart)
+        .lte("attendance_date", periodEnd)
+          .order("attendance_date", { ascending: true }),
+        loadAttendanceCalculator(targetEmployeeId, periodStart, periodEnd),
+      ]);
 
-    setEmployeeProfile((employeeData as EmployeeProfile | null) ?? null);
+      setEmployeeProfile((employeeData as EmployeeProfile | null) ?? null);
 
-    if (error) {
+      if (error) throw error;
+      setRecords((data ?? []).map(row => mapAttendanceLogToDTR(calculate(row as AttendanceLogRow))));
+    } catch (error) {
       console.error("DTR fetch error:", error);
       setRecords([]);
-    } else {
-      setRecords((data ?? []).map((row) => mapAttendanceLogToDTR(row as AttendanceLogRow)));
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [periodEnd, periodStart, targetEmployeeId]);
 
   const fetchEmployeeSchedules = useCallback(async () => {
@@ -500,7 +496,10 @@ export default function EmployeeDTR() {
     } else {
       setSchedules(
         (data ?? [])
-          .filter((row: any) => scheduleMatchesMonth(String(row.week ?? ""), monthName, year))
+          .filter(row => {
+            const range = parseScheduleDateRange(row.week);
+            return range && range.start <= periodEnd && range.end >= periodStart;
+          })
           .map((row: any) => ({
             id: row.schedule_id ?? "—",
             week: row.week ?? "",
@@ -522,7 +521,7 @@ export default function EmployeeDTR() {
     }
 
     setScheduleLoading(false);
-  }, [employeeProfile?.outlet, employeeProfile?.position, monthName, targetEmployeeId, year]);
+  }, [employeeProfile?.outlet, employeeProfile?.position, periodStart, periodEnd, targetEmployeeId]);
 
   useEffect(() => {
     fetchDTR();

@@ -10,13 +10,15 @@ import {
 import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings, CalendarMonth } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import { getAttendanceOvertimeMinutes } from '../../lib/attendanceOvertime';
+import { attendancePunchFields, loadAttendanceCalculator } from '../../lib/loadAttendanceCalculator';
+import { summarizePayrollHours, type CalculatedAttendance } from '../../lib/scheduledAttendance';
+import { leaveDaysInYear } from '../../lib/leaveRequestDates';
 import { includeSelectedJobTitle, jobTitleKey } from '../../lib/jobTitles';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import {
   calculatePayslipLineAmount, calculatePayslipTotals, netPayAfterDeductions,
-  payrollHoursPerDay, payrollPremiumFields, payslipAmountFields, payslipQuantityAmounts, regularOvertimeMultiplier,
+  calculateAttendancePay, payrollHoursPerDay, payrollPremiumFields, payslipAmountFields, payslipQuantityAmounts, regularOvertimeMultiplier,
   type PayrollPremiumRates, type PayslipAmountField, type PayslipQuantityField,
 } from '../../lib/payslipTotals';
 import ActionSnackbar from '../ActionSnackbar';
@@ -68,6 +70,8 @@ interface Payroll {
   // Extended payslip fields
   payslipDate?: string;
   basicPayAmt?: string;
+  basicPayHours?: string;
+  absenceDeductionAmt?: string;
   otAmt?: string;
   nsdHours?: string; nsdAmt?: string;
   regularHolidayDays?: string; regularHolidayAmt?: string;
@@ -423,18 +427,19 @@ function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; show
     const { start, end } = getMonthRange(month);
 
     void Promise.all([
-      supabase.from('attendance_logs').select('attendance_date, total_hours')
+      supabase.from('attendance_logs').select(attendancePunchFields)
         .eq('employee_id', employeeId).gte('attendance_date', cutoffs[0].start).lte('attendance_date', cutoffs[2].end),
       supabase.from('payroll_summaries').select('period_start, period_end, status, payroll_items!inner(employee_id,total_work_hours)')
         .in('period_start', cutoffs.map(cutoff => cutoff.start))
         .eq('payroll_items.employee_id', employeeId),
-    ]).then(([attendance, payroll]) => {
+      loadAttendanceCalculator(employeeId, cutoffs[0].start, cutoffs[2].end),
+    ]).then(([attendance, payroll, calculate]) => {
       if (!active) return;
       if (attendance.error || payroll.error) {
         setReport({ key: reportKey, rows: [], hasAttendance: false, error: 'Could not load monthly hours. Close and reopen Monthly Hours to retry.' });
         return;
       }
-      const logs = attendance.data ?? [];
+      const logs = (attendance.data ?? []).map(log => calculate(log));
       const rows = cutoffs.map(cutoff => {
         const hours = logs.reduce((total, log) => {
           if (log.attendance_date < cutoff.workedStart || log.attendance_date > cutoff.workedEnd) return total;
@@ -458,6 +463,8 @@ function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; show
         };
       });
       setReport({ key: reportKey, rows, hasAttendance: logs.some(log => log.attendance_date >= start && log.attendance_date <= end) });
+    }).catch(() => {
+      if (active) setReport({ key: reportKey, rows: [], hasAttendance: false, error: 'Could not load monthly hours. Close and reopen Monthly Hours to retry.' });
     });
     return () => { active = false; };
   }, [employeeId, month, reportKey, showDrafts]);
@@ -640,7 +647,12 @@ export default function PayrollComputation() {
         return next;
       }
       const calculated = calculatePayslipLineAmount(selectedPayroll, quantityField, value, rates);
-      if (calculated !== undefined) next[amountField] = money(calculated);
+      if (calculated !== undefined) {
+        const basicPayAdjustment = quantityField === 'regularHours' && selectedPayroll.basicPayHours
+          ? toNumber(selectedPayroll.basicPayAmt) - roundMoney(toNumber(selectedPayroll.regularHours) * (selectedPayroll.hourlyRate ?? 0))
+          : 0;
+        next[amountField] = money(calculated + basicPayAdjustment);
+      }
       return next;
     });
   };
@@ -661,6 +673,21 @@ export default function PayrollComputation() {
       inputProps={{ 'aria-label': `${label} amount`, inputMode: 'decimal', style: numericInputStyle }}
       InputProps={{ startAdornment: <InputAdornment position="start" aria-hidden="true" disableTypography sx={{ fontSize: '0.73rem', mr: 0.25 }}>₱</InputAdornment> }}
     />
+  );
+  const renderPayslipEditLine = (label: string, dk: PayslipQuantityField | null, ak: PayslipAmountField) => (
+    <Box key={label} sx={{ display: 'flex', borderBottom: '1px solid #eee', alignItems: 'center' }}>
+      <Box sx={{ flex: 1, p: '1px 8px', borderRight: '1px solid #ccc', fontSize: '0.76rem' }}>{label}</Box>
+      <Box sx={{ width: '24%', px: 0.5, borderRight: '1px solid #ccc' }}>
+        {dk ? <TextField variant="standard" fullWidth size="small" value={payslipEditForm[dk]} onChange={event => {
+          const value = event.target.value;
+          if (/^\d*(?:\.\d*)?$/.test(value)) updatePayslipField(dk, value);
+        }} placeholder="—" inputProps={{ 'aria-label': `${label} quantity`, inputMode: 'decimal', style: numericInputStyle }} />
+             : <Box sx={{ textAlign: 'right', fontSize: '0.75rem', color: 'text.disabled', p: '3px 2px' }}>—</Box>}
+      </Box>
+      <Box sx={{ width: '22%', px: 0.5 }}>
+        {renderAmountInput(ak, label)}
+      </Box>
+    </Box>
   );
 
   const currentUserName = (user as any)?.name ?? (user as any)?.full_name ?? (user as any)?.email ?? 'System User';
@@ -818,6 +845,8 @@ export default function PayrollComputation() {
       status: dbStatusToUi(summary?.status),
       payslipDate: summary?.endorsed_at ? String(summary.endorsed_at).slice(0, 10) : undefined,
       basicPayAmt: money(item.basic_pay),
+      basicPayHours: details.basicPayHours,
+      absenceDeductionAmt: money(item.absence_deduction),
       otAmt: money(item.overtime_pay),
       tardinessMin: String(item.total_late_minutes ?? ''),
       lateDeductionAmt: money(item.late_deduction),
@@ -1120,14 +1149,19 @@ export default function PayrollComputation() {
       const hasRegularHoliday = holidays.some(holiday => holiday.type === 'regular');
       const holidayDates = new Set(holidays.map(holiday => holiday.date));
 
-      const { data: attendanceLogs, error: logsError } = await supabase
-        .from('attendance_logs')
-        .select('log_id, employee_id, employee_name, attendance_date, time_in, time_out, work_intervals, total_hours, late_minutes, undertime_minutes, overtime_minutes, is_absent, is_incomplete')
-        .gte('attendance_date', start)
-        .lte('attendance_date', end)
-        .not('employee_id', 'is', null);
+      const calculate = await loadAttendanceCalculator(undefined, start, end);
+      const attendanceLogs = [];
+      const pageSize = 500;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase.from('attendance_logs')
+          .select(`${attendancePunchFields},log_id,employee_name`)
+          .gte('attendance_date', start).lte('attendance_date', end).not('employee_id', 'is', null)
+          .order('log_id').range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        attendanceLogs.push(...data.map(log => calculate(log)));
+        if (data.length < pageSize) break;
+      }
 
-      if (logsError) throw logsError;
       if (!attendanceLogs?.length && !hasRegularHoliday) {
         const latestMonth = await latestAttendanceMonth();
         const latestHint = latestMonth
@@ -1187,24 +1221,23 @@ export default function PayrollComputation() {
       }))];
       const jobSalaryMap = await loadJobSalaryRates(positions);
 
-      const groupedLogs = usableLogs.reduce((map: Map<string, any[]>, log: any) => {
+      const groupedLogs = usableLogs.reduce((map, log) => {
         const employeeId = String(log.employee_id);
         map.set(employeeId, [...(map.get(employeeId) ?? []), log]);
         return map;
-      }, new Map<string, any[]>());
+      }, new Map<string, typeof usableLogs>());
+      const hoursByEmployee = new Map([...groupedLogs].map(([employeeId, logs]) => [employeeId, summarizePayrollHours(logs)]));
 
       const summaryPayloads = [...targetEmployeeIds].map(employeeId => {
         const logs = groupedLogs.get(employeeId) ?? [];
         const employee = employeeMap.get(employeeId);
-        const totalWorkHours = logs.reduce((sum, log) => sum + toNumber(log.total_hours), 0);
-        const overtimeByLog = logs.map(getAttendanceOvertimeMinutes);
-        const totalOvertimeMinutes = overtimeByLog.reduce((sum, minutes) => sum + minutes, 0);
-        const totalLateMinutes = logs.reduce((sum, log) => sum + Math.round(toNumber(log.late_minutes)), 0);
-        const totalUndertimeMinutes = logs.reduce((sum, log) => sum + Math.round(toNumber(log.undertime_minutes)), 0);
-        const totalAbsentDays = logs.filter((log) => Boolean(log.is_absent)).length;
-        const totalIncompleteDays = logs.filter((log) => Boolean(log.is_incomplete)).length;
+        const { workedHours: totalWorkHours, overtimeMinutes: totalOvertimeMinutes, regularMinutes,
+          lateMinutes: totalLateMinutes, undertimeMinutes: totalUndertimeMinutes } =
+          hoursByEmployee.get(employeeId) ?? summarizePayrollHours([]);
+        const totalAbsentDays = logs.filter(log => log.is_absent).length;
+        const totalIncompleteDays = logs.filter(log => log.is_incomplete).length;
         const overtimeHours = roundMoney(totalOvertimeMinutes / 60);
-        const regularHours = roundMoney(Math.max(totalWorkHours - overtimeHours, 0));
+        const regularHours = roundMoney(regularMinutes / 60);
         const employeeName = logs.find((log) => log.employee_name)?.employee_name || fullNameFromEmployee(employee) || employeeId;
 
         return {
@@ -1221,7 +1254,7 @@ export default function PayrollComputation() {
           total_incomplete_days: totalIncompleteDays,
           total_late_count: logs.filter((log) => Number(log.late_minutes ?? 0) > 0).length,
           total_undertime_count: logs.filter((log) => Number(log.undertime_minutes ?? 0) > 0).length,
-          total_overtime_count: overtimeByLog.filter((minutes) => minutes > 0).length,
+          total_overtime_count: logs.filter(log => log.paidOvertime > 0).length,
           total_late_minutes: totalLateMinutes,
           total_undertime_minutes: totalUndertimeMinutes,
           total_overtime_minutes: totalOvertimeMinutes,
@@ -1267,18 +1300,18 @@ export default function PayrollComputation() {
 
         const { data: approvedLeaves, error: approvedLeavesError } = await supabase
           .from('employee_requests')
-          .select('employee_id, request_type, status, start_date, total_days')
+          .select('employee_id, start_date, end_date')
           .in('employee_id', [...targetEmployeeIds])
           .eq('request_type', 'Leave')
           .eq('status', 'Approved')
-          .gte('start_date', `${year}-01-01`)
+          .gte('end_date', `${year}-01-01`)
           .lte('start_date', `${year}-12-31`);
 
         if (approvedLeavesError) throw approvedLeavesError;
 
         (approvedLeaves ?? []).forEach((request: any) => {
           const employeeId = String(request.employee_id ?? '');
-          usedLeaveMap.set(employeeId, (usedLeaveMap.get(employeeId) ?? 0) + toNumber(request.total_days));
+          usedLeaveMap.set(employeeId, (usedLeaveMap.get(employeeId) ?? 0) + leaveDaysInYear(request.start_date, request.end_date || request.start_date, year));
         });
       }
 
@@ -1294,16 +1327,14 @@ export default function PayrollComputation() {
         const lateMinutes = Math.round(toNumber(summary.total_late_minutes));
         const undertimeMinutes = Math.round(toNumber(summary.total_undertime_minutes));
         const absentDays = Math.round(toNumber(summary.total_absent_days));
-        const premiums = calculatePayrollPremiums(groupedLogs.get(summary.employee_id) ?? [], holidays, salaryRate, rates, employee?.hire_date);
+        const logs = groupedLogs.get(summary.employee_id) ?? [];
+        const hours = hoursByEmployee.get(summary.employee_id) ?? summarizePayrollHours([]);
+        const premiums = calculatePayrollPremiums(logs.map(log => ({ ...log, work_intervals: log.workedIntervals })), holidays, salaryRate, rates, employee?.hire_date);
         const nightNeedsReview = premiums.nightNeedsReview && (rates.nsd_percent ?? payrollPremiumDefaults.nsd_percent) > 0;
         if (nightNeedsReview) nightReviewCount++;
-        const nonHolidayAbsences = (groupedLogs.get(summary.employee_id) ?? [])
-          .filter(log => log.is_absent && !holidayDates.has(log.attendance_date)).length;
-        const basicPay = roundMoney(regularHours * hourlyRate);
-        const overtimePay = roundMoney(overtimeHours * hourlyRate * regularOvertimeMultiplier);
-        const lateDeduction = roundMoney((lateMinutes / 60) * hourlyRate);
-        const undertimeDeduction = roundMoney((undertimeMinutes / 60) * hourlyRate);
-        const absenceDeduction = roundMoney(nonHolidayAbsences * salaryRate);
+        const nonHolidayAbsences = logs.filter(log => log.is_absent && !holidayDates.has(log.attendance_date)).length;
+        const { basicPay, basicPayHours, overtimePay, lateDeduction, undertimeDeduction, absenceDeduction } =
+          calculateAttendancePay(hours, salaryRate, nonHolidayAbsences);
         const annualLeaveAllowance = leaveAllowanceMap.get(summary.employee_id) ?? COMPANY_ANNUAL_LEAVE_ALLOWANCE;
         const usedLeaveDays = usedLeaveMap.get(summary.employee_id) ?? 0;
         const unusedLeaveDays = isYearEndLeaveConversion ? Math.max(annualLeaveAllowance - usedLeaveDays, 0) : 0;
@@ -1342,6 +1373,7 @@ export default function PayrollComputation() {
             payrollDisplayId: formatPayrollDisplayIdFromEmployee(summary.employee_id, start, payrollId),
             hourlyRate: roundMoney(hourlyRate),
             generatedPremiums: true,
+            basicPayHours: basicPayHours.toFixed(2),
             nightNeedsReview,
             regularUnworkedDays: premiums.regularUnworkedDays,
             nsdHours: premiums.nsdHours ? String(premiums.nsdHours) : '',
@@ -1484,24 +1516,25 @@ export default function PayrollComputation() {
         const items = [];
         for (let offset = 0; ; offset += pageSize) {
           const { data, error } = await supabase.from('payroll_items')
-            .select('employee_id, employee_name, total_work_hours').eq('payroll_id', payrollId)
+            .select('employee_id,employee_name,total_work_hours,attendance_summary_id,regular_hours,overtime_hours,total_late_minutes,total_undertime_minutes').eq('payroll_id', payrollId)
             .order('payroll_item_id').range(offset, offset + pageSize - 1);
           if (error) throw error;
           items.push(...data);
           if (data.length < pageSize) break;
         }
         if (!items.length) throw new Error('No employees are in this cutoff.');
-        const employees = new Map(items.map(item => [item.employee_id, { hours: 0, exceptions: 0 }]));
+        const employees = new Map(items.map(item => [item.employee_id, { logs: [] as CalculatedAttendance[], exceptions: 0 }]));
+        const calculate = await loadAttendanceCalculator(undefined, periodStart, periodEnd);
         for (let offset = 0; ; offset += pageSize) {
           const { data, error: logError } = await supabase.from('attendance_logs')
-            .select('employee_id,total_hours,validation_status')
+            .select(`${attendancePunchFields},validation_status`)
             .gte('attendance_date', periodStart).lte('attendance_date', periodEnd)
             .order('log_id').range(offset, offset + pageSize - 1);
           if (logError) throw logError;
           for (const log of data ?? []) {
             const employee = employees.get(log.employee_id);
             if (!employee) continue;
-            employee.hours += toNumber(log.total_hours);
+            employee.logs.push(calculate(log));
             if (log.validation_status !== 'Validated') employee.exceptions++;
           }
           if (!data || data.length < pageSize) break;
@@ -1509,7 +1542,15 @@ export default function PayrollComputation() {
         if (active) setReleaseReview({
           employees: items.map(item => item.employee_name || item.employee_id).sort(),
           exceptions: [...employees.values()].reduce((sum, employee) => sum + employee.exceptions, 0),
-          differences: items.filter(item => roundMoney(employees.get(item.employee_id)?.hours ?? 0) !== toNumber(item.total_work_hours)).length,
+          differences: items.filter(item => {
+            if (!item.attendance_summary_id) return false;
+            const hours = summarizePayrollHours(employees.get(item.employee_id)?.logs ?? []);
+            return roundMoney(hours.workedHours) !== toNumber(item.total_work_hours)
+              || roundMoney(hours.regularMinutes / 60) !== toNumber(item.regular_hours)
+              || roundMoney(hours.overtimeMinutes / 60) !== toNumber(item.overtime_hours)
+              || hours.lateMinutes !== toNumber(item.total_late_minutes)
+              || hours.undertimeMinutes !== toNumber(item.total_undertime_minutes);
+          }).length,
         });
       } catch {
         if (active) setReleaseError('Could not verify this cutoff. Close the review and try again.');
@@ -1781,7 +1822,7 @@ export default function PayrollComputation() {
         <tr><td><b>Position:</b></td><td colspan="2">${p.position || '—'}</td></tr>
         <tr><td><b>Rate:</b></td><td colspan="2">${p.payRate}</td></tr>
         <tr class="sec-hdr"><td>Earnings:</td><td class="center" style="width:24%">Days/Hours/Mins.</td><td class="right" style="width:22%">Amount</td></tr>
-        <tr><td>Basic Pay</td><td class="right">${p.regularHours || '—'}</td><td class="right">${p.basicPayAmt || fmtAmt(grossAmt)}</td></tr>
+        <tr><td>Basic Pay</td><td class="right">${p.basicPayHours || p.regularHours || '—'}</td><td class="right">${p.basicPayAmt || fmtAmt(grossAmt)}</td></tr>
         <tr><td>Reg.OT</td><td class="right">${p.overtime && p.overtime !== '0' ? p.overtime : '—'}</td><td class="right">${p.otAmt || '—'}</td></tr>
         <tr><td>NSD</td><td class="right">${p.nsdHours || '—'}</td><td class="right">${p.nsdAmt || '—'}</td></tr>
         <tr><td>Regular Holiday</td><td class="right">${p.regularHolidayDays || '—'}</td><td class="right">${p.regularHolidayAmt || '—'}</td></tr>
@@ -1790,10 +1831,11 @@ export default function PayrollComputation() {
         <tr><td>Allowance</td><td class="right">—</td><td class="right">${p.allowanceAmt || '—'}</td></tr>
         <tr><td>RETRO</td><td class="right">—</td><td class="right">${p.retroAmt || '—'}</td></tr>
         ${p.leaveConversionAmt ? `<tr><td>Unused Leave Conversion</td><td class="right">${escapePayslipText(p.leaveConversionDays || '—')}</td><td class="right">${escapePayslipText(p.leaveConversionAmt)}</td></tr>` : ''}
-        <tr><td>Tardiness (Mins.)</td><td class="right">${p.tardinessMin || '—'}</td><td class="right">${fmtAmt(toNumber(p.lateDeductionAmt))}</td></tr>
-        <tr><td>Undertime (Hours)</td><td class="right">${p.undertimeHours || '—'}</td><td class="right">${fmtAmt(toNumber(p.undertimeDeductionAmt))}</td></tr>
         <tr class="gross-row"><td colspan="2" class="center">GROSS PAY</td><td class="right">${fmtAmt(grossAmt)}</td></tr>
         <tr class="sec-hdr"><td colspan="3">DEDUCTIONS:</td></tr>
+        <tr><td>Tardiness (Mins.)</td><td class="right">${p.tardinessMin || '—'}</td><td class="right">${fmtAmt(toNumber(p.lateDeductionAmt))}</td></tr>
+        <tr><td>Undertime (Hours)</td><td class="right">${p.undertimeHours || '—'}</td><td class="right">${fmtAmt(toNumber(p.undertimeDeductionAmt))}</td></tr>
+        ${toNumber(p.absenceDeductionAmt) ? `<tr><td colspan="2">Absences</td><td class="right">${fmtAmt(toNumber(p.absenceDeductionAmt))}</td></tr>` : ''}
         <tr><td colspan="2">SSS Premium</td><td class="right">${p.sssAmt || '—'}</td></tr>
         <tr><td colspan="2">PHIC Premium</td><td class="right">${p.phicAmt || '—'}</td></tr>
         <tr><td colspan="2">HDMF Premium</td><td class="right">${p.hdmfAmt || '—'}</td></tr>
@@ -2134,7 +2176,7 @@ export default function PayrollComputation() {
                 <TableCell>Position</TableCell>
                 <TableCell>Payroll Cutoff</TableCell>
                 <TableCell>Total Hours<br />Includes OT</TableCell>
-                <TableCell>Overtime</TableCell>
+                <TableCell>Approved Overtime</TableCell>
                 <TableCell>Deductions</TableCell>
                 <TableCell>Gross Pay</TableCell>
                 <TableCell>Net Pay</TableCell>
@@ -2415,7 +2457,7 @@ export default function PayrollComputation() {
                 </Box>
                 {releaseReview.exceptions > 0 || releaseReview.differences > 0 ? (
                   <Alert severity="warning">
-                    {releaseReview.exceptions} attendance entries need review. {releaseReview.differences} employees have saved payroll hours that differ from DTR.
+                    {releaseReview.exceptions} attendance entries need review. {releaseReview.differences} employees have saved hours or adjustments that differ from current attendance. Regenerate the cutoff to recalculate these amounts.
                   </Alert>
                 ) : <Alert severity="success">Saved payroll hours match DTR. No attendance entries need review.</Alert>}
                 {releaseHasIssues && (
@@ -2440,7 +2482,7 @@ export default function PayrollComputation() {
         <DialogTitle fontWeight={700} sx={dialogTitleSx}>Generate Payroll</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '18px !important', px: { xs: 2, sm: 3 }, bgcolor: '#fbfff9' }}>
           <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
-            Auto-generates payroll for <strong>Active</strong> employees using the company cutoff cycle: cutoff every <strong>5</strong> and <strong>20</strong>, salary payout every <strong>10</strong> and <strong>25</strong>.
+            Uses the attendance and HR approvals for the selected cutoff. Select the same cutoff again to recalculate a draft after an attendance correction or approval.
           </Alert>
           <TextField label="Payroll Period" type="month" fullWidth value={generatePeriod}
             onChange={e => setGeneratePeriod(e.target.value)} InputLabelProps={{ shrink: true }} />
@@ -2632,7 +2674,7 @@ export default function PayrollComputation() {
                     <Box sx={{ width: '22%', fontWeight: 700, p: '4px 6px', textAlign: 'right', fontSize: '0.77rem' }}>Amount</Box>
                   </Box>
                   {([
-                    ['Basic Pay',          'regularHours',      'basicPayAmt'       ],
+                    ['Basic Pay / Regular Hours Worked', 'regularHours',      'basicPayAmt'       ],
                     ['Reg.OT',            'overtime',           'otAmt'             ],
                     ['NSD',               'nsdHours',           'nsdAmt'            ],
                     ['Regular Holiday',   'regularHolidayDays', 'regularHolidayAmt' ],
@@ -2640,23 +2682,7 @@ export default function PayrollComputation() {
                     ['SIL',              'silDays',             'silAmt'            ],
                     ['Allowance',         null,                  'allowanceAmt'      ],
                     ['RETRO',  null,                  'retroAmt'          ],
-                    ['Tardiness (Mins.)', 'tardinessMin',        'lateDeductionAmt'  ],
-                    ['Undertime (Hours)', 'undertimeHours',      'undertimeDeductionAmt'],
-                  ] as [string, PayslipQuantityField | null, PayslipAmountField][]).map(([label, dk, ak]) => (
-                    <Box key={label} sx={{ display: 'flex', borderBottom: '1px solid #eee', alignItems: 'center' }}>
-                      <Box sx={{ flex: 1, p: '1px 8px', borderRight: '1px solid #ccc', fontSize: '0.76rem' }}>{label}</Box>
-                      <Box sx={{ width: '24%', px: 0.5, borderRight: '1px solid #ccc' }}>
-                        {dk ? <TextField variant="standard" fullWidth size="small" value={payslipEditForm[dk]} onChange={event => {
-                          const value = event.target.value;
-                          if (/^\d*(?:\.\d*)?$/.test(value)) updatePayslipField(dk, value);
-                        }} placeholder="—" inputProps={{ 'aria-label': `${label} quantity`, inputMode: 'decimal', style: numericInputStyle }} />
-                             : <Box sx={{ textAlign: 'right', fontSize: '0.75rem', color: 'text.disabled', p: '3px 2px' }}>—</Box>}
-                      </Box>
-                      <Box sx={{ width: '22%', px: 0.5 }}>
-                        {renderAmountInput(ak, label)}
-                      </Box>
-                    </Box>
-                  ))}
+                  ] as const).map(([label, quantity, amount]) => renderPayslipEditLine(label, quantity, amount))}
                   {/* GROSS PAY */}
                   <Box sx={{ display: 'flex', borderTop: '1px solid #999', borderBottom: '1px solid #999', bgcolor: '#fff9c4', fontWeight: 700, alignItems: 'center' }}>
                     <Box sx={{ flex: 1, p: '4px 8px', borderRight: '1px solid #ccc', textAlign: 'center', fontSize: '0.77rem' }}>GROSS PAY</Box>
@@ -2665,6 +2691,14 @@ export default function PayrollComputation() {
                   </Box>
                   {/* DEDUCTIONS header */}
                   <Box sx={{ p: '4px 8px', borderBottom: '1px solid #ccc', fontWeight: 700, fontSize: '0.77rem', bgcolor: '#f5f5f5' }}>DEDUCTIONS:</Box>
+                  {renderPayslipEditLine('Tardiness (Mins.)', 'tardinessMin', 'lateDeductionAmt')}
+                  {renderPayslipEditLine('Undertime (Hours)', 'undertimeHours', 'undertimeDeductionAmt')}
+                  {toNumber(selectedPayroll.absenceDeductionAmt) > 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', px: 1, py: 0.5 }}>
+                      <span>Absences</span><span>{money(toNumber(selectedPayroll.absenceDeductionAmt))}</span>
+                    </Box>
+                  )}
+
                   {([
                     ['SSS Premium',              'sssAmt'      ],
                     ['PHIC Premium',             'phicAmt'     ],
@@ -2733,7 +2767,7 @@ export default function PayrollComputation() {
                   const valSx   = { flex: 1, p: '4px 8px', fontSize: '0.78rem' };
 
                   const earningsRows: [string, string, string][] = [
-                    ['Basic Pay',           selectedPayroll.regularHours || '—',                         selectedPayroll.basicPayAmt || fmt(grossAmt)],
+                    ['Basic Pay',           selectedPayroll.basicPayHours || selectedPayroll.regularHours || '—', selectedPayroll.basicPayAmt || fmt(grossAmt)],
                     ['Reg.OT',              selectedPayroll.overtime && selectedPayroll.overtime !== '0' ? selectedPayroll.overtime : '—', selectedPayroll.otAmt || '—'],
                     ['NSD',                 selectedPayroll.nsdHours  || '—',                            selectedPayroll.nsdAmt  || '—'],
                     ['Regular Holiday',     selectedPayroll.regularHolidayDays || '—',                   selectedPayroll.regularHolidayAmt || '—'],
@@ -2744,11 +2778,12 @@ export default function PayrollComputation() {
                     ...(selectedPayroll.leaveConversionAmt
                       ? [['Unused Leave Conversion', selectedPayroll.leaveConversionDays || '—', selectedPayroll.leaveConversionAmt] as [string, string, string]]
                       : []),
-                    ['Tardiness (Mins.)',   selectedPayroll.tardinessMin   || '—',                       fmt(toNumber(selectedPayroll.lateDeductionAmt))],
-                    ['Undertime (Hours)',   selectedPayroll.undertimeHours || '—',                       fmt(toNumber(selectedPayroll.undertimeDeductionAmt))],
                   ];
 
                   const deductionRows: [string, string][] = [
+                    [`Tardiness (${toNumber(selectedPayroll.tardinessMin)} min)`, fmt(toNumber(selectedPayroll.lateDeductionAmt))],
+                    [`Undertime (${roundMoney(toNumber(selectedPayroll.undertimeHours))} hrs)`, fmt(toNumber(selectedPayroll.undertimeDeductionAmt))],
+                    ...(toNumber(selectedPayroll.absenceDeductionAmt) > 0 ? [['Absences', fmt(toNumber(selectedPayroll.absenceDeductionAmt))] as [string, string]] : []),
                     ['SSS Premium',              selectedPayroll.sssAmt      || '—'],
                     ['PHIC Premium',             selectedPayroll.phicAmt     || '—'],
                     ['HDMF Premium',             selectedPayroll.hdmfAmt     || '—'],
@@ -2996,10 +3031,14 @@ export default function PayrollComputation() {
                   const overtimeHours = Number(payslipEditForm.overtime);
                   const timeChanged = regularHours !== Number(selectedPayroll.regularHours)
                     || overtimeHours !== Number(selectedPayroll.overtime);
-                  const totalHours = timeChanged ? roundMoney(regularHours + overtimeHours) : toNumber(selectedPayroll.totalHours);
+                  const totalHours = timeChanged && !selectedPayroll.attendanceSummaryId
+                    ? roundMoney(regularHours + overtimeHours) : toNumber(selectedPayroll.totalHours);
 
                   const details = {
                     ...selectedPayroll.payslipDetails,
+                    basicPayHours: selectedPayroll.basicPayHours
+                      ? (toNumber(selectedPayroll.basicPayHours) + regularHours - toNumber(selectedPayroll.regularHours)).toFixed(2)
+                      : undefined,
                     nsdHours: payslipEditForm.nsdHours,
                     nsdAmt: payslipEditForm.nsdAmt,
                     regularHolidayDays: payslipEditForm.regularHolidayDays,
@@ -3054,6 +3093,7 @@ export default function PayrollComputation() {
                     ...selectedPayroll,
                     ...payslipEditForm,
                     totalHours: String(totalHours),
+                    basicPayHours: details.basicPayHours,
                     payslipDetails: details,
                     deductions: money(deductions),
                     grossPay: money(gross),

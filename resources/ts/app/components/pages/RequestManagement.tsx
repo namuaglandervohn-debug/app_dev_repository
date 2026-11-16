@@ -55,7 +55,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from "../../lib/supabaseClient";
 import ActionSnackbar from '../ActionSnackbar';
 import LeaveTypeUtility, { type LeaveType } from '../LeaveTypeUtility';
-import { currentLeaveDate, leaveDateError } from '../../lib/leaveRequestDates';
+import { currentLeaveDate, leaveDateError, leaveDaysInYear } from '../../lib/leaveRequestDates';
 
 type RequestType = 'Leave' | 'Overtime' | 'Undertime';
 type RequestStatus = 'Pending' | 'Supervisor Approved' | 'Approved' | 'Disapproved' | 'Rejected' | 'Cancelled';
@@ -169,7 +169,7 @@ const LEGACY_BALANCE_TYPES = [
 
 const COMPANY_PAID_LEAVE_TYPE = 'Company Paid Leave';
 const COMPANY_ANNUAL_LEAVE_ALLOWANCE = 5;
-const CURRENT_LEAVE_YEAR = new Date().getFullYear();
+const CURRENT_LEAVE_YEAR = Number(currentLeaveDate().slice(0, 4));
 
 const DEFAULT_LEAVE_ENTITLEMENTS: Record<string, number> = {
   [COMPANY_PAID_LEAVE_TYPE]: COMPANY_ANNUAL_LEAVE_ALLOWANCE,
@@ -252,12 +252,6 @@ const requestTypeChipSx = (type: RequestType) => {
 
 const formatMoney = (value: number) =>
   `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-const getLeaveRequestYear = (request: Pick<RequestRecord, 'startDate' | 'submittedDate'>) => {
-  const dateText = request.startDate || request.submittedDate;
-  const date = new Date(dateText);
-  return Number.isNaN(date.getTime()) ? CURRENT_LEAVE_YEAR : date.getFullYear();
-};
 
 const softTextFieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -716,6 +710,22 @@ export default function RequestManagement() {
       return;
     }
 
+    if (newRequest.type === 'Leave') {
+      const startYear = Number(startDate.slice(0, 4));
+      const endYear = Number(endDate.slice(0, 4));
+      for (let year = startYear; year <= endYear; year++) {
+        const unavailable = requests.filter(request =>
+          request.employeeId === currentEmployeeId && request.type === 'Leave' &&
+          ['Pending', 'Supervisor Approved', 'Approved'].includes(request.status)
+        ).reduce((sum, request) => sum + leaveDaysInYear(request.startDate, request.endDate || request.startDate, year), 0);
+        const remaining = Math.max(0, getAnnualLeaveAllowance(currentEmployeeId) - unavailable);
+        if (leaveDaysInYear(startDate, endDate, year) > remaining) {
+          setSnackbar({ open: true, message: `Only ${remaining} leave day(s) are available to request in ${year}, including days reserved by pending requests.`, severity: 'error' });
+          return;
+        }
+      }
+    }
+
     setSaving(true);
 
     try {
@@ -925,10 +935,9 @@ export default function RequestManagement() {
       .filter(request =>
         request.type === 'Leave' &&
         request.status === 'Approved' &&
-        request.employeeId === employeeId &&
-        getLeaveRequestYear(request) === year
+        request.employeeId === employeeId
       )
-      .reduce((sum, request) => sum + Number(request.totalDays ?? 0), 0);
+      .reduce((sum, request) => sum + leaveDaysInYear(request.startDate, request.endDate || request.startDate, year), 0);
   };
 
   const requestStats = [
@@ -1062,10 +1071,9 @@ export default function RequestManagement() {
   };
 
   const formatCreditValue = (value: number) => Number.isInteger(value) ? String(value) : value.toFixed(3);
-  const myLeaveRequests = requests.filter(request => request.type === 'Leave');
   const myLeaveTabLabels = [
     'My Leave Credits',
-    'My Leave Application',
+    'My Requests',
   ];
 
   const myLeaveCreditView = (
@@ -1113,7 +1121,7 @@ export default function RequestManagement() {
         ))}
       </Grid>
       <Alert severity="info" sx={{ mt: 1.5, borderRadius: '10px', border: `1px solid ${GREEN_UI.border}` }}>
-        The five days are one shared annual company-paid leave allowance. Final HR-approved leave requests reduce this balance, and unused days are converted to cash at year end.
+        The five days are one shared annual company-paid leave allowance. Pending requests reserve days. Final HR-approved leave reduces the balance, and unused days are converted to cash at year end.
       </Alert>
     </>
   );
@@ -1124,7 +1132,7 @@ export default function RequestManagement() {
         <TableHead>
           <TableRow sx={{ '& th': { bgcolor: GREEN_UI.greenDark, color: '#ffffff', fontWeight: 700, py: 1.35, fontFamily: 'inherit' } }}>
             <TableCell>Request ID</TableCell>
-            <TableCell>Leave Type</TableCell>
+            <TableCell>Request Type</TableCell>
             <TableCell>Date Coverage</TableCell>
             <TableCell>Time / Total</TableCell>
             <TableCell>Reason</TableCell>
@@ -1140,14 +1148,14 @@ export default function RequestManagement() {
                 <CircularProgress size={24} sx={{ color: GREEN_UI.green }} />
               </TableCell>
             </TableRow>
-          ) : myLeaveRequests.length === 0 ? (
+          ) : requests.length === 0 ? (
             <TableRow>
               <TableCell colSpan={8} align="center" sx={{ py: 5, color: GREEN_UI.muted }}>
-                No leave applications found.
+                No requests found.
               </TableCell>
             </TableRow>
           ) : (
-            myLeaveRequests.map(request => (
+            requests.map(request => (
               <TableRow key={request.id} hover sx={{ '& td': { color: GREEN_UI.text, borderColor: 'rgba(0, 128, 115, 0.12)' } }}>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   <Chip
@@ -1163,12 +1171,14 @@ export default function RequestManagement() {
                     }}
                   />
                 </TableCell>
-                <TableCell>{request.leaveType || 'Leave'}</TableCell>
+                <TableCell>{request.type === 'Leave' ? request.leaveType || 'Leave' : request.type}</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   {formatDate(request.startDate)} {request.endDate && request.endDate !== request.startDate ? `- ${formatDate(request.endDate)}` : ''}
                 </TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                  {request.totalDays ?? computeTotalDays(request.startDate, request.endDate)} day(s)
+                  {request.type === 'Leave'
+                    ? `${request.totalDays ?? computeTotalDays(request.startDate, request.endDate)} day(s)`
+                    : `${formatTime(request.startTime)} – ${formatTime(request.endTime)} (${request.totalHours ?? 0} hr/s)`}
                 </TableCell>
                 <TableCell sx={{ maxWidth: 260 }}>
                   <Tooltip title={request.reason || 'No reason provided'}>
@@ -1224,7 +1234,7 @@ export default function RequestManagement() {
     <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 1.5, sm: 2 }, mb: 2 }}>
       <Box sx={{ mb: 1.5 }}>
         <Typography variant="h6" fontWeight={800} sx={{ color: GREEN_UI.text }}>
-          My Leave
+          My Leave & Requests
         </Typography>
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 2 }}>

@@ -1,4 +1,4 @@
-import { formatDisplayDate, formatDisplayDateRange, formatTypedDateDigits, parseDisplayDate } from '../../lib/displayDate';
+import { formatDisplayDate, formatDisplayDateRange, formatTypedDateDigits, parseDisplayDate, parseScheduleDateRange } from '../../lib/displayDate';
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
@@ -350,7 +350,6 @@ const sortSchedulesByEmployeeName = (rows: Schedule[]) =>
   );
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTH_INDEX = new Map(MONTHS.map((month, index) => [month.toLowerCase(), index]));
 const DATE_DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 const parseDateInput = (value: string) => {
@@ -404,20 +403,8 @@ const updateWeekInput = (value: string) => {
 };
 
 const parseWeekRange = (week: string) => {
-  const normalized = normalizeWeekInput(stripSpecialDutyReason(week)).replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
-  const match = normalized.match(/^([A-Za-z]+)\s+(\d{1,2})\s*-\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})$/);
-  if (!match) return null;
-
-  const startMonth = MONTH_INDEX.get(match[1].toLowerCase());
-  const endMonth = MONTH_INDEX.get((match[3] || match[1]).toLowerCase());
-  if (startMonth === undefined || endMonth === undefined) return null;
-
-  const endYear = Number(match[5]);
-  const startYear = startMonth > endMonth ? endYear - 1 : endYear;
-  const start = new Date(startYear, startMonth, Number(match[2]));
-  const end = new Date(endYear, endMonth, Number(match[4]));
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-  return { start, end };
+  const range = parseScheduleDateRange(week);
+  return range ? { start: new Date(range.start + 'T00:00:00'), end: new Date(range.end + 'T00:00:00') } : null;
 };
 
 const isDateInScheduleWeek = (week: string, value: string) => {
@@ -549,14 +536,23 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
   for (const schedule of schedules) {
     const week = stripSpecialDutyReason(schedule.week);
     const range = parseWeekRange(week);
-    const key = range ? `${+range.start}/${+range.end}` : `label:${week}`;
+    const start = range ? new Date(range.start) : undefined;
+    let label = formatDisplayDateRange(normalizeWeekInput(week)) || 'Unspecified week';
+    if (start && range && +range.start === +range.end) {
+      start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      const dateLabel = new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+      label = `${dateLabel.format(start)} – ${dateLabel.format(end)}`;
+    }
+    const key = start ? String(+start) : `label:${week}`;
     const existing = weeks.get(key);
     if (existing) {
       existing.rows.push(schedule);
     } else {
       weeks.set(key, {
-        label: formatDisplayDateRange(normalizeWeekInput(week)) || 'Unspecified week',
-        start: range?.start,
+        label,
+        start,
         rows: [schedule],
       });
     }
@@ -2265,7 +2261,9 @@ export default function ScheduleManagement() {
         )}
       </TableContainer>
 
-      {!loading && canPublish && <WeeklySchedule schedules={filtered} />}
+      {!loading && (canPublish || canConfirm) && (
+        <WeeklySchedule schedules={canConfirm ? filtered.filter(schedule => ['Published', 'Confirmed'].includes(schedule.status)) : filtered} />
+      )}
 
       <Dialog
         open={openDialog}

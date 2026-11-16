@@ -1,7 +1,7 @@
 export const splitShiftExample = '08:00 AM - 12:00 PM / 01:00 PM - 05:00 PM';
 
-function parseTime(value: string) {
-  const match = /^(\d{1,2}):([0-5]\d)\s*(AM|PM)?$/i.exec(value.trim());
+export function parseScheduleClock(value: string) {
+  const match = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?\s*(AM|PM)?$/i.exec(value.trim());
   if (!match) return null;
 
   const hour = Number(match[1]);
@@ -22,8 +22,8 @@ function parsePeriod(value: string) {
   const [start, end, ...extra] = value.split(/[-–—]/);
   if (!end || extra.length) return null;
 
-  const timeIn = parseTime(start);
-  const timeOut = parseTime(end);
+  const timeIn = parseScheduleClock(start);
+  const timeOut = parseScheduleClock(end);
   if (!timeIn || !timeOut || timeIn.minutes === timeOut.minutes) return null;
 
   return {
@@ -42,20 +42,25 @@ export function parseRegularScheduleShift(value: string) {
   if (!morning) return null;
 
   if (second === undefined) {
-    return { label: morning.label, timeIn: morning.timeIn.clock, timeOut: morning.timeOut.clock };
+    return {
+      label: morning.label, timeIn: morning.timeIn.clock, timeOut: morning.timeOut.clock,
+      intervals: [[morning.timeIn.minutes, morning.timeIn.minutes + morning.duration]] as [number, number][],
+    };
   }
 
   const afternoon = parsePeriod(second);
   if (!afternoon) return null;
 
-  const crossesMidnight = morning.timeOut.minutes < morning.timeIn.minutes;
-  const sameDayStart = afternoon.timeIn.minutes - morning.timeIn.minutes;
-  const afternoonStart = crossesMidnight && sameDayStart < 0 ? sameDayStart + 1440 : sameDayStart;
+  const afternoonStart = (afternoon.timeIn.minutes - morning.timeIn.minutes + 1440) % 1440;
   if (afternoonStart < morning.duration || afternoonStart + afternoon.duration > 1440) return null;
 
   return {
     label: `${morning.label} / ${afternoon.label}`,
     timeIn: morning.timeIn.clock,
     timeOut: afternoon.timeOut.clock,
+    intervals: [
+      [morning.timeIn.minutes, morning.timeIn.minutes + morning.duration],
+      [morning.timeIn.minutes + afternoonStart, morning.timeIn.minutes + afternoonStart + afternoon.duration],
+    ] as [number, number][],
   };
 }
