@@ -11,8 +11,8 @@ import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt,
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { attendancePunchFields, loadAttendanceCalculator } from '../../lib/loadAttendanceCalculator';
-import { findMissingAttendance, summarizePayrollHours, type CalculatedAttendance } from '../../lib/scheduledAttendance';
-import { currentLeaveDate, currentManilaMinutes, leaveDaysInYear } from '../../lib/leaveRequestDates';
+import { summarizePayrollHours, type CalculatedAttendance } from '../../lib/scheduledAttendance';
+import { leaveDaysInYear } from '../../lib/leaveRequestDates';
 import { includeSelectedJobTitle, jobTitleKey } from '../../lib/jobTitles';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
@@ -387,7 +387,7 @@ const getWorkedMonthCutoffs = (month: string) => {
   }));
 };
 
-function MonthlyHoursDialog({ onClose, showDrafts, finance }: { onClose: () => void; showDrafts: boolean; finance: boolean }) {
+function MonthlyHoursDialog({ onClose, showDrafts }: { onClose: () => void; showDrafts: boolean }) {
   const today = formatDisplayDate(new Date()).split('/');
   const [month, setMonth] = useState(`${today[2]}-${today[0]}`);
   const [employeeId, setEmployeeId] = useState('');
@@ -405,21 +405,20 @@ function MonthlyHoursDialog({ onClose, showDrafts, finance }: { onClose: () => v
 
   useEffect(() => {
     let active = true;
-    const directory = finance
-      ? supabase.rpc('finance_employee_directory').order('employee_name').order('employee_id')
-      : supabase.from('employees').select('employee_id, first_name, middle_name, last_name, suffix')
-        .order('last_name').order('first_name').order('employee_id');
-    void directory.then(({ data, error }) => {
+    void supabase.from('employees')
+      .select('employee_id, first_name, middle_name, last_name, suffix')
+      .order('last_name').order('first_name').order('employee_id')
+      .then(({ data, error }) => {
         if (!active) return;
         if (error) setEmployeeError('Could not load employees. Close and reopen Monthly Hours to retry.');
-        else setEmployees((data ?? []).map((employee: { employee_id: string; employee_name?: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string }) => ({
+        else setEmployees((data ?? []).map(employee => ({
           id: employee.employee_id,
-          name: employee.employee_name || fullNameFromEmployee(employee) || employee.employee_id,
+          name: fullNameFromEmployee(employee) || employee.employee_id,
         })));
         setEmployeesLoading(false);
       });
     return () => { active = false; };
-  }, [finance]);
+  }, []);
 
   useEffect(() => {
     if (!reportKey) return;
@@ -429,11 +428,11 @@ function MonthlyHoursDialog({ onClose, showDrafts, finance }: { onClose: () => v
 
     void Promise.all([
       supabase.from('attendance_logs').select(attendancePunchFields)
-        .eq('employee_id', employeeId).eq('validation_status', 'Validated').gte('attendance_date', cutoffs[0].start).lte('attendance_date', cutoffs[2].end),
+        .eq('employee_id', employeeId).gte('attendance_date', cutoffs[0].start).lte('attendance_date', cutoffs[2].end),
       supabase.from('payroll_summaries').select('period_start, period_end, status, payroll_items!inner(employee_id,total_work_hours)')
         .in('period_start', cutoffs.map(cutoff => cutoff.start))
         .eq('payroll_items.employee_id', employeeId),
-      loadAttendanceCalculator(employeeId, cutoffs[0].start, cutoffs[2].end, finance),
+      loadAttendanceCalculator(employeeId, cutoffs[0].start, cutoffs[2].end),
     ]).then(([attendance, payroll, calculate]) => {
       if (!active) return;
       if (attendance.error || payroll.error) {
@@ -468,7 +467,7 @@ function MonthlyHoursDialog({ onClose, showDrafts, finance }: { onClose: () => v
       if (active) setReport({ key: reportKey, rows: [], hasAttendance: false, error: 'Could not load monthly hours. Close and reopen Monthly Hours to retry.' });
     });
     return () => { active = false; };
-  }, [employeeId, month, reportKey, showDrafts, finance]);
+  }, [employeeId, month, reportKey, showDrafts]);
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="md" aria-labelledby="monthly-hours-title">
@@ -587,6 +586,7 @@ export default function PayrollComputation() {
   const [releaseReview, setReleaseReview] = useState<{ employees: string[]; exceptions: number; differences: number } | null>(null);
   const [releaseError, setReleaseError] = useState('');
   const [releasing, setReleasing] = useState(false);
+  const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
   const releaseHasIssues = Boolean(releaseReview && (releaseReview.exceptions || releaseReview.differences));
   const [filterStatus, setFilterStatus] = useState('all');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
@@ -933,7 +933,7 @@ export default function PayrollComputation() {
       let employeeMap = new Map<string, any>();
       let accountOutletMap = new Map<string, string>();
 
-      if (employeeIds.length > 0 && !isAccountingFinance) {
+      if (employeeIds.length > 0) {
         const { data: employees, error: employeesError } = await supabase
           .from('employees')
           .select('employee_id, first_name, middle_name, last_name, suffix, position, outlet')
@@ -1154,7 +1154,7 @@ export default function PayrollComputation() {
       const pageSize = 500;
       for (let offset = 0; ; offset += pageSize) {
         const { data, error } = await supabase.from('attendance_logs')
-          .select(`${attendancePunchFields},log_id,employee_name,validation_status`)
+          .select(`${attendancePunchFields},log_id,employee_name`)
           .gte('attendance_date', start).lte('attendance_date', end).not('employee_id', 'is', null)
           .order('log_id').range(offset, offset + pageSize - 1);
         if (error) throw error;
@@ -1162,20 +1162,6 @@ export default function PayrollComputation() {
         if (data.length < pageSize) break;
       }
 
-      const employeeIdsWithLogs = [...new Set((attendanceLogs ?? []).map(log => String(log.employee_id)).filter(Boolean))];
-      const employeesQuery = supabase
-        .from('employees')
-        .select('employee_id, first_name, middle_name, last_name, suffix, position, outlet, salary, status, hire_date');
-      const { data: employees, error: employeesError } = await employeesQuery.ilike('status', 'active');
-      if (employeesError) throw employeesError;
-      const matchingEmployees = (employees ?? []).filter(employee =>
-        !generatePosition || jobTitleKey(String(employee.position ?? '')) === jobTitleKey(generatePosition));
-      const missing = findMissingAttendance(calculate, matchingEmployees, start, end, attendanceLogs, holidayDates, currentLeaveDate(), currentManilaMinutes());
-      if (missing.length) {
-        const names = new Map(matchingEmployees.map(employee => [employee.employee_id, fullNameFromEmployee(employee)]));
-        const examples = missing.slice(0, 3).map(entry => `${names.get(entry.employeeId) || entry.employeeId} (${formatDisplayDate(entry.date)})`).join(', ');
-        throw new Error(`Review ${missing.length} scheduled day(s) with missing punches in Attendance before generating this cutoff. ${examples}`);
-      }
       if (!attendanceLogs?.length && !hasRegularHoliday) {
         const latestMonth = await latestAttendanceMonth();
         const latestHint = latestMonth
@@ -1184,6 +1170,15 @@ export default function PayrollComputation() {
         throw new Error(`No attendance logs were found for ${cutoffLabel}.${latestHint} Choose a payroll period with saved Attendance Monitoring records, then generate payroll again.`);
       }
 
+      const employeeIdsWithLogs = [...new Set((attendanceLogs ?? []).map(log => String(log.employee_id)).filter(Boolean))];
+      const employeesQuery = supabase
+        .from('employees')
+        .select('employee_id, first_name, middle_name, last_name, suffix, position, outlet, salary, status, hire_date');
+      const { data: employees, error: employeesError } = await (hasRegularHoliday
+        ? employeesQuery.ilike('status', 'active')
+        : employeesQuery.in('employee_id', employeeIdsWithLogs));
+
+      if (employeesError) throw employeesError;
       const employeeIds = (employees ?? []).filter(employee =>
         employeeIdsWithLogs.includes(employee.employee_id) || holidays.some(holiday =>
           holiday.type === 'regular' && (!employee.hire_date || employee.hire_date <= holiday.date),
@@ -1212,13 +1207,7 @@ export default function PayrollComputation() {
         }),
       );
 
-      const selectedLogs = attendanceLogs.filter(log => targetEmployeeIds.has(String(log.employee_id)));
-      const pending = selectedLogs.filter(log => log.validation_status !== 'Validated');
-      if (pending.length) {
-        const examples = pending.slice(0, 3).map(log => `${log.employee_name || log.employee_id} (${formatDisplayDate(log.attendance_date)})`).join(', ');
-        throw new Error(`Review ${pending.length} attendance record(s) in Attendance before generating this cutoff. ${examples}`);
-      }
-      const usableLogs = selectedLogs.filter(log => log.validation_status === 'Validated');
+      const usableLogs = (attendanceLogs ?? []).filter(log => targetEmployeeIds.has(String(log.employee_id)));
       if (targetEmployeeIds.size === 0) {
         throw new Error(generatePosition
           ? `Attendance logs were found, but none are for active ${generatePosition} employees in the selected period.`
@@ -1513,6 +1502,7 @@ export default function PayrollComputation() {
     setReleaseOptions(options);
     setReleaseReview(null);
     setReleaseError('');
+    setReviewAcknowledged(false);
     setReleaseCutoff(options[0]);
   };
 
@@ -1526,15 +1516,15 @@ export default function PayrollComputation() {
         const items = [];
         for (let offset = 0; ; offset += pageSize) {
           const { data, error } = await supabase.from('payroll_items')
-            .select('employee_id,employee_name,total_work_hours,attendance_summary_id,regular_hours,overtime_hours,total_late_minutes,total_undertime_minutes,total_absent_days').eq('payroll_id', payrollId)
+            .select('employee_id,employee_name,total_work_hours,attendance_summary_id,regular_hours,overtime_hours,total_late_minutes,total_undertime_minutes').eq('payroll_id', payrollId)
             .order('payroll_item_id').range(offset, offset + pageSize - 1);
           if (error) throw error;
           items.push(...data);
           if (data.length < pageSize) break;
         }
         if (!items.length) throw new Error('No employees are in this cutoff.');
-        const employees = new Map(items.filter(item => item.attendance_summary_id).map(item => [item.employee_id, { logs: [] as CalculatedAttendance[], exceptions: 0 }]));
-        const calculate = await loadAttendanceCalculator(undefined, periodStart, periodEnd, isAccountingFinance);
+        const employees = new Map(items.map(item => [item.employee_id, { logs: [] as CalculatedAttendance[], exceptions: 0 }]));
+        const calculate = await loadAttendanceCalculator(undefined, periodStart, periodEnd);
         for (let offset = 0; ; offset += pageSize) {
           const { data, error: logError } = await supabase.from('attendance_logs')
             .select(`${attendancePunchFields},validation_status`)
@@ -1544,8 +1534,8 @@ export default function PayrollComputation() {
           for (const log of data ?? []) {
             const employee = employees.get(log.employee_id);
             if (!employee) continue;
-            if (log.validation_status === 'Validated') employee.logs.push(calculate(log));
-            else employee.exceptions++;
+            employee.logs.push(calculate(log));
+            if (log.validation_status !== 'Validated') employee.exceptions++;
           }
           if (!data || data.length < pageSize) break;
         }
@@ -1554,14 +1544,12 @@ export default function PayrollComputation() {
           exceptions: [...employees.values()].reduce((sum, employee) => sum + employee.exceptions, 0),
           differences: items.filter(item => {
             if (!item.attendance_summary_id) return false;
-            const logs = employees.get(item.employee_id)?.logs ?? [];
-            const hours = summarizePayrollHours(logs);
+            const hours = summarizePayrollHours(employees.get(item.employee_id)?.logs ?? []);
             return roundMoney(hours.workedHours) !== toNumber(item.total_work_hours)
               || roundMoney(hours.regularMinutes / 60) !== toNumber(item.regular_hours)
               || roundMoney(hours.overtimeMinutes / 60) !== toNumber(item.overtime_hours)
               || hours.lateMinutes !== toNumber(item.total_late_minutes)
-              || hours.undertimeMinutes !== toNumber(item.total_undertime_minutes)
-              || logs.filter(log => log.is_absent).length !== toNumber(item.total_absent_days);
+              || hours.undertimeMinutes !== toNumber(item.total_undertime_minutes);
           }).length,
         });
       } catch {
@@ -1570,10 +1558,10 @@ export default function PayrollComputation() {
     }
     void loadReview();
     return () => { active = false; };
-  }, [releaseCutoff, isAccountingFinance]);
+  }, [releaseCutoff]);
 
   const confirmRelease = async () => {
-    if (!releaseReview || !releaseCutoff?.payrollId || releasing || releaseHasIssues) return;
+    if (!releaseReview || !releaseCutoff?.payrollId || releasing || (releaseHasIssues && !reviewAcknowledged)) return;
     const targets = payrolls.filter(p => p.payrollId === releaseCutoff.payrollId);
     if (targets.length === 0) {
       setSnackbar({ open: true, message: 'No payrolls ready for release.', severity: 'success' });
@@ -1762,19 +1750,6 @@ export default function PayrollComputation() {
       icon: <TaskAlt fontSize="small" />,
     },
   ];
-
-  const returnToDraft = async (payroll: Payroll) => {
-    if (!payroll.payrollId || !window.confirm(`Return ${payroll.cutoffLabel} to Draft so HR can recalculate it?`)) return;
-    const { error, data } = await supabase.from('payroll_summaries').update({
-      status: 'Draft', reviewed_at: null, reviewed_by_user_id: null, updated_at: new Date().toISOString(),
-    }).eq('payroll_id', payroll.payrollId).in('status', ['Reviewed', 'Approved']).select('payroll_id').maybeSingle();
-    if (error || !data) {
-      setSnackbar({ open: true, message: error?.message ?? 'The cutoff status changed. Refresh and try again.', severity: 'error' });
-      return;
-    }
-    await fetchPayroll();
-    setSnackbar({ open: true, message: 'Cutoff returned to Draft. Generate it again after attendance review.', severity: 'success' });
-  };
 
   const handleForwardToAccounting = async () => {
     const drafts = filtered.filter(p => p.status === 'Draft');
@@ -2298,9 +2273,6 @@ export default function PayrollComputation() {
                           '&:hover': { bgcolor: GREEN_UI.greenSoft },
                         }}
                       />
-                      {canManagePayroll && ['For Review', 'Processed'].includes(p.status) && (
-                        <Chip size="small" clickable variant="outlined" label="Return to Draft" onClick={() => void returnToDraft(p)} />
-                      )}
                       {canReleasePayroll && p.status !== 'Released' && (
                         <Chip
                           icon={<Payments />}
@@ -2457,7 +2429,7 @@ export default function PayrollComputation() {
       )}
 
       {monthlyHoursOpen && (canManagePayroll || canReleasePayroll) && (
-        <MonthlyHoursDialog onClose={() => setMonthlyHoursOpen(false)} showDrafts={canManagePayroll} finance={isAccountingFinance} />
+        <MonthlyHoursDialog onClose={() => setMonthlyHoursOpen(false)} showDrafts={canManagePayroll} />
       )}
 
       <Dialog open={Boolean(releaseCutoff)} onClose={() => { if (!releasing) setReleaseCutoff(null); }} fullWidth maxWidth="sm" aria-labelledby="release-review-title">
@@ -2468,7 +2440,8 @@ export default function PayrollComputation() {
               disabled={releasing} onChange={event => {
                 setReleaseReview(null);
                 setReleaseError('');
-                            setReleaseCutoff(releaseOptions.find(option => option.payrollId === event.target.value) ?? null);
+                setReviewAcknowledged(false);
+                setReleaseCutoff(releaseOptions.find(option => option.payrollId === event.target.value) ?? null);
               }}>
               {releaseOptions.map(option => (
                 <MenuItem key={option.payrollId} value={option.payrollId}>{option.cutoffLabel} ({option.payPeriodLabel})</MenuItem>
@@ -2484,16 +2457,21 @@ export default function PayrollComputation() {
                 </Box>
                 {releaseReview.exceptions > 0 || releaseReview.differences > 0 ? (
                   <Alert severity="warning">
-                    {releaseReview.exceptions} attendance entries need review. {releaseReview.differences} employees have saved hours or adjustments that differ from current attendance. Ask HR to review attendance and return the cutoff to Draft before regenerating.
+                    {releaseReview.exceptions} attendance entries need review. {releaseReview.differences} employees have saved hours or adjustments that differ from current attendance. Regenerate the cutoff to recalculate these amounts.
                   </Alert>
                 ) : <Alert severity="success">Saved payroll hours match DTR. No attendance entries need review.</Alert>}
+                {releaseHasIssues && (
+                  <FormControlLabel label="I reviewed the flagged items for this cutoff."
+                    control={<Checkbox checked={reviewAcknowledged} disabled={releasing}
+                      onChange={event => setReviewAcknowledged(event.target.checked)} />} />
+                )}
               </>
             )}
           </DialogContent>
         )}
         <DialogActions>
           <Button disabled={releasing} onClick={() => setReleaseCutoff(null)}>Cancel</Button>
-          <Button variant="contained" disabled={!releaseReview || releasing || releaseHasIssues} onClick={confirmRelease}>
+          <Button variant="contained" disabled={!releaseReview || releasing || (releaseHasIssues && !reviewAcknowledged)} onClick={confirmRelease}>
             {releasing ? 'Releasing…' : 'Confirm Release'}
           </Button>
         </DialogActions>
@@ -2504,7 +2482,7 @@ export default function PayrollComputation() {
         <DialogTitle fontWeight={700} sx={dialogTitleSx}>Generate Payroll</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '18px !important', px: { xs: 2, sm: 3 }, bgcolor: '#fbfff9' }}>
           <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
-            Uses validated attendance and HR approvals for the selected cutoff. Select the same cutoff again to recalculate a draft after an attendance correction or approval.
+            Uses the attendance and HR approvals for the selected cutoff. Select the same cutoff again to recalculate a draft after an attendance correction or approval.
           </Alert>
           <TextField label="Payroll Period" type="month" fullWidth value={generatePeriod}
             onChange={e => setGeneratePeriod(e.target.value)} InputLabelProps={{ shrink: true }} />

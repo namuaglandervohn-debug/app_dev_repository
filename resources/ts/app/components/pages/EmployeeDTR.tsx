@@ -203,7 +203,7 @@ function mapAttendanceLogToDTR(row: AttendanceLogRow & CalculatedAttendance): DT
       ? row.scheduledMinutes === undefined ? "—" : (row.scheduledMinutes / 60).toFixed(2)
       : "",
     remarks: [
-      row.is_absent ? "Absent" : row.onApprovedLeave || /^on leave\b/i.test(row.remarks ?? '') ? "On Leave" : "",
+      row.is_absent ? "Absent" : /^on leave\b/i.test(row.remarks ?? '') ? "On Leave" : "",
       row.validation_status && row.validation_status !== "Validated" ? "Pending attendance review" : "",
       row.paidOvertime > 0 ? `HR-approved OT: ${row.paidOvertime} min` : "",
       row.approvedUndertime > 0 ? `HR-approved undertime: ${row.approvedUndertime} min` : "",

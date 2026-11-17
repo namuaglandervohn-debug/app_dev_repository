@@ -65,7 +65,6 @@ interface CriterionDef {
   weight: number; // stored as percent, e.g. 25 = 25%
   max_score: number;
   is_active: boolean;
-  position_key?: string;
 }
 
 interface EmployeeRecord {
@@ -109,8 +108,6 @@ interface EvaluationResult {
   rating_label: string | null;
   status: EvaluationStatus;
   remarks: string | null;
-  recognized_at?: string;
-  recognition_note?: string;
   scores: Record<string, EvaluationScoreRow>;
 }
 
@@ -378,9 +375,6 @@ export default function PerformanceEvaluation() {
   });
 
   const [criteriaDialogOpen, setCriteriaDialogOpen] = useState(false);
-  const [criteriaPosition, setCriteriaPosition] = useState("");
-  const [recognitionTarget, setRecognitionTarget] = useState<EvaluationResult | null>(null);
-  const [recognitionNote, setRecognitionNote] = useState("");
   const [criteriaDraft, setCriteriaDraft] = useState<CriteriaEditorRow[]>([]);
 
   const [snackbar, setSnackbar] = useState({
@@ -397,7 +391,7 @@ export default function PerformanceEvaluation() {
   const fetchCriteria = async () => {
     const { data, error: err } = await supabase
       .from("evaluation_criteria")
-      .select("criteria_id, criteria_name, description, category, weight, max_score, is_active, position_key")
+      .select("criteria_id, criteria_name, description, category, weight, max_score, is_active")
       .eq("is_active", true)
       .order("category", { ascending: true })
       .order("criteria_name", { ascending: true });
@@ -559,8 +553,6 @@ export default function PerformanceEvaluation() {
         rating_label: row.rating_label,
         status: row.status || "Draft",
         remarks: row.remarks,
-        recognized_at: row.recognized_at,
-        recognition_note: row.recognition_note,
         scores: scoresByEvaluation[row.evaluation_id] || {},
       }))
     );
@@ -609,20 +601,7 @@ export default function PerformanceEvaluation() {
     return evaluations;
   }, [currentEmployeeId, currentUserId, currentUserName, evaluations, isEmployee, isSupervisor]);
 
-  const sharedCriteria = criteria.filter(criterion => !criterion.position_key);
-  const criteriaForPosition = (position?: string) => {
-    const key = position?.trim().toLowerCase();
-    const specific = key ? criteria.filter(criterion => criterion.position_key === key) : [];
-    return specific.length ? specific : sharedCriteria;
-  };
-  const evaluationSnapshot = evaluations.find(evaluation => evaluation.evaluation_id === form.evaluation_id);
-  const formCriteria = evaluationSnapshot && Object.keys(evaluationSnapshot.scores).length
-    ? Object.values(evaluationSnapshot.scores).map(score => ({
-      criteria_id: score.criteria_id, criteria_name: score.criteria_name, weight: score.criteria_weight,
-      max_score: score.max_score, is_active: true, category: '', description: '',
-    }))
-    : criteriaForPosition(form.position);
-  const previewScore = computePreviewScore(form.scores, formCriteria);
+  const previewScore = computePreviewScore(form.scores, criteria);
   const positionOptions = useMemo(
     () => Array.from(new Set([...jobTitleOptions, ...employees.map(employee => employee.position).filter(Boolean)])),
     [employees, jobTitleOptions],
@@ -637,12 +616,12 @@ export default function PerformanceEvaluation() {
   });
   const visibleEvaluations = pendingOnly ? pendingEvaluations : displayedEvaluations;
   const showEvaluationScores = !isHR || displayedEvaluations.some((evaluation) => evaluation.status !== "Draft");
-  const evaluationScoreColumnCount = showEvaluationScores ? 3 : 0;
+  const evaluationScoreColumnCount = showEvaluationScores ? criteria.length + 2 : 0;
 
   /* ── Evaluation actions ────────────────────────────────────────────── */
   const openEvaluateForEmployee = (emp?: EmployeeRecord) => {
     setForm({
-      ...buildEmptyForm(criteriaForPosition(emp?.position)),
+      ...buildEmptyForm(criteria),
       employee_id: emp?.employee_id || "",
       employee_name: emp?.name || "",
       position: emp?.position || "",
@@ -653,7 +632,11 @@ export default function PerformanceEvaluation() {
   };
 
   const openAssignedEvaluation = (evaluation: EvaluationResult) => {
-    const scores = Object.fromEntries(Object.values(evaluation.scores).map(score => [score.criteria_id, Number(score.raw_score || 0)]));
+    const scores = { ...buildEmptyForm(criteria).scores };
+    criteria.forEach((criterion) => {
+      const existingScore = evaluation.scores[criterion.criteria_id];
+      if (existingScore) scores[criterion.criteria_id] = Number(existingScore.raw_score || 0);
+    });
 
     setForm({
       evaluation_id: evaluation.evaluation_id,
@@ -769,8 +752,8 @@ export default function PerformanceEvaluation() {
       return;
     }
 
-    if (Math.round(formCriteria.reduce((sum, criterion) => sum + Number(criterion.weight), 0) * 100) !== 10000) {
-      showMessage("The selected criteria weights must total 100% before evaluation.", "error");
+    if (!criteriaReady?.is_ready) {
+      showMessage(criteriaReady?.message || "Criteria weights must total 100% before evaluation.", "error");
       return;
     }
 
@@ -795,10 +778,10 @@ export default function PerformanceEvaluation() {
         if (templateErr) throw templateErr;
         evaluationId = String(evalId);
       }
-      const updatePromises = formCriteria.map((c) =>
+      const updatePromises = criteria.map((c) =>
         supabase
           .from("employee_evaluation_scores")
-          .update({ raw_score: Number(form.scores[c.criteria_id] ?? Math.min(85, Number(c.max_score))), updated_at: new Date().toISOString() })
+          .update({ raw_score: Number(form.scores[c.criteria_id] ?? 0), updated_at: new Date().toISOString() })
           .eq("evaluation_id", evaluationId)
           .eq("criteria_id", c.criteria_id)
       );
@@ -874,10 +857,9 @@ export default function PerformanceEvaluation() {
     }
   };
   /* ── Criteria actions ──────────────────────────────────────────────── */
-  const loadCriteriaDraft = (position: string) => {
-    setCriteriaPosition(position);
+  const openCriteriaDialog = () => {
     setCriteriaDraft(
-      criteriaForPosition(position).map((c) => ({
+      criteria.map((c) => ({
         criteria_id: c.criteria_id,
         criteria_name: c.criteria_name,
         description: c.description || "",
@@ -886,10 +868,6 @@ export default function PerformanceEvaluation() {
         max_score: Number(c.max_score || 100),
       }))
     );
-  };
-
-  const openCriteriaDialog = () => {
-    loadCriteriaDraft("");
     setCriteriaDialogOpen(true);
   };
 
@@ -914,19 +892,49 @@ export default function PerformanceEvaluation() {
 
   const saveCriteria = async () => {
     const total = criteriaDraft.reduce((sum, c) => sum + Number(c.weight || 0), 0);
-    if (Math.round(total * 100) / 100 !== 100 && !(criteriaPosition && !criteriaDraft.length)) {
+    if (Math.round(total * 100) / 100 !== 100) {
       showMessage(`Criteria weights must total exactly 100%. Current total: ${total}%.`, "error");
       return;
     }
 
     setSaving(true);
     try {
-      const { error } = await supabase.rpc("save_position_evaluation_criteria", {
-        p_position: criteriaPosition,
-        p_criteria: criteriaDraft.map(({ criteria_name, description, category, weight, max_score }) =>
-          ({ criteria_name, description, category, weight, max_score })),
-      });
-      if (error) throw error;
+      const keptExistingIds = criteriaDraft.filter((c) => !c.isNew).map((c) => c.criteria_id);
+      const activeExistingIds = criteria.map((c) => c.criteria_id);
+      const toDeactivate = activeExistingIds.filter((id) => !keptExistingIds.includes(id));
+
+      if (toDeactivate.length > 0) {
+        const { error: deactivateErr } = await supabase
+          .from("evaluation_criteria")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .in("criteria_id", toDeactivate);
+
+        if (deactivateErr) throw deactivateErr;
+      }
+
+      for (const row of criteriaDraft) {
+        const payload = {
+          criteria_name: row.criteria_name,
+          description: row.description || null,
+          category: row.category || null,
+          weight: Number(row.weight || 0),
+          max_score: Number(row.max_score || 100),
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (row.isNew) {
+          const { error: insertErr } = await supabase.from("evaluation_criteria").insert(payload);
+          if (insertErr) throw insertErr;
+        } else {
+          const { error: updateErr } = await supabase
+            .from("evaluation_criteria")
+            .update(payload)
+            .eq("criteria_id", row.criteria_id);
+
+          if (updateErr) throw updateErr;
+        }
+      }
 
       setCriteriaDialogOpen(false);
       showMessage("Evaluation criteria updated successfully.", "success");
@@ -1196,8 +1204,8 @@ export default function PerformanceEvaluation() {
             </Typography>
             <Typography variant="body2" sx={{ color: GREEN_UI.muted, lineHeight: 1.8 }}>
               Final Score ={" "}
-              {sharedCriteria.length > 0
-                ? sharedCriteria.map((c) => `(${c.criteria_name} × ${Number(c.weight || 0)}%)`).join(" + ")
+              {criteria.length > 0
+                ? criteria.map((c) => `(${c.criteria_name} × ${Number(c.weight || 0)}%)`).join(" + ")
                 : "No active criteria found."}
             </Typography>
           </Box>
@@ -1348,7 +1356,7 @@ export default function PerformanceEvaluation() {
                   "Period",
                   ...(showEvaluationScores
                     ? [
-                        "Criteria Scores",
+                        ...criteria.map((c) => `${c.criteria_name} (${Number(c.weight || 0)}%)`),
                         "Final Score",
                         "Rating",
                       ]
@@ -1408,13 +1416,19 @@ export default function PerformanceEvaluation() {
                         </TableCell>
                       ) : (
                         <>
-                    <TableCell sx={{ minWidth: 180 }}>
-                      {Object.values(r.scores).map(score => (
-                        <Typography key={score.criteria_id} display="block" variant="caption">
-                          {score.criteria_name} ({score.criteria_weight}%) · {score.raw_score}/{score.max_score}
-                        </Typography>
-                      ))}
-                    </TableCell>
+                    {criteria.map((c) => {
+                      const s = r.scores[c.criteria_id];
+                      return (
+                        <TableCell key={`${r.evaluation_id}-${c.criteria_id}`} align="center" sx={{ whiteSpace: "nowrap" }}>
+                          <Chip
+                            label={s ? `${Number(s.raw_score || 0).toFixed(0)}%` : "—"}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontWeight: 600, bgcolor: "#ffffff", borderColor: GREEN_UI.border }}
+                          />
+                        </TableCell>
+                      );
+                    })}
                     <TableCell>
                       <Typography fontWeight={700} sx={{ whiteSpace: "nowrap", color: GREEN_UI.greenDark }}>
                         {Number(r.final_weighted_score || 0).toFixed(2)}%
@@ -1438,12 +1452,6 @@ export default function PerformanceEvaluation() {
                         variant="outlined"
                         sx={statusChipSx(isEmployee && r.status === "Submitted" ? "Under Review" : r.status)}
                       />
-                      {r.recognized_at && (
-                        <Box sx={{ mt: 0.75 }}>
-                          <Chip size="small" icon={<EmojiEvents />} label="Recognition approved" color="success" />
-                          <Typography variant="caption" display="block">{r.recognition_note}</Typography>
-                        </Box>
-                      )}
                     </TableCell>
                     {(isHR || isGM) && (
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
@@ -1458,10 +1466,6 @@ export default function PerformanceEvaluation() {
                               sx={actionChipSx("success")}
                               onClick={() => handleApprove(r.evaluation_id)}
                             />
-                          )}
-                          {isGM && r.status === "Approved" && !r.recognized_at && (
-                            <Chip clickable icon={<EmojiEvents />} label="Approve Recognition" variant="outlined"
-                              onClick={() => { setRecognitionNote(""); setRecognitionTarget(r); }} />
                           )}
                           <Chip
                             icon={<DeleteOutline />}
@@ -1482,33 +1486,6 @@ export default function PerformanceEvaluation() {
           </Table>
         )}
       </TableContainer>
-      <Dialog open={Boolean(recognitionTarget)} onClose={() => { if (!saving) setRecognitionTarget(null); }} fullWidth maxWidth="sm">
-        <DialogTitle>Approve Recognition</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2 }}>{recognitionTarget?.employee_name} · {recognitionTarget?.final_weighted_score}%</Typography>
-          <TextField fullWidth multiline rows={3} label="Recognition note" value={recognitionNote}
-            onChange={event => setRecognitionNote(event.target.value)} inputProps={{ maxLength: 300 }} />
-        </DialogContent>
-        <DialogActions>
-          <Button disabled={saving} onClick={() => setRecognitionTarget(null)}>Cancel</Button>
-          <Button variant="contained" disabled={saving || !recognitionNote.trim()} onClick={async () => {
-            if (!recognitionTarget) return;
-            setSaving(true);
-            try {
-              const { error } = await supabase.from("employee_evaluations").update({ recognition_note: recognitionNote.trim() })
-                .eq("evaluation_id", recognitionTarget.evaluation_id).select("evaluation_id").single();
-              if (error) throw error;
-              setRecognitionTarget(null);
-              showMessage("Recognition approved. The employee can see it in Evaluation.", "success");
-              await fetchEvaluations();
-            } catch (error: any) {
-              showMessage(error.message || "Could not approve recognition.", "error");
-            } finally {
-              setSaving(false);
-            }
-          }}>Approve Recognition</Button>
-        </DialogActions>
-      </Dialog>
       <Dialog open={assignDialogOpen} onClose={() => setAssignDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: dialogPaperSx }}>
         <DialogTitle fontWeight={700} sx={dialogTitleSx}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
@@ -1713,10 +1690,10 @@ export default function PerformanceEvaluation() {
               variant="outlined"
               startIcon={<TaskAlt />}
               onClick={() => {
-                const selectedScores = Object.fromEntries(formCriteria.map((c) => [c.criteria_id, Number(c.max_score || 100)]));
+                const selectedScores = Object.fromEntries(criteria.map((c) => [c.criteria_id, Number(c.max_score || 100)]));
                 setForm({ ...form, scores: { ...form.scores, ...selectedScores } });
               }}
-              disabled={formCriteria.length === 0}
+              disabled={criteria.length === 0}
               sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark, bgcolor: "#ffffff", "&:hover": { bgcolor: GREEN_UI.greenSoft } }}
             >
               Select All
@@ -1724,7 +1701,7 @@ export default function PerformanceEvaluation() {
           </Box>
 
           <Grid container spacing={1.5}>
-            {formCriteria.map((c) => (
+            {criteria.map((c) => (
               <Grid key={c.criteria_id} size={{ xs: 12, md: 6 }}>
                 <Paper elevation={0} sx={{ ...innerCardSx, p: 2 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1, mb: 1 }}>
@@ -1732,7 +1709,7 @@ export default function PerformanceEvaluation() {
                       <Typography variant="body2" fontWeight={700} sx={{ color: GREEN_UI.text }}>{c.criteria_name}</Typography>
                       <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>Weight: {Number(c.weight || 0)}%</Typography>
                     </Box>
-                    <Chip label={`${form.scores[c.criteria_id] ?? 0}%`} size="small" variant="outlined" sx={ratingChipSx(Number(form.scores[c.criteria_id] ?? Math.min(85, Number(c.max_score))))} />
+                    <Chip label={`${form.scores[c.criteria_id] ?? 0}%`} size="small" variant="outlined" sx={ratingChipSx(Number(form.scores[c.criteria_id] ?? 0))} />
                   </Box>
                   <Slider
                     value={form.scores[c.criteria_id] ?? 0}
@@ -1789,7 +1766,7 @@ export default function PerformanceEvaluation() {
           <Button
             variant="contained"
             onClick={handleSubmitEvaluation}
-            disabled={saving || !form.employee_id || formCriteria.length === 0}
+            disabled={saving || !form.employee_id || criteria.length === 0}
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
             sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, "&:hover": { bgcolor: GREEN_UI.greenDark } }}
           >
@@ -1818,12 +1795,6 @@ export default function PerformanceEvaluation() {
         </DialogTitle>
 
         <DialogContent sx={{ px: { xs: 2, sm: 3 }, py: 2.5, bgcolor: "#fbfff9" }}>
-          <TextField fullWidth select label="Criteria position" value={criteriaPosition}
-            onChange={event => loadCriteriaDraft(event.target.value)} sx={{ ...softTextFieldSx, mb: 2 }}
-            helperText="Positions without their own criteria use the shared criteria. Remove all position criteria and save to restore the shared set.">
-            <MenuItem value="">Shared criteria</MenuItem>
-            {positionOptions.map(position => <MenuItem key={position} value={position}>{position}</MenuItem>)}
-          </TextField>
           <Alert severity="info" sx={{ mb: 2, borderRadius: "18px", border: `1px solid ${GREEN_UI.border}` }}>
             Current draft total weight: <strong>{criteriaDraft.reduce((s, c) => s + Number(c.weight || 0), 0).toFixed(2)}%</strong>. It must equal <strong>100%</strong>.
           </Alert>

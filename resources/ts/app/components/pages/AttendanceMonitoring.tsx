@@ -1,8 +1,7 @@
-import { currentLeaveDate, currentManilaMinutes } from '../../lib/leaveRequestDates';
 import { formatDisplayDate } from '../../lib/displayDate';
 import { pairAttendancePunches } from '../../lib/payrollPremiums';
 import { attendancePunchFields, loadAttendanceCalculator } from '../../lib/loadAttendanceCalculator';
-import { findMissingAttendance, getWorkIntervals, type CalculatedAttendance } from '../../lib/scheduledAttendance';
+import { getWorkIntervals, type CalculatedAttendance } from '../../lib/scheduledAttendance';
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
@@ -94,7 +93,6 @@ type EmployeeOption = {
   position?: string | null;
   outlet?: string | null;
   status?: string | null;
-  hire_date?: string | null;
 };
 type SheetRow = Array<string | number | boolean | Date | null | undefined>;
 
@@ -830,7 +828,6 @@ function formatAttendanceDisplayId(logId?: string | null, date?: string | null, 
 
 function attendanceStatusFromDb(row: any): Attendance["status"] {
   if (row?.is_absent) return "Absent";
-  if (row?.onApprovedLeave && !row?.time_in && !row?.time_out) return "On Leave";
   if (String(row?.remarks ?? "").toLowerCase().startsWith("on leave")) return "On Leave";
   const late = toSafeNumber(row?.late_minutes) > 0 || row?.is_late;
   const undertime = toSafeNumber(row?.undertime_minutes) > 0 || row?.is_undertime;
@@ -1005,7 +1002,7 @@ async function resolveEmployeeForAttendance(
   if (biometricId) {
     const { data, error } = await supabase
       .from("employees")
-      .select("employee_id, first_name, middle_name, last_name, suffix, position, outlet, status, biometric_user_id, hire_date")
+      .select("employee_id, first_name, middle_name, last_name, suffix, position, outlet, status, biometric_user_id")
       .eq("biometric_user_id", biometricId)
       .maybeSingle();
     if (error) throw error;
@@ -1045,7 +1042,6 @@ function mapEmployeeOption(row: any): EmployeeOption {
     biometric_user_id: row.biometric_user_id,
     position: row.position,
     outlet: row.outlet,
-    hire_date: row?.hire_date ?? null,
     status: row.status,
   };
 }
@@ -1447,65 +1443,10 @@ export default function AttendanceMonitoring() {
   const canManageAttendance = ["hr", "hr_admin", "general_manager", "admin"].includes(normalizedUserRole) || normalizedUserRole.includes("hr") || normalizedUserRole.includes("admin");
   const canReviewAttendance = canManageAttendance || normalizedUserRole.includes("supervisor");
 
-  const [missingPunches, setMissingPunches] = useState<ReturnType<typeof findMissingAttendance>>([]);
-  const [missingError, setMissingError] = useState('');
-  const [confirmAbsence, setConfirmAbsence] = useState<typeof missingPunches[number] | null>(null);
-  const [absenceRevision, setAbsenceRevision] = useState(0);
-
-  useEffect(() => {
-    setMissingPunches([]);
-    setMissingError('');
-    if (!calculator || !filterDate || filterDate >= currentLeaveDate() || !employeeOptions.length || !canManageAttendance) return;
-    let active = true;
-    void Promise.all([
-      supabase.from('attendance_logs').select('employee_id,attendance_date').eq('attendance_date', filterDate),
-      supabase.from('payroll_premium_rates').select('holidays').eq('id', 1).single(),
-    ]).then(([logs, rates]) => {
-      if (!active) return;
-      if (logs.error || rates.error) {
-        setMissingError('Could not check scheduled shifts for missing punches.');
-        return;
-      }
-      const holidays = new Set<string>((rates.data?.holidays ?? []).map((holiday: { date: string }) => holiday.date));
-      setMissingPunches(findMissingAttendance(calculator, employeeOptions, filterDate, filterDate, logs.data ?? [], holidays, currentLeaveDate(), currentManilaMinutes()));
-    });
-    return () => { active = false; };
-  }, [calculator, filterDate, employeeOptions, absenceRevision, canManageAttendance]);
-
-  const saveAbsence = async () => {
-    if (!confirmAbsence || saving) return;
-    const employee = employeeOptions.find(row => row.employee_id === confirmAbsence.employeeId);
-    if (!employee) return;
-    setSaving(true);
-    try {
-      const [calculate, rates] = await Promise.all([
-        loadAttendanceCalculator(employee.employee_id, confirmAbsence.date, confirmAbsence.date),
-        supabase.from('payroll_premium_rates').select('holidays').eq('id', 1).single(),
-      ]);
-      if (rates.error) throw rates.error;
-      const holidays = new Set<string>((rates.data.holidays ?? []).map((holiday: { date: string }) => holiday.date));
-      const stillMissing = findMissingAttendance(calculate, [employee], confirmAbsence.date, confirmAbsence.date,
-        [], holidays, currentLeaveDate(), currentManilaMinutes());
-      if (!stillMissing.length) throw new Error('This date is no longer an unexcused scheduled day.');
-      const payload = buildAttendancePayload({ date: confirmAbsence.date, status: 'Absent', totalHours: '0',
-        timeIn: '', timeOut: '' }, employee);
-      const { error } = await supabase.from('attendance_logs').insert(payload).select('log_id').single();
-      if (error) throw error;
-      setConfirmAbsence(null);
-      setAbsenceRevision(value => value + 1);
-      setSnackbar({ open: true, message: 'Absence recorded. Use Mark Reviewed to validate it for payroll.', severity: 'success' });
-      await fetchAttendance();
-    } catch (error: any) {
-      setSnackbar({ open: true, message: error.message || 'Could not record absence.', severity: 'error' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const fetchEmployeeOptions = async () => {
     const { data, error } = await supabase
       .from("employees")
-      .select("employee_id, first_name, middle_name, last_name, suffix, position, outlet, status, biometric_user_id, hire_date")
+      .select("employee_id, first_name, middle_name, last_name, suffix, position, outlet, status, biometric_user_id")
       .order("last_name", { ascending: true });
 
     if (error) {
@@ -1589,7 +1530,6 @@ export default function AttendanceMonitoring() {
 
       const savedRecord = mapAttendanceLogToRow(calculate(data));
       setAttendances((prev) => [savedRecord, ...prev]);
-      setAbsenceRevision(value => value + 1);
       setDialogOpen(false);
       setForm(EMPTY);
       setManualPunches(EMPTY_PUNCHES);
@@ -2460,35 +2400,6 @@ export default function AttendanceMonitoring() {
           {error}
         </Alert>
       )}
-
-      {missingError && <Alert severity="warning" sx={{ mb: 2 }}>{missingError}</Alert>}
-      {missingPunches.length > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          <Typography fontWeight={700}>Scheduled employees with missing punches</Typography>
-          {missingPunches.map(entry => (
-            <Box key={entry.employeeId} sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', my: 1 }}>
-              <Typography variant="body2">{employeeNames.get(entry.employeeId.toLowerCase()) || entry.employeeId} · {entry.shift}</Typography>
-              <Button size="small" onClick={() => {
-                setForm({ ...EMPTY, employee: entry.employeeId, date: entry.date });
-                setManualPunches(EMPTY_PUNCHES);
-                setDialogOpen(true);
-              }}>Enter Punches</Button>
-              <Button size="small" onClick={() => setConfirmAbsence(entry)}>Record Absence</Button>
-            </Box>
-          ))}
-        </Alert>
-      )}
-      <Dialog open={Boolean(confirmAbsence)} onClose={() => { if (!saving) setConfirmAbsence(null); }}>
-        <DialogTitle>Confirm absence</DialogTitle>
-        <DialogContent>
-          Confirm that {employeeNames.get(confirmAbsence?.employeeId.toLowerCase() ?? '')} was absent
-          on {formatDisplayDate(confirmAbsence?.date)}. HR can validate the entry after review.
-        </DialogContent>
-        <DialogActions>
-          <Button disabled={saving} onClick={() => setConfirmAbsence(null)}>Cancel</Button>
-          <Button disabled={saving} onClick={() => void saveAbsence()}>Confirm Absence</Button>
-        </DialogActions>
-      </Dialog>
 
       {skippedImportRows.length > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setSkippedImportRows([])}>

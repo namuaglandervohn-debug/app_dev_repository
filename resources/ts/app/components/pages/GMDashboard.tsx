@@ -87,17 +87,15 @@ export default function GMDashboard() {
   useEffect(() => {
     (async () => {
       try {
-        const [applicants, headcount, requests, evaluations] = await Promise.all([
-          supabase.from('applicants').select('applicant_id,first_name,middle_name,last_name,position_applied,interview_date,interview_time,status', { count: 'exact' })
-            .eq('status', 'For Interview').eq('is_archived', false).order('interview_date').limit(5),
-          supabase.from('employees').select('employee_id', { count: 'exact', head: true }).ilike('status', 'active'),
-          supabase.from('employee_requests').select('id', { count: 'exact', head: true }).in('status', ['Pending', 'Supervisor Approved']),
-          supabase.from('employee_evaluations').select('evaluation_id,employee_name,position,evaluation_period_label,final_weighted_score', { count: 'exact' })
-            .in('status', ['Submitted', 'Reviewed']).order('created_at', { ascending: false }).limit(5),
-        ]);
-        const failure = [applicants, headcount, requests, evaluations].find(response => response.error);
-        if (failure?.error) throw failure.error;
-        const applicantsData = applicants.data;
+        const { data: applicantsData, error: applicantsError } = await supabase
+          .from('applicants')
+          .select('*')
+          .eq('status', 'For Interview')
+          .order('interview_date', { ascending: true })
+          .limit(5);
+
+        if (applicantsError) throw applicantsError;
+
         const mappedApplicants = (applicantsData ?? []).map((app: any) => ({
           id: app.applicant_id,
           name: `${app.first_name ?? ''} ${app.middle_name ?? ''} ${app.last_name ?? ''}`
@@ -112,16 +110,12 @@ export default function GMDashboard() {
         setForInterview(mappedApplicants);
 
         setStats({
-          forInterviewCount: applicants.count ?? 0,
-          activeEmployees: headcount.count ?? 0,
-          pendingRequests: requests.count ?? 0,
-          pendingEvaluations: evaluations.count ?? 0,
+          forInterviewCount: mappedApplicants.length,
+          activeEmployees: 0,
+          pendingRequests: 0,
         });
 
-        setTopEvaluations((evaluations.data ?? []).map(row => ({
-          id: row.evaluation_id, employee: row.employee_name, position: row.position,
-          period: row.evaluation_period_label, finalScore: Number(row.final_weighted_score ?? 0),
-        })));
+        setTopEvaluations([]);
       } catch (e) {
         console.error('GM dashboard error:', e);
       } finally {
@@ -133,28 +127,28 @@ export default function GMDashboard() {
   const statCards = [
     {
       title: 'Active Employees',
-      value: loading ? '…' : String(stats?.activeEmployees ?? 'Unavailable'),
+      value: loading ? '…' : String(stats?.activeEmployees ?? 0),
       icon: <PeopleAlt />,
       iconColor: GREEN_UI.greenDark,
       iconBackground: 'rgba(58, 168, 101, 0.14)',
     },
     {
       title: 'For Interview',
-      value: loading ? '…' : String(stats?.forInterviewCount ?? 'Unavailable'),
+      value: loading ? '…' : String(stats?.forInterviewCount ?? 0),
       icon: <PersonAddAlt1 />,
       iconColor: '#2f8f8b',
       iconBackground: 'rgba(47, 143, 139, 0.13)',
     },
     {
       title: 'Pending Evaluation Approvals',
-      value: loading ? '…' : String(stats?.pendingEvaluations ?? 'Unavailable'),
+      value: loading ? '…' : String(topEvaluations.length),
       icon: <TrendingUp />,
       iconColor: '#d9a441',
       iconBackground: 'rgba(217, 164, 65, 0.16)',
     },
     {
       title: 'Pending Requests',
-      value: loading ? '…' : String(stats?.pendingRequests ?? 'Unavailable'),
+      value: loading ? '…' : String(stats?.pendingRequests ?? 0),
       icon: <Timelapse />,
       iconColor: '#b73e2d',
       iconBackground: 'rgba(183, 62, 45, 0.13)',

@@ -118,7 +118,6 @@ export function createAttendanceCalculator(schedules: AttendanceSchedule[], appr
     const scheduledBreak = shift?.intervals.length === 1 ? Math.min(shift.intervals[0][1] - shift.intervals[0][0], getBreakMinutes(schedule?.break_time)) : 0;
     const requests = (requestDirectory.get(employeeId) ?? []).filter(request =>
       date >= request.start_date && date <= (request.end_date ?? request.start_date));
-    const onApprovedLeave = requests.some(request => request.request_type === 'Leave');
     const punches = readIntervals(row);
     const clocked = punches && !row.is_absent;
     const start = shift?.intervals[0][0];
@@ -202,15 +201,11 @@ export function createAttendanceCalculator(schedules: AttendanceSchedule[], appr
       is_late: late > 0,
       is_undertime: undertime > 0,
       is_overtime: overtime > 0,
-      is_absent: Boolean(row.is_absent && !onApprovedLeave),
-      is_incomplete: row.is_absent || onApprovedLeave || /^on leave\b/i.test(row.remarks ?? '') ? false
+      is_incomplete: row.is_absent || /^on leave\b/i.test(row.remarks ?? '') ? false
         : !punches || (!row.work_intervals && Boolean(row.is_incomplete)),
       workedIntervals,
       scheduledMinutes: shift ? sumMinutes(shift.intervals) - scheduledBreak : knownDay ? 0 : undefined,
       scheduleLabel: description,
-      schedulePublished: schedule?.status === 'Published' || schedule?.status === 'Confirmed',
-      scheduledEnd: end,
-      onApprovedLeave,
       paidOvertime,
       approvedUndertime,
       overtimeStart,
@@ -219,35 +214,6 @@ export function createAttendanceCalculator(schedules: AttendanceSchedule[], appr
 }
 
 export type CalculatedAttendance = ReturnType<ReturnType<typeof createAttendanceCalculator>>;
-
-export function findMissingAttendance(
-  calculate: ReturnType<typeof createAttendanceCalculator>,
-  employees: { employee_id: string; hire_date?: string | null }[],
-  from: string,
-  to: string,
-  existing: { employee_id?: string | null; attendance_date: string }[],
-  excludedDates: ReadonlySet<string>,
-  today: string,
-  minutesToday = 0,
-) {
-  const present = new Set(existing.map(row => `${row.employee_id}/${row.attendance_date}`));
-  const missing: { employeeId: string; date: string; shift: string }[] = [];
-  for (let day = Date.parse(from + 'T00:00:00Z'); Number.isFinite(day); day += 86_400_000) {
-    const date = new Date(day).toISOString().slice(0, 10);
-    if (date > to || date >= today) break;
-    if (excludedDates.has(date)) continue;
-    for (const employee of employees) {
-      if ((employee.hire_date && employee.hire_date > date) || present.has(`${employee.employee_id}/${date}`)) continue;
-      const metrics = calculate({ employee_id: employee.employee_id, attendance_date: date });
-      const nextDate = new Date(day + 86_400_000).toISOString().slice(0, 10);
-      const overnightInProgress = nextDate === today && (metrics.scheduledEnd ?? 0) > 1440 + minutesToday;
-      if (metrics.schedulePublished && metrics.scheduledMinutes && !metrics.onApprovedLeave && !overnightInProgress) {
-        missing.push({ employeeId: employee.employee_id, date, shift: metrics.scheduleLabel });
-      }
-    }
-  }
-  return missing;
-}
 
 export function summarizePayrollHours(logs: Pick<CalculatedAttendance,
   'total_hours' | 'late_minutes' | 'undertime_minutes' | 'overtime_minutes' | 'paidOvertime' | 'is_absent'>[]) {
