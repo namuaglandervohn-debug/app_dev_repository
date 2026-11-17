@@ -6,6 +6,16 @@ function clean(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function setCors(request, response) {
+  const origin = clean(request.headers.origin);
+  if (origin === 'https://app-dev-repository.vercel.app' || /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin)) {
+    response.setHeader('Access-Control-Allow-Origin', origin);
+    response.setHeader('Vary', 'Origin');
+    response.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, prefer, range, x-client-info');
+    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, HEAD, OPTIONS');
+  }
+}
+
 function send(response, status, body) {
   response.status(status);
   response.setHeader('Content-Type', 'application/json');
@@ -19,6 +29,11 @@ function safePath(value) {
 }
 
 export default async function supabaseStaffProxy(request, response) {
+  setCors(request, response);
+  if (request.method === 'OPTIONS') {
+    response.status(204).end();
+    return;
+  }
   const path = safePath(request.query?.path);
   const url = clean(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
   const serviceKey = clean(process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -50,7 +65,6 @@ export default async function supabaseStaffProxy(request, response) {
         .from('user_accounts')
         .select('role,email,is_active')
         .eq('email', actor.email)
-        .is('auth_user_id', null)
         .maybeSingle();
       if (legacyAccountError) throw legacyAccountError;
       account = legacyAccount;
@@ -74,6 +88,7 @@ export default async function supabaseStaffProxy(request, response) {
     const upstream = await fetch(`${url}${path}`, { method, headers, body });
     const text = await upstream.text();
     response.status(upstream.status);
+    setCors(request, response);
     response.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
     response.setHeader('Cache-Control', 'no-store');
     response.end(text);

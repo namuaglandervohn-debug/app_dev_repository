@@ -28,7 +28,6 @@ if (inBrowser && signupCallback) {
 const staffDataProxyFetch: typeof fetch = async (input, init) => {
   const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   const canProxy = typeof window !== 'undefined'
-    && window.location.hostname.endsWith('vercel.app')
     && requestUrl.startsWith(url)
     && new URL(requestUrl).pathname.startsWith('/rest/v1/');
 
@@ -36,7 +35,10 @@ const staffDataProxyFetch: typeof fetch = async (input, init) => {
 
   const target = new URL(requestUrl);
   const proxyPath = `${target.pathname}${target.search}`;
-  return fetch(`/api/supabase-staff-proxy?path=${encodeURIComponent(proxyPath)}`, init);
+  const proxyOrigin = window.location.hostname.endsWith('vercel.app')
+    ? ''
+    : 'https://app-dev-repository.vercel.app';
+  return fetch(`${proxyOrigin}/api/supabase-staff-proxy?path=${encodeURIComponent(proxyPath)}`, init);
 };
 
 export const supabase = createClient(url, key, {
