@@ -4,6 +4,7 @@ import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
+import { useLiveModuleRefresh } from '../../lib/useLiveModuleRefresh';
 import { useState, useEffect } from 'react';
 import {
   Box,
@@ -565,6 +566,18 @@ export default function RequestManagement() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.email, currentUser?.employee_id, currentUser?.employeeId, currentUser?.role]);
+
+  useLiveModuleRefresh({
+    enabled: isSupervisor,
+    channelName: 'supervisor-request-management',
+    tables: ['employees', 'employee_requests', 'employee_leave_balances', 'leave_types'],
+    refresh: () => {
+      void refreshEmployeeLeaveDirectory(currentEmployeeId);
+      void fetchEmployeeLeaveBalances(currentEmployeeId);
+      void fetchRequests(currentEmployeeId);
+      void fetchLeaveTypes();
+    },
+  });
 
   const handleSubmit = async () => {
     const startDate = newRequest.startDate;

@@ -2,6 +2,7 @@ import { formatDisplayDate, formatDisplayDateRange, formatTypedDateDigits, parse
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
+import { useLiveModuleRefresh } from '../../lib/useLiveModuleRefresh';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
@@ -863,8 +864,8 @@ export default function ScheduleManagement() {
 
   useEffect(() => { fetchSchedules(); }, []);
 
-   // Fetch employee list — includes position AND outlet for auto-fill
-  useEffect(() => {
+  // Fetch employee list — includes position AND outlet for auto-fill.
+  // The database limits this list to the signed-in Supervisor's team.
   const fetchEmployees = async () => {
     const { data, error } = await supabase
       .from("employees")
@@ -889,8 +890,19 @@ export default function ScheduleManagement() {
     setEmployeeList(list);
   };
 
-  fetchEmployees();
-}, [user?.id]);
+  useEffect(() => {
+    void fetchEmployees();
+  }, [user?.id]);
+
+  useLiveModuleRefresh({
+    enabled: currentRole.includes('supervisor'),
+    channelName: 'supervisor-schedule-management',
+    tables: ['employees', 'schedule', 'user_accounts'],
+    refresh: () => {
+      void fetchEmployees();
+      void fetchSchedules();
+    },
+  });
 
   const getEmployeeById = (employeeId: string) =>
     employeeList.find(emp => emp.employeeId === employeeId);
