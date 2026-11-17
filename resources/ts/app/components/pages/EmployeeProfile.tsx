@@ -731,7 +731,7 @@ export default function EmployeeProfile() {
   updatedAt: data.updated_at ?? employee?.updatedAt ?? "",
 };
 
-    setEmployee(current => current && current.id === updatedEmployee.id ? { ...updatedEmployee, profilePhoto: current.profilePhoto } : updatedEmployee);
+    setEmployee(current => current?.id === updatedEmployee.id ? { ...updatedEmployee, profilePhoto: current.profilePhoto } : updatedEmployee);
     setEditForm(updatedEmployee);
     setEditing(false);
     setSalaryDraft(null);

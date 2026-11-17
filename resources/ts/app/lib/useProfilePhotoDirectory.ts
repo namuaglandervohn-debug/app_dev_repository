@@ -19,9 +19,9 @@ export function useProfilePhotoDirectory(kind: 'applicant' | 'employee', ids: (s
     async function loadPhotos() {
       for (let start = 0; active && start < visibleIds.length; start += BATCH_SIZE) {
         const batch = visibleIds.slice(start, start + BATCH_SIZE);
-        const { data, error }: { data: Array<{ applicant_id?: string; employee_id?: string; profile_photo?: string }> | null; error: unknown } = await (kind === 'applicant'
+        const { data, error } = await (kind === 'applicant'
           ? supabase.rpc('list_recruitment_profile_photos', { p_application_ids: batch })
-          : supabase.from('employees').select('employee_id,profile_photo').in('employee_id', batch).not('profile_photo', 'is', null).returns<Array<{ employee_id: string; profile_photo: string }>>());
+          : supabase.from('employees').select('employee_id,profile_photo').in('employee_id', batch).not('profile_photo', 'is', null));
         if (!active || error) continue;
 
         setDirectory(current => {
