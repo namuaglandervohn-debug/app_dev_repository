@@ -18,6 +18,7 @@ class UserAccountsTest extends TestCase
             'services.supabase.url' => 'https://supabase.test',
             'services.supabase.anon_key' => 'test-anon',
             'services.supabase.service_role_key' => 'test-service',
+            'services.resend.key' => 'test-resend',
         ]);
         Http::preventStrayRequests();
         Http::fake(function (Request $request) {
@@ -32,6 +33,7 @@ class UserAccountsTest extends TestCase
                     'auth_user_id' => 'employee-auth', 'email' => 'employee@example.test', 'role' => 'employee', 'is_active' => true,
                 ]]),
                 $path === '/auth/v1/admin/users/employee-auth' => Http::response(['id' => 'employee-auth', 'email' => 'employee@example.test']),
+                $path === '/emails' => Http::response(['id' => 'test-message']),
             };
         });
 
@@ -39,12 +41,16 @@ class UserAccountsTest extends TestCase
             'action' => 'update_employee_password',
             'employee_id' => 'EMP001',
             'password' => 'Example-New123',
-        ])->assertOk()->assertExactJson(['message' => 'Employee password updated.']);
+        ])->assertOk()->assertJsonPath('password_updated', true)->assertJsonPath('notification_email_sent', true);
 
         Http::assertSent(fn (Request $request) => $request->method() === 'PUT'
             && $request->url() === 'https://supabase.test/auth/v1/admin/users/employee-auth'
             && $request['password'] === 'Example-New123'
             && $request['app_metadata']['hris_temporary_password'] === false);
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://api.resend.com/emails'
+            && $request['to'] === ['employee@example.test']
+            && str_contains($request['text'], 'changed the password')
+            && !str_contains($request['text'], 'Example-New123'));
 
         $this->withToken('test-token')->postJson('/api/admin/user-accounts', [
             'action' => 'update_account_password',
@@ -95,10 +101,14 @@ class UserAccountsTest extends TestCase
             'password' => 'Example-Test123',
             'role' => 'employee',
             'employee_id' => 'EMP001',
+            'position' => 'Service Crew',
         ])->assertCreated()->assertJsonPath('user.employee_id', 'EMP001')->assertJsonPath('user.user_id', 'USR-2026-0001')
             ->assertJsonPath('welcome_email_sent', true)->assertJsonPath('welcome_email_id', 'test-message');
 
         $this->assertSame(['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails'], $writes);
+        Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+            && $request->url() === 'https://supabase.test/rest/v1/employees'
+            && $request['position'] === 'Service Crew');
         Http::assertSent(fn (Request $request) => $request->url() === 'https://api.resend.com/emails'
             && $request->hasHeader('Idempotency-Key', 'account-welcome/new-auth')
             && $request['to'] === ['employee@example.test']

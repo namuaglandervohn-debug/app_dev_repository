@@ -344,7 +344,7 @@ export default function EmployeeProfile() {
   const [passwordFields, setPasswordFields] = useState(EMPTY_PASSWORD_FIELDS);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
   const [deleteDialog, setDeleteDialog] = useState(false);
   // New document upload state
   const [newDocFiles, setNewDocFiles] = useState<File[]>([]);
@@ -778,9 +778,9 @@ export default function EmployeeProfile() {
         body: JSON.stringify({ action: 'update_employee_password', employee_id: id, password: passwordFields.password }),
       });
       const result = await response.json().catch(() => null);
-      if (!response.ok || !result) throw new Error(result?.message || 'Could not update the employee password. Try again.');
+      if (!response.ok || result?.password_updated !== true) throw new Error(result?.message || 'Could not update the employee password. Try again.');
       setPasswordFields(EMPTY_PASSWORD_FIELDS);
-      setSnackbar({ open: true, message: 'Employee password updated.', severity: 'success' });
+      setSnackbar({ open: true, message: result.message, severity: result.notification_email_sent === false ? 'warning' : 'success' });
     } catch (error) {
       setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Could not update the employee password.', severity: 'error' });
     } finally {

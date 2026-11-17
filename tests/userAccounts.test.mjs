@@ -61,7 +61,7 @@ function fixture({ role = 'hr_admin', failProfile = false, loseProfileResponse =
       ? { action: 'update_account_password', user_id: 'USR-2026-0002', password: 'Example<&>123', auth_user_id: 'ignored-id' }
       : passwordUpdate
       ? { action: 'update_employee_password', employee_id: 'EMP001', password: 'Example<&>123', auth_user_id: 'ignored-id' }
-      : { name: 'Test Employee', email: 'employee@example.test', password: 'Example<&>123', role: 'employee', employee_id: 'EMP001' },
+      : { name: 'Test Employee', email: 'employee@example.test', password: 'Example<&>123', role: 'employee', employee_id: 'EMP001', position: 'Service Crew' },
   }, response);
   return { run, calls, response };
 }
@@ -78,6 +78,7 @@ test('creates the employee record before inserting the linked account', async ()
   assert.equal(response.body.welcome_email_id, 'test-message');
   assert.deepEqual(calls.filter(call => call.method === 'POST').map(call => call.path),
     ['/auth/v1/admin/users', '/rest/v1/employees', '/rest/v1/user_accounts', '/emails']);
+  assert.equal(calls.find(call => call.path === '/rest/v1/employees' && call.method === 'POST').body.position, 'Service Crew');
   assert.equal(calls.find(call => call.path === '/rest/v1/user_accounts' && call.method === 'POST').body.password, null);
   const mail = calls.at(-1).body;
   assert.equal(calls.at(-1).idempotencyKey, `account-welcome/${employeeAuthId}`);
@@ -120,17 +121,33 @@ test('keeps a linked account when the insert succeeded and the response was lost
   assert.ok(calls.every(call => call.method !== 'DELETE'));
 });
 
-test('updates the linked employee login without returning the password', async () => {
+test('updates the linked employee login and notifies the original applicant email', async () => {
   const { run, calls, response } = fixture({ role: 'general_manager', passwordUpdate: true });
   await run();
   assert.equal(response.code, 200);
-  const [write] = calls.filter(call => call.method !== 'GET');
-  assert.equal(calls.filter(call => call.method !== 'GET').length, 1);
+  const [write, mail] = calls.filter(call => call.method !== 'GET');
+  assert.equal(calls.filter(call => call.method !== 'GET').length, 2);
   assert.equal(write.path, `/auth/v1/admin/users/${employeeAuthId}`);
   assert.equal(write.method, 'PUT');
   assert.equal(write.body.password, 'Example<&>123');
   assert.equal(write.body.app_metadata.hris_temporary_password, false);
+  assert.equal(mail.path, '/emails');
+  assert.deepEqual(mail.body.to, ['applicant@example.test']);
+  assert.match(mail.body.subject, /password was changed/);
+  assert.doesNotMatch(JSON.stringify(mail.body), /Example<&>123/);
+  assert.equal(response.body.password_updated, true);
+  assert.equal(response.body.notification_email_sent, true);
   assert.doesNotMatch(JSON.stringify(response.body), /Example<&>123/);
+});
+
+test('reports a notification failure separately from the employee password update', async () => {
+  const { run, calls, response } = fixture({ passwordUpdate: true, mailStatus: 503 });
+  await run();
+  assert.equal(response.code, 200);
+  assert.equal(response.body.password_updated, true);
+  assert.equal(response.body.notification_email_sent, false);
+  assert.match(response.body.message, /could not be sent/);
+  assert.deepEqual(calls.filter(call => call.method !== 'GET').map(call => call.method), ['PUT', 'POST']);
 });
 
 test('rejects employee password updates from supervisors and rejects shared applicant logins', async () => {

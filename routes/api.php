@@ -239,6 +239,7 @@ Route::post('/admin/user-accounts', function (Request $request) {
         'role' => ['required', 'string', 'in:hr,employee,supervisor,gm,accounting'],
         'employee_id' => ['nullable', 'string', 'max:40'],
         'outlet' => ['nullable', 'string', 'max:160'],
+        'position' => ['nullable', 'string', 'max:160'],
     ]);
 
     $email = validateRecipientEmailAddress($data['email']);
@@ -246,6 +247,7 @@ Route::post('/admin/user-accounts', function (Request $request) {
     $employeeId = trim((string) ($data['employee_id'] ?? ''));
     $outlet = trim((string) ($data['outlet'] ?? ''));
     $databaseRole = normalizeDatabaseRole($data['role']);
+    $position = $databaseRole === 'employee' ? trim((string) ($data['position'] ?? '')) : '';
 
     $existingProfiles = supabaseRest('GET', '/rest/v1/user_accounts', null, [
         'select' => 'user_id,email',
@@ -266,7 +268,7 @@ Route::post('/admin/user-accounts', function (Request $request) {
         }
 
         $existingEmployee = supabaseRest('GET', '/rest/v1/employees', null, [
-            'select' => 'employee_id,email,applicant_id',
+            'select' => 'employee_id,email,applicant_id,position',
             'employee_id' => "eq.{$employeeId}",
             'limit' => 1,
         ])[0] ?? null;
@@ -328,8 +330,14 @@ Route::post('/admin/user-accounts', function (Request $request) {
                 'last_name' => $lastName,
                 'email' => $email,
                 'outlet' => $outlet ?: null,
+                'position' => $position ?: null,
                 'status' => 'Active',
                 'hire_date' => now()->toDateString(),
+            ]);
+        } elseif ($existingEmployee && $position !== '' && $position !== ($existingEmployee['position'] ?? '')) {
+            supabaseRest('PATCH', '/rest/v1/employees', ['position' => $position], [
+                'employee_id' => 'eq.'.$employeeId,
+                'email' => 'eq.'.$email,
             ]);
         }
 
@@ -415,12 +423,17 @@ function updateLinkedAccountPassword(Request $request, string $idField): JsonRes
         return $unavailable();
     }
 
-    foreach (array_unique(array_filter([$employee['applicant_id'] ?? null, $account['applicant_id'] ?? null])) as $applicantId) {
+    $applicantIds = array_values(array_unique(array_filter([$employee['applicant_id'] ?? null, $account['applicant_id'] ?? null])));
+    $recipient = $email;
+    foreach ($applicantIds as $index => $applicantId) {
         $applicant = supabaseRest('GET', '/rest/v1/applicants', null, [
             'select' => 'auth_user_id,email', 'applicant_id' => 'eq.'.$applicantId, 'limit' => 1,
         ])[0] ?? null;
         if ($applicant && (($applicant['auth_user_id'] ?? null) === $user['id'] || strtolower(trim($applicant['email'] ?? '')) === $email)) {
             return $unavailable();
+        }
+        if ($index === 0 && filter_var(trim($applicant['email'] ?? ''), FILTER_VALIDATE_EMAIL)) {
+            $recipient = strtolower(trim($applicant['email']));
         }
     }
 
@@ -431,9 +444,36 @@ function updateLinkedAccountPassword(Request $request, string $idField): JsonRes
         return response()->json(['message' => 'The password did not meet the account requirements. Choose a different password and try again.'], 422);
     }
 
-    return response()->json($byAccountId
-        ? ['password_updated' => true, 'message' => 'Account password updated.']
-        : ['message' => 'Employee password updated.'])->header('Cache-Control', 'no-store');
+    $result = ['password_updated' => true, 'message' => 'Account password updated.'];
+    if ($account['role'] === 'employee') {
+        $notified = sendPasswordChangeNotice($recipient);
+        $result['notification_email_sent'] = $notified;
+        $result['message'] = $notified
+            ? 'Employee password updated. The notification email was accepted for delivery.'
+            : 'Employee password updated. The notification email could not be sent. Please notify the employee directly.';
+    }
+    return response()->json($result)->header('Cache-Control', 'no-store');
+}
+
+function sendPasswordChangeNotice(string $recipient): bool
+{
+    $key = trim((string) config('services.resend.key'));
+    if ($key === '') {
+        return false;
+    }
+
+    try {
+        $response = Http::withToken($key)->acceptJson()->timeout(8)->post('https://api.resend.com/emails', [
+            'from' => sprintf('%s <%s>', config('services.resend.from_name'), config('services.resend.from_address')),
+            'to' => [$recipient],
+            'subject' => 'Your Buenaventura HRIS password was changed',
+            'text' => 'An authorized administrator changed the password for your Buenaventura HRIS employee account. If you did not expect this change or need help signing in, contact HR.',
+        ]);
+        $id = $response->json('id');
+        return $response->successful() && is_string($id) && trim($id) !== '';
+    } catch (Throwable) {
+        return false;
+    }
 }
 
 function sendAccountWelcomeEmail(string $name, string $email, string $password, string $authUserId): ?string
