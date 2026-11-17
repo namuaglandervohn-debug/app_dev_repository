@@ -902,6 +902,16 @@ function getPunches(record: Attendance) {
   }
   const first = pairs[0];
   const second = pairs[1];
+  const continuousDayShift = !second && first[0] % 1440 < 10 * 60
+    && first[1] % 1440 > 14 * 60 && first[1] - first[0] >= 6 * 60;
+  if (continuousDayShift) {
+    return {
+      morningIn: formatMinutesAs24Hour(first[0] % 1440),
+      morningOut: '',
+      afternoonIn: '',
+      afternoonOut: formatMinutesAs24Hour(first[1] % 1440),
+    };
+  }
   return {
     morningIn: formatMinutesAs24Hour(first[0] % 1440),
     morningOut: formatMinutesAs24Hour(first[1] % 1440),
@@ -917,8 +927,12 @@ function attendanceFromPunches(
 ) {
   if (!calculator || !employeeId || !date) return null;
   const { morningIn, morningOut, afternoonIn, afternoonOut } = punches;
-  if (Boolean(morningIn) !== Boolean(morningOut) || Boolean(afternoonIn) !== Boolean(afternoonOut)) return null;
-  const times = [morningIn, morningOut, afternoonIn, afternoonOut].filter(Boolean);
+  const continuousThroughBreak = Boolean(morningIn && afternoonOut && !morningOut && !afternoonIn);
+  if ((Boolean(morningIn) !== Boolean(morningOut) || Boolean(afternoonIn) !== Boolean(afternoonOut))
+      && !continuousThroughBreak) return null;
+  const times = continuousThroughBreak
+    ? [morningIn, afternoonOut]
+    : [morningIn, morningOut, afternoonIn, afternoonOut].filter(Boolean);
   const unchanged = existing && Object.values(getPunches(existing)).every((time, index) => time === Object.values(punches)[index]);
   const intervals = (unchanged ? existing?.workIntervals : null) ?? getWorkIntervals(times);
   const noWork = !times.length && (existing?.status === 'Absent' || existing?.status === 'On Leave');
@@ -957,6 +971,9 @@ function AttendancePunchFields({ punches, setPunches, metrics }: {
           </Grid>
         ))}
       </Grid>
+      <Typography variant="caption" color="text.secondary">
+        If no break punches were recorded, leave Morning Time Out and Afternoon Time In blank. The time between Morning Time In and Afternoon Time Out will count as continuous work.
+      </Typography>
       <TextField label="Total Hours" fullWidth value={metrics?.totalHours ?? ''} InputProps={{ readOnly: true }}
         InputLabelProps={{ shrink: true }}
         helperText={metrics && (metrics.scheduleLabel ? `Assigned shift for this date: ${metrics.scheduleLabel}` : 'No timed shift was assigned for this date.')} />
@@ -1114,7 +1131,9 @@ function buildAttendancePayload(row: Partial<Attendance>, employee: EmployeeOpti
     is_undertime: undertimeMinutes > 0,
     is_overtime: overtimeMinutes > 0,
     is_absent: isAbsent,
-    is_incomplete: !isAbsent && !isOnLeave && (!row.timeIn || !row.timeOut),
+    is_incomplete: !isAbsent && !isOnLeave && (
+      !row.timeIn || !row.timeOut || (row.workIntervals === null && Boolean(row.timeIn && row.timeOut))
+    ),
     source: "Manual Encoding",
     validation_status: needsReview ? "Needs Review" : "Validated",
     remarks: isOnLeave ? "On Leave" : discrepancy === "Complete" ? null : discrepancy,

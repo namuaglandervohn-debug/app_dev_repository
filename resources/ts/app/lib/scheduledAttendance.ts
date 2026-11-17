@@ -139,7 +139,9 @@ export function createAttendanceCalculator(schedules: AttendanceSchedule[], appr
       const actualStart = actual[0][0];
       const actualEnd = actual[actual.length - 1][1];
       const breaks = shift.intervals.slice(1).map(([from], index): Interval => [shift.intervals[index][1], from]);
-      workedIntervals = punches.flatMap(([from, to]) => {
+      const workedThroughScheduledBreak = punches.length === 1
+        && breaks.some(([breakStart, breakEnd]) => overlap([actualStart, actualEnd], [breakStart, breakEnd]) > 0);
+      workedIntervals = workedThroughScheduledBreak ? actual : punches.flatMap(([from, to]) => {
         let segments: Interval[] = [[from, to]];
         for (const [breakStart, breakEnd] of breaks) {
           segments = segments.flatMap((segment): Interval[] => {
@@ -153,7 +155,8 @@ export function createAttendanceCalculator(schedules: AttendanceSchedule[], appr
       const span = overlap([actualStart, actualEnd], [start, end]);
       const workedInShift = actual.reduce((sum, interval) => sum + overlap(interval, [start, end]), 0);
       // A duration-only break has no assigned clock time. Credit any break already recorded.
-      const unrecordedBreak = Math.min(workedInShift, Math.max(0, scheduledBreak - (span - workedInShift)));
+      const unrecordedBreak = workedThroughScheduledBreak ? 0
+        : Math.min(workedInShift, Math.max(0, scheduledBreak - (span - workedInShift)));
       totalHours = Number(((sumMinutes(workedIntervals) - unrecordedBreak) / 60).toFixed(2));
       late = 0;
       const shortfall: Interval[] = [];
@@ -171,9 +174,16 @@ export function createAttendanceCalculator(schedules: AttendanceSchedule[], appr
       }
       undertime = sumMinutes(shortfall);
       const extra = actual.map(([from, to]): Interval => [Math.max(from, end), to]).filter(([from, to]) => to > from);
-      overtime = sumMinutes(extra);
-      overtimeStart = extra[0]?.[0];
-      paidOvertime = requestOverlap(extra, requests, 'Overtime');
+      const workedBreaks: Interval[] = workedThroughScheduledBreak
+        ? breaks.flatMap(([breakStart, breakEnd]) => actual.flatMap(([from, to]) => {
+          const interval: Interval = [Math.max(from, breakStart), Math.min(to, breakEnd)];
+          return interval[1] > interval[0] ? [interval] : [];
+        }))
+        : [];
+      const overtimeIntervals = [...workedBreaks, ...extra];
+      overtime = sumMinutes(overtimeIntervals);
+      overtimeStart = workedBreaks[0]?.[0] ?? extra[0]?.[0];
+      paidOvertime = requestOverlap(overtimeIntervals, requests, 'Overtime');
       approvedUndertime = requestOverlap(shortfall, requests, 'Undertime');
     } else if (clocked) {
       if (!legacy) {
