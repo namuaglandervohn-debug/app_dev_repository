@@ -25,7 +25,22 @@ if (inBrowser && signupCallback) {
   window.history.replaceState(window.history.state, '', destination);
 }
 
+const staffDataProxyFetch: typeof fetch = async (input, init) => {
+  const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  const canProxy = typeof window !== 'undefined'
+    && window.location.hostname.endsWith('vercel.app')
+    && requestUrl.startsWith(url)
+    && new URL(requestUrl).pathname.startsWith('/rest/v1/');
+
+  if (!canProxy) return fetch(input, init);
+
+  const target = new URL(requestUrl);
+  const proxyPath = `${target.pathname}${target.search}`;
+  return fetch(`/api/supabase-staff-proxy?path=${encodeURIComponent(proxyPath)}`, init);
+};
+
 export const supabase = createClient(url, key, {
+  global: { fetch: staffDataProxyFetch },
   auth: inBrowser
     ? { ...createTabAuthOptions(window.sessionStorage), detectSessionInUrl: !recoveryCallback && !signupCallback }
     : { persistSession: false },
