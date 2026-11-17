@@ -23,3 +23,10 @@ export function leaveDaysInYear(startDate: string, endDate: string, year: number
   const end = Date.parse(`${endDate > `${year}-12-31` ? `${year}-12-31` : endDate}T00:00:00Z`);
   return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, (end - start) / 86_400_000 + 1) : 0;
 }
+export function currentManilaMinutes(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  return Number(parts.find(part => part.type === 'hour')?.value) * 60
+    + Number(parts.find(part => part.type === 'minute')?.value);
+}

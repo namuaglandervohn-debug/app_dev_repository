@@ -1,4 +1,7 @@
-import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange, parseDisplayDate } from '../../lib/displayDate';
+import { useAuth } from '../../context/AuthContext';
+import { NO_OUTLET, OUTLETS } from '../../lib/constants';
+import { matchesReportOutlet } from '../../lib/reportOutlet';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange, parseDisplayDate, parseScheduleDateRange } from '../../lib/displayDate';
 import TextField from '../DateTextField';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -106,7 +109,7 @@ const COLUMNS: Record<string, string[]> = {
     'status',
   ],
   evaluations: ['id', 'employee', 'position', 'outlet', 'period', 'rawScore', 'finalScore', 'rating', 'status'],
-  requests: ['id', 'employee', 'type', 'leaveType', 'date', 'time', 'reason', 'status', 'reviewerRemarks'],
+  requests: ['id', 'employee', 'outlet', 'type', 'leaveType', 'date', 'time', 'reason', 'status', 'reviewerRemarks'],
   criteria: ['id', 'criteriaName', 'category', 'weight', 'maxScore', 'active', 'description'],
   systemLogs: ['id', 'userName', 'userRole', 'action', 'module', 'recordId', 'recordTable', 'description', 'dateTime'],
 };
@@ -243,6 +246,10 @@ const getComparableReportDate = (value: any) => {
 };
 
 const isWithinReportRange = (row: any, dateFrom: string, dateTo: string) => {
+  const period = row.periodStart && row.periodEnd
+    ? { start: row.periodStart, end: row.periodEnd }
+    : row.week ? parseScheduleDateRange(row.week) : null;
+  if (period) return (!dateFrom || period.end >= dateFrom) && (!dateTo || period.start <= dateTo);
   const dateVal = row.date || row.dateApplied || row.createdAt || row.periodStart || row.submittedDate || row.week || row.period;
   const comparableDate = getComparableReportDate(dateVal);
   if (!comparableDate) return true;
@@ -299,7 +306,13 @@ const getStatusColor = (value: any) => {
 };
 
 export default function Reports() {
-  const [reportType, setReportType] = useState('employees');
+  const { user } = useAuth();
+  const accounting = user?.role === 'accounting';
+  const reportTypes = accounting ? REPORT_TYPES.filter(r => ['attendance','attendanceLogs','payroll'].includes(r.value)) : REPORT_TYPES;
+  const [selectedReport, setReportType] = useState('');
+  const reportType = reportTypes.some(r => r.value === selectedReport) ? selectedReport : reportTypes[0].value;
+  const [outlet, setOutlet] = useState('');
+  const [validatedOnly, setValidatedOnly] = useState(accounting);
   const [dateFrom, setDateFrom] = useState(() => `${getReportYear()}-01-01`);
   const [dateTo, setDateTo] = useState(() => `${getReportYear()}-12-31`);
   const [logDate, setLogDate] = useState('');
@@ -314,18 +327,30 @@ export default function Reports() {
   const printRef = useRef<HTMLDivElement>(null);
 
   const loadTable = async (tableName: string, orderColumn?: string) => {
-    let query = supabase.from(tableName).select('*');
-
-    if (orderColumn) {
-      query = query.order(orderColumn, { ascending: false });
+    const fields: Record<string, string> = {
+      employees: 'employee_id,first_name,middle_name,last_name,suffix,position,department,outlet,status,phone_number,email,hire_date,created_at',
+      applicants: 'applicant_id,name,first_name,middle_name,last_name,suffix,position_applied,email,phone_number,created_at,status,hiring_decision',
+      schedule: 'schedule_id,employee_id,week,outlet,position,time_in,time_out,is_finalized,status',
+      attendance_summaries: 'summary_id,employee_id,employee_name,position,outlet,period_start,period_end,total_present_days,total_absent_days,total_incomplete_days,total_late_minutes,total_undertime_minutes,total_overtime_minutes,total_work_hours,status',
+      attendance_logs: 'log_id,employee_id,biometric_user_id,employee_name,attendance_date,time_in,time_out,total_hours,late_minutes,undertime_minutes,overtime_minutes,validation_status,source',
+      payroll_summaries: 'payroll_id,period_start,period_end,cutoff_label,status',
+      payroll_items: 'payroll_item_id,employee_id,employee_name,position,outlet,payroll_id,regular_hours,overtime_hours,gross_pay,total_deductions,net_pay,created_at',
+      employee_requests: 'request_id,employee_id,request_type,leave_type,start_date,end_date,start_time,end_time,reason,status,reviewer_remarks,created_at',
+      evaluation_criteria: 'criteria_id,criteria_name,description,category,weight,max_score,is_active,created_at',
+      employee_evaluations: 'evaluation_id,employee_id,employee_name,position,outlet,evaluation_period_start,evaluation_period_end,evaluation_period_label,total_raw_score,final_weighted_score,rating_label,status',
+      user_accounts: 'employee_id,outlet',
+    };
+    const records = [];
+    for (let offset = 0; ; offset += 500) {
+      let query = supabase.from(tableName).select(fields[tableName]).order(orderColumn ?? 'schedule_id', { ascending: false }).range(offset, offset + 499);
+      if (orderColumn) query = query.order('id', { ascending: false });
+      const { data, error } = await query;
+      if (error) throw new Error(`${tableName}: ${error.message}`);
+      records.push(...(data ?? []));
+      if (!data || data.length < 500) return records;
     }
 
-    const { data, error: tableError } = await query;
-    if (tableError) {
-      throw new Error(`${tableName}: ${tableError.message}`);
-    }
 
-    return data ?? [];
   };
 
   const fetchAll = async () => {
@@ -335,7 +360,8 @@ export default function Reports() {
 
     const warnings: string[] = [];
 
-    const safe = async (tableName: string, orderColumn?: string) => {
+    const safe = async (tableName: string, orderColumn?: string): Promise<any[]> => {
+      if (accounting && !['attendance_summaries','attendance_logs','payroll_summaries','payroll_items'].includes(tableName)) return [];
       try {
         return await (tableName === 'system_logs' ? loadSystemLogs() : loadTable(tableName, orderColumn));
       } catch (err: any) {
@@ -344,6 +370,15 @@ export default function Reports() {
       }
     };
 
+    const loadFinanceDirectory = async () => {
+      const records = [];
+      for (let offset = 0; ; offset += 500) {
+        const { data, error } = await supabase.rpc('finance_employee_directory').order('employee_id').range(offset, offset + 499);
+        if (error) throw error;
+        records.push(...(data ?? []));
+        if (!data || data.length < 500) return records;
+      }
+    };
     try {
       const [
         employees,
@@ -359,7 +394,7 @@ export default function Reports() {
         systemLogs,
         userAccounts,
       ] = await Promise.all([
-        safe('employees', 'created_at'),
+        accounting ? loadFinanceDirectory() : safe('employees', 'created_at'),
         safe('applicants', 'created_at'),
         safe('schedule'),
         safe('attendance_summaries', 'created_at'),
@@ -419,7 +454,7 @@ export default function Reports() {
               : '—',
             week: s.week || '—',
             position: s.position || emp?.position || '—',
-            outlet: firstFilled(emp?.outlet, s.outlet) || '—',
+            outlet: firstFilled(s.outlet, emp?.outlet) || '—',
             timeIn: formatTime(s.time_in),
             timeOut: formatTime(s.time_out),
             finalized: s.is_finalized ? 'Finalized' : 'Draft',
@@ -443,12 +478,14 @@ export default function Reports() {
           workHours: a.total_work_hours ?? 0,
           status: a.status || 'Draft',
           date: toDateOnly(a.period_start),
+          periodStart: toDateOnly(a.period_start), periodEnd: toDateOnly(a.period_end),
         })),
 
         attendanceLogs: attendanceLogs.map((a: any) => ({
           id: a.log_id,
           employee: `${a.employee_id || a.biometric_user_id || '—'}${a.employee_name ? ` - ${a.employee_name}` : ''}`,
           date: toDateOnly(a.attendance_date),
+          outlet: employeeById.get(a.employee_id)?.outlet ?? a.outlet ?? '—',
           timeIn: formatTime(a.time_in),
           timeOut: formatTime(a.time_out),
           totalHours: a.total_hours ?? 0,
@@ -466,7 +503,7 @@ export default function Reports() {
             id: item.payroll_item_id,
             employee: `${item.employee_id}${item.employee_name || emp ? ` - ${item.employee_name || getFullName(emp)}` : ''}`,
             position: item.position || emp?.position || '—',
-            outlet: firstFilled(emp?.outlet, item.outlet) || '—',
+            outlet: firstFilled(item.outlet, emp?.outlet) || '—',
             period: buildPeriod(payroll?.period_start, payroll?.period_end, payroll?.cutoff_label),
             regularHours: item.regular_hours ?? 0,
             overtimeHours: item.overtime_hours ?? 0,
@@ -475,6 +512,7 @@ export default function Reports() {
             netPay: item.net_pay ?? 0,
             status: payroll?.status || 'Draft',
             date: toDateOnly(payroll?.period_start || item.created_at),
+            periodStart: toDateOnly(payroll?.period_start), periodEnd: toDateOnly(payroll?.period_end),
           };
         }),
 
@@ -489,13 +527,16 @@ export default function Reports() {
           rating: e.rating_label || '—',
           status: e.status || 'Draft',
           date: toDateOnly(e.evaluation_period_start),
+          periodStart: toDateOnly(e.evaluation_period_start), periodEnd: toDateOnly(e.evaluation_period_end),
         })),
         requests: requests.map((r: any) => ({
           id: r.request_id,
           employee: `${r.employee_id || '—'}${employeeById.get(r.employee_id) ? ` - ${getFullName(employeeById.get(r.employee_id))}` : ''}`,
+          outlet: employeeById.get(r.employee_id)?.outlet || '—',
           type: r.request_type || '—',
           leaveType: r.leave_type || '—',
           date: buildPeriod(r.start_date, r.end_date),
+          periodStart: toDateOnly(r.start_date), periodEnd: toDateOnly(r.end_date),
           time: r.start_time || r.end_time ? `${formatTime(r.start_time)} - ${formatTime(r.end_time)}` : '—',
           reason: r.reason || '—',
           status: r.status || 'Pending',
@@ -514,7 +555,7 @@ export default function Reports() {
           date: toDateOnly(c.created_at),
         })),
 
-        systemLogs: systemLogs.map(l => ({
+        systemLogs: systemLogs.map((l: Awaited<ReturnType<typeof loadSystemLogs>>[number]) => ({
           id: l.log_id,
           userName: l.user_name || '—',
           userRole: l.user_role || '—',
@@ -541,29 +582,32 @@ export default function Reports() {
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [accounting]);
 
   useEffect(() => {
     setPage(0);
-  }, [reportType, dateFrom, dateTo, rowsPerPage, logDate, logUser, logModule]);
+  }, [reportType, dateFrom, dateTo, rowsPerPage, logDate, logUser, logModule, outlet, validatedOnly]);
 
-  const selected = REPORT_TYPES.find(r => r.value === reportType) ?? REPORT_TYPES[0];
+  const selected = reportTypes.find(r => r.value === reportType) ?? reportTypes[0];
   const currentData: any[] = allData[reportType] ?? [];
   const cols = COLUMNS[reportType] ?? [];
 
   const filtered = useMemo(() => {
     return currentData.filter(row => {
+      if (!matchesReportOutlet(reportType, row.outlet, outlet)) return false;
+      if (reportType === 'attendanceLogs' && validatedOnly && row.validationStatus !== 'Validated') return false;
       if (reportType !== 'systemLogs') return isWithinReportRange(row, dateFrom, dateTo);
       return (logDate ? row.date === logDate : isWithinReportRange(row, dateFrom, dateTo))
         && (!logUser || row.userName === logUser)
         && (!logModule || row.module === logModule);
     });
-  }, [currentData, reportType, dateFrom, dateTo, logDate, logUser, logModule]);
+  }, [currentData, reportType, dateFrom, dateTo, logDate, logUser, logModule, outlet, validatedOnly]);
 
   const getFilteredRowsForType = (type: string) => {
     if (type === reportType) return filtered;
     const rows = allData[type] ?? [];
-    return rows.filter(row => isWithinReportRange(row, dateFrom, dateTo));
+    return rows.filter(row => matchesReportOutlet(type, row.outlet, outlet) && isWithinReportRange(row, dateFrom, dateTo) &&
+      (type !== 'attendanceLogs' || !validatedOnly || row.validationStatus === 'Validated'));
   };
 
   const paginated = useMemo(() => {
@@ -621,6 +665,7 @@ export default function Reports() {
     URL.revokeObjectURL(url);
   };
 
+  const outletLabel = outlet === NO_OUTLET ? "No Outlet" : outlet || "All Outlets";
   const handlePrint = () => {
     const isLogReport = reportType === 'systemLogs';
     const reportDates = isLogReport && logDate ? formatDisplayDate(logDate)
@@ -645,7 +690,7 @@ export default function Reports() {
         .footer { color: #777; font-size: 10px; text-align: center; margin-top: 20px; }
       </style></head><body>
       <h2>Buenaventura Estate HRIS — ${selected.label} Report</h2>
-      <p>Period: ${escapeHtml(reportDates)} &nbsp;|&nbsp; Total records: ${filtered.length} &nbsp;|&nbsp; Generated: ${formatDisplayDateTime(new Date())}</p>
+      <p>Period: ${escapeHtml(reportDates)} &nbsp;|&nbsp; Outlet: ${escapeHtml(outletLabel)} &nbsp;|&nbsp; Total records: ${filtered.length} &nbsp;|&nbsp; Generated: ${formatDisplayDateTime(new Date())}</p>
       ${content}
       <div class="footer">Buenaventura Estate HRIS &nbsp;·&nbsp; Printed: ${formatDisplayDateTime(new Date())} &nbsp;·&nbsp; Confidential</div>
       </body></html>
@@ -657,7 +702,7 @@ export default function Reports() {
 
   const handlePrintAllReports = () => {
     const generatedAt = formatDisplayDateTime(new Date());
-    const reportSections = REPORT_TYPES.map(rt => {
+    const reportSections = reportTypes.map(rt => {
       const rows = getFilteredRowsForType(rt.value);
       const sectionCols = getPrintableColumns(rt.value, rows);
       const tableRows = rows.length > 0
@@ -712,7 +757,7 @@ export default function Reports() {
       </style></head><body>
       <div class="cover">
         <h1>Buenaventura Estate HRIS - All Reports</h1>
-        <p>Period: ${escapeHtml(formatDisplayDate(dateFrom))} to ${escapeHtml(formatDisplayDate(dateTo))} | Generated: ${escapeHtml(generatedAt)}</p>
+        <p>Period: ${escapeHtml(formatDisplayDate(dateFrom))} to ${escapeHtml(formatDisplayDate(dateTo))} | Outlet: ${escapeHtml(outletLabel)} | Generated: ${escapeHtml(generatedAt)}</p>
       </div>
       ${reportSections}
       <div class="footer">Buenaventura Estate HRIS | Generated: ${escapeHtml(generatedAt)} | Confidential</div>
@@ -725,7 +770,7 @@ export default function Reports() {
 
 
   const totalLoadedRecords = Object.values(allData).reduce<number>((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
-  const totalFilteredRecords = REPORT_TYPES.reduce((sum, rt) => sum + getFilteredRowsForType(rt.value).length, 0);
+  const totalFilteredRecords = reportTypes.reduce((sum, rt) => sum + getFilteredRowsForType(rt.value).length, 0);
   const reportStats = [
     {
       label: 'Current Report',
@@ -739,7 +784,7 @@ export default function Reports() {
     },
     {
       label: 'Report Types',
-      value: REPORT_TYPES.length,
+      value: reportTypes.length,
       icon: <GridView fontSize="small" />,
     },
     {
@@ -940,7 +985,7 @@ export default function Reports() {
               InputLabelProps={{ shrink: true }}
               sx={fieldSx}
             >
-              {REPORT_TYPES.map(rt => (
+              {reportTypes.map(rt => (
                 <MenuItem key={rt.value} value={rt.value}>
                   {rt.label}
                 </MenuItem>
@@ -977,6 +1022,8 @@ export default function Reports() {
               sx={{ ...pillButtonSx, height: '56px', borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
               onClick={() => {
                 const year = getReportYear();
+                setOutlet('');
+                setValidatedOnly(accounting);
                 setDateFrom(`${year}-01-01`);
                 setDateTo(`${year}-12-31`);
                 setLogDate('');
@@ -987,8 +1034,26 @@ export default function Reports() {
               Reset
             </Button>
           </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField select fullWidth label="Outlet / Branch" value={outlet} onChange={e => setOutlet(e.target.value)}
+              InputLabelProps={{ shrink: true }} sx={fieldSx}>
+              <MenuItem value="">All Outlets</MenuItem>
+              {OUTLETS.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+              <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
+            </TextField>
+          </Grid>
+          {reportType === 'attendanceLogs' && <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField select fullWidth label="Validation status" value={validatedOnly ? 'validated' : 'all'}
+              onChange={e => setValidatedOnly(e.target.value === 'validated')} sx={fieldSx}>
+              <MenuItem value="all">All statuses</MenuItem>
+              <MenuItem value="validated">Validated only</MenuItem>
+            </TextField>
+          </Grid>}
         </Grid>
 
+        {outlet && ['applications','criteria','systemLogs'].includes(reportType) && (
+          <Typography variant="caption" color="text.secondary">This report covers the organization. Outlet filtering applies to records with an outlet assignment.</Typography>
+        )}
         {reportType === 'systemLogs' && (
           <Grid container spacing={1.5} sx={{ mt: 2 }}>
             <Grid size={{ xs: 12, sm: 4 }}>
@@ -1043,7 +1108,7 @@ export default function Reports() {
       </Paper>
 
       <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
-        {REPORT_TYPES.map(rt => {
+        {reportTypes.map(rt => {
           const active = reportType === rt.value;
           return (
             <Grid key={rt.value} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
