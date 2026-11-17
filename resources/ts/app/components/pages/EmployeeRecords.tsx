@@ -1,7 +1,6 @@
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
-import { useLiveModuleRefresh } from '../../lib/useLiveModuleRefresh';
 import MobileNumberField from '../MobileNumberField';
 import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useState, useEffect } from "react";
@@ -284,13 +283,6 @@ export default function EmployeeRecords() {
   useEffect(() => {
     fetchEmployees();
   }, []);
-
-  useLiveModuleRefresh({
-    enabled: String(user?.role ?? '').toLowerCase().includes('supervisor'),
-    channelName: 'supervisor-employee-records',
-    tables: ['employees', 'user_accounts'],
-    refresh: fetchEmployees,
-  });
 
   const validate = () => {
     const errs: Partial<typeof EMPTY_FORM> = {};

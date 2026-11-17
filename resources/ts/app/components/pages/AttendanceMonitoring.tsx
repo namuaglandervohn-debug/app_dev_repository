@@ -5,7 +5,6 @@ import { getWorkIntervals, type CalculatedAttendance } from '../../lib/scheduled
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
-import { useLiveModuleRefresh } from '../../lib/useLiveModuleRefresh';
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -1483,16 +1482,6 @@ export default function AttendanceMonitoring() {
     fetchEmployeeOptions();
     fetchAttendance();
   }, []);
-
-  useLiveModuleRefresh({
-    enabled: normalizedUserRole.includes('supervisor'),
-    channelName: 'supervisor-attendance-monitoring',
-    tables: ['employees', 'schedule', 'attendance_logs', 'employee_requests'],
-    refresh: () => {
-      void fetchEmployeeOptions();
-      void fetchAttendance();
-    },
-  });
 
   useEffect(() => {
     setPage(0);

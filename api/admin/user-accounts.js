@@ -49,27 +49,7 @@ async function sendWelcomeEmail({ env, fetcher, name, email, password, authUserI
   return typeof id === 'string' && id ? id : null;
 }
 
-async function sendPasswordChangeNotice(env, fetcher, recipient) {
-  const key = clean(env.RESEND_API_KEY);
-  if (!key) return false;
-
-  const response = await fetcher('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(8000),
-    body: JSON.stringify({
-      from: `${clean(env.RESEND_FROM_NAME) || 'Buenaventura HRIS'} <${clean(env.RESEND_FROM_ADDRESS) || 'no-reply@buenaventura-hris.me'}>`,
-      to: [recipient],
-      subject: 'Your Buenaventura HRIS password was changed',
-      text: 'An authorized administrator changed the password for your Buenaventura HRIS employee account. If you did not expect this change or need help signing in, contact HR.',
-    }),
-  });
-  if (!response.ok) return false;
-  const id = (await response.json())?.id;
-  return typeof id === 'string' && Boolean(id.trim());
-}
-
-async function updateAccountPassword(admin, body, send, env, fetcher) {
+async function updateAccountPassword(admin, body, send) {
   const byAccountId = body.action === 'update_account_password';
   const targetId = clean(byAccountId ? body.user_id : body.employee_id);
   const password = typeof body.password === 'string' ? body.password : '';
@@ -113,20 +93,7 @@ async function updateAccountPassword(admin, body, send, env, fetcher) {
     }
     return send(422, { message: 'The password did not meet the account requirements. Choose a different password and try again.' });
   }
-  const result = { password_updated: true, message: 'Account password updated.' };
-  if (account.role !== 'employee') return send(200, result);
-
-  // Hired employees may use a company sign-in address without a mailbox.
-  const applicantEmail = emailKey(applicants[0]?.email);
-  const recipient = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(applicantEmail) ? applicantEmail : authUser.email;
-  const notified = await sendPasswordChangeNotice(env, fetcher, recipient).catch(() => false);
-  return send(200, {
-    ...result,
-    notification_email_sent: notified,
-    message: notified
-      ? 'Employee password updated. The notification email was accepted for delivery.'
-      : 'Employee password updated. The notification email could not be sent. Please notify the employee directly.',
-  });
+  return send(200, byAccountId ? { password_updated: true, message: 'Account password updated.' } : { message: 'Employee password updated.' });
 }
 
 export function createUserAccountsHandler({ env = process.env, clientFactory = createClient, fetcher = fetch } = {}) {
@@ -172,19 +139,18 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         if (!['hr', 'hr_admin', 'admin'].includes(actorProfile.role)) {
           return send(403, { message: 'Only HR administrators can change passwords in User Accounts.' });
         }
-        return await updateAccountPassword(admin, body, send, env, fetcher);
+        return await updateAccountPassword(admin, body, send);
       }
-      if (body?.action === 'update_employee_password') return await updateAccountPassword(admin, body, send, env, fetcher);
+      if (body?.action === 'update_employee_password') return await updateAccountPassword(admin, body, send);
       const name = clean(body?.name);
       const email = emailKey(body?.email);
       const password = typeof body?.password === 'string' ? body.password : '';
       const role = roles.get(body?.role);
       const employeeId = role === 'employee' ? clean(body?.employee_id) : '';
       const outlet = clean(body?.outlet);
-      const position = role === 'employee' ? clean(body?.position) : '';
       if (!name || name.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
         || email.length > 160 || password.length < 8 || password.length > 120 || !role
-        || outlet.length > 160 || position.length > 160 || (role === 'employee' && (!employeeId || employeeId.length > 40))) {
+        || outlet.length > 160 || (role === 'employee' && (!employeeId || employeeId.length > 40))) {
         return send(422, { message: 'Enter a valid name, email, role, and password of at least 8 characters. Employee accounts require an employee ID.' });
       }
 
@@ -193,7 +159,7 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
 
       let employee = null;
       if (employeeId) {
-        employee = unwrap(await admin.from('employees').select('employee_id,email,applicant_id,position').eq('employee_id', employeeId).maybeSingle());
+        employee = unwrap(await admin.from('employees').select('employee_id,email,applicant_id').eq('employee_id', employeeId).maybeSingle());
         if (employee && (emailKey(employee.email) !== email || employee.applicant_id
           || unwrap(await admin.from('user_accounts').select('user_id').eq('employee_id', employeeId).limit(1).maybeSingle()))) {
           return send(409, { message: 'This employee ID is already in use. Reopen Create Account to get a new ID.' });
@@ -226,12 +192,9 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
             last_name: lastName.join(' ') || firstName,
             email,
             outlet: outlet || null,
-            position: position || null,
             status: 'Active',
             hire_date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
           }));
-        } else if (employee && position && position !== employee.position) {
-          unwrap(await admin.from('employees').update({ position }).eq('employee_id', employeeId).eq('email', email));
         }
         profile = unwrap(await admin.from('user_accounts').insert({
           auth_user_id: authUserId,

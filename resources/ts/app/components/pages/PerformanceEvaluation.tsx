@@ -44,7 +44,6 @@ import { NO_OUTLET, OUTLETS } from "../../lib/constants";
 import { includeSelectedJobTitle } from '../../lib/jobTitles';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { useAuth } from "../../context/AuthContext";
-import { useLiveModuleRefresh } from '../../lib/useLiveModuleRefresh';
 import ActionSnackbar from "../ActionSnackbar";
 
 
@@ -575,13 +574,6 @@ export default function PerformanceEvaluation() {
     refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useLiveModuleRefresh({
-    enabled: isSupervisor,
-    channelName: 'supervisor-performance-evaluations',
-    tables: ['employees', 'schedule', 'employee_evaluations', 'employee_evaluation_scores'],
-    refresh: refreshAll,
-  });
 
   /* ── Derived values ────────────────────────────────────────────────── */
   const displayedEvaluations = useMemo(() => {

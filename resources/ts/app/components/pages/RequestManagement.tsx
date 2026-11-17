@@ -4,7 +4,6 @@ import { loadJobSalaryRates, parseSalaryRate } from '../../lib/jobSalaryRates';
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
-import { useLiveModuleRefresh } from '../../lib/useLiveModuleRefresh';
 import { useState, useEffect } from 'react';
 import {
   Box,
@@ -66,6 +65,7 @@ type SnackbarSeverity = 'success' | 'error' | 'info' | 'warning';
 interface RequestRecord {
   id: string;
   requestId: string;
+  databaseRequestId?: string;
   employeeId: string;
   employee: string;
   type: RequestType;
@@ -328,6 +328,71 @@ function computeTotalHours(startTime: string, endTime: string) {
   return Number((diffMinutes / 60).toFixed(2));
 }
 
+const SEQUENTIAL_REQUEST_ID_REGEX = /^REQ-(\d{4})-(\d+)$/i;
+
+function getRequestYear(value?: string | null) {
+  if (!value) return new Date().getFullYear();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date().getFullYear() : date.getFullYear();
+}
+
+function buildSequentialRequestId(year: number, sequence: number) {
+  return `REQ-${year}-${String(sequence).padStart(4, '0')}`;
+}
+
+function applyDisplayRequestIds(records: RequestRecord[]) {
+  const usedSequenceByYear = new Map<number, Set<number>>();
+  const assignedDisplayId = new Map<string, string>();
+
+  records.forEach(record => {
+    const match = String(record.databaseRequestId ?? record.requestId ?? '').match(SEQUENTIAL_REQUEST_ID_REGEX);
+    if (!match) return;
+
+    const year = Number(match[1]);
+    const sequence = Number(match[2]);
+
+    if (!Number.isFinite(year) || !Number.isFinite(sequence)) return;
+
+    if (!usedSequenceByYear.has(year)) usedSequenceByYear.set(year, new Set<number>());
+    usedSequenceByYear.get(year)?.add(sequence);
+    assignedDisplayId.set(record.id, buildSequentialRequestId(year, sequence));
+  });
+
+  const nextSequenceByYear = new Map<number, number>();
+  const sortedRecords = [...records].sort((a, b) => {
+    const dateA = new Date(a.submittedDate || '').getTime();
+    const dateB = new Date(b.submittedDate || '').getTime();
+    const safeDateA = Number.isNaN(dateA) ? 0 : dateA;
+    const safeDateB = Number.isNaN(dateB) ? 0 : dateB;
+
+    if (safeDateA !== safeDateB) return safeDateA - safeDateB;
+    return a.id.localeCompare(b.id);
+  });
+
+  sortedRecords.forEach(record => {
+    if (assignedDisplayId.has(record.id)) return;
+
+    const year = getRequestYear(record.submittedDate);
+    if (!usedSequenceByYear.has(year)) usedSequenceByYear.set(year, new Set<number>());
+
+    const usedSequences = usedSequenceByYear.get(year)!;
+    let nextSequence = nextSequenceByYear.get(year) ?? 1;
+
+    while (usedSequences.has(nextSequence)) {
+      nextSequence += 1;
+    }
+
+    usedSequences.add(nextSequence);
+    nextSequenceByYear.set(year, nextSequence + 1);
+    assignedDisplayId.set(record.id, buildSequentialRequestId(year, nextSequence));
+  });
+
+  return records.map(record => ({
+    ...record,
+    requestId: assignedDisplayId.get(record.id) ?? record.requestId,
+  }));
+}
+
 function mapRequestRow(row: any): RequestRecord {
   const employeeRow = Array.isArray(row.employees) ? row.employees[0] : row.employees;
   const employeeName = formatEmployeeName(employeeRow);
@@ -335,6 +400,7 @@ function mapRequestRow(row: any): RequestRecord {
   return {
     id: row.id,
     requestId: row.request_id || row.id,
+    databaseRequestId: row.request_id || row.id,
     employeeId: row.employee_id || '',
     employee: employeeName || row.employee_id || 'Unknown Employee',
     type: row.request_type as RequestType,
@@ -435,6 +501,43 @@ export default function RequestManagement() {
     return null;
   };
 
+  const generateNextRequestId = async () => {
+    const year = new Date().getFullYear();
+    const startOfYear = `${year}-01-01T00:00:00.000Z`;
+    const startOfNextYear = `${year + 1}-01-01T00:00:00.000Z`;
+
+    const { data, error: sequenceError } = await supabase
+      .from('employee_requests')
+      .select('request_id, created_at')
+      .gte('created_at', startOfYear)
+      .lt('created_at', startOfNextYear);
+
+    if (sequenceError) throw sequenceError;
+
+    const usedSequences = new Set<number>();
+    const recordsThisYear = data ?? [];
+
+    recordsThisYear.forEach(row => {
+      const match = String(row.request_id ?? '').match(SEQUENTIAL_REQUEST_ID_REGEX);
+      if (!match || Number(match[1]) !== year) return;
+
+      const sequence = Number(match[2]);
+      if (Number.isFinite(sequence)) usedSequences.add(sequence);
+    });
+
+    let nextSequence = 1;
+    while (usedSequences.has(nextSequence)) {
+      nextSequence += 1;
+    }
+
+    /*
+      Legacy records may still have request IDs like REQ-AB3D15D9A9.
+      This keeps new IDs from duplicating the display sequence assigned to those old rows.
+    */
+    nextSequence = Math.max(nextSequence, recordsThisYear.length + 1);
+
+    return buildSequentialRequestId(year, nextSequence);
+  };
 
   const fetchEmployeeLeaveDirectory = async (employeeId: string | null) => {
     if (isEmployee && !employeeId) return [];
@@ -529,7 +632,7 @@ export default function RequestManagement() {
 
       if (requestError) throw requestError;
 
-      setRequests((data ?? []).map(mapRequestRow));
+      setRequests(applyDisplayRequestIds((data ?? []).map(mapRequestRow)));
     } catch (e: any) {
       setError(`Could not load requests: ${e.message ?? 'Unknown error'}`);
     } finally {
@@ -566,18 +669,6 @@ export default function RequestManagement() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.email, currentUser?.employee_id, currentUser?.employeeId, currentUser?.role]);
-
-  useLiveModuleRefresh({
-    enabled: isSupervisor,
-    channelName: 'supervisor-request-management',
-    tables: ['employees', 'employee_requests', 'employee_leave_balances', 'leave_types'],
-    refresh: () => {
-      void refreshEmployeeLeaveDirectory(currentEmployeeId);
-      void fetchEmployeeLeaveBalances(currentEmployeeId);
-      void fetchRequests(currentEmployeeId);
-      void fetchLeaveTypes();
-    },
-  });
 
   const handleSubmit = async () => {
     const startDate = newRequest.startDate;
@@ -643,7 +734,10 @@ export default function RequestManagement() {
         ? computeTotalHours(newRequest.startTime, newRequest.endTime)
         : 0;
 
+      const generatedRequestId = await generateNextRequestId();
+
       const payload = {
+        request_id: generatedRequestId,
         employee_id: currentEmployeeId,
         request_type: newRequest.type,
         leave_type: newRequest.type === 'Leave' ? newRequest.leaveType : null,
@@ -667,7 +761,7 @@ export default function RequestManagement() {
 
       if (insertError) throw insertError;
 
-      setRequests(prev => [mapRequestRow(data), ...prev]);
+      setRequests(prev => applyDisplayRequestIds([mapRequestRow(data), ...prev]));
       setOpenDialog(false);
       setNewRequest(EMPTY);
       setSnackbar({ open: true, message: '✅ Request submitted successfully!', severity: 'success' });
@@ -690,8 +784,13 @@ export default function RequestManagement() {
       if (updateError) throw updateError;
 
       const updatedRecord = mapRequestRow(data);
-      setRequests(prev => prev.map(row => row.id === id ? updatedRecord : row));
-      if (selectedReq?.id === id) setSelectedReq(updatedRecord);
+      setRequests(prev => {
+        const existingDisplayId = prev.find(r => r.id === id)?.requestId;
+        return applyDisplayRequestIds(prev.map(r => (r.id === id ? { ...updatedRecord, requestId: existingDisplayId ?? updatedRecord.requestId } : r)));
+      });
+      if (selectedReq?.id === id) {
+        setSelectedReq({ ...updatedRecord, requestId: selectedReq.requestId });
+      }
       setSnackbar({ open: true, message: successMsg, severity: 'success' });
       return true;
     } catch (e: any) {
@@ -793,6 +892,7 @@ export default function RequestManagement() {
     ? requests.filter(r =>
         [
           r.requestId,
+          r.databaseRequestId,
           r.employeeId,
           r.employee,
           r.type,

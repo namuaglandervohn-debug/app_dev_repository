@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
-import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
@@ -45,7 +44,6 @@ const EMPTY_FORM = {
   role: 'employee' as UserRole,
   employeeId: '',
   outlet: '',
-  position: '',
   password: '',
 };
 const EMPTY_PASSWORD_FORM = { password: '', confirmation: '', showPassword: false, showConfirmation: false };
@@ -163,7 +161,6 @@ const getNextEmployeeId = (ids: string[]) => {
 };
 
 export default function UserManagement() {
-  const jobTitles = useJobTitleOptions();
   const [users, setUsers]           = useState<UserAccount[]>([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
@@ -301,11 +298,6 @@ export default function UserManagement() {
     return;
   }
 
-  if (form.role === 'employee' && !form.position) {
-    setSnackbar({ open: true, message: 'Select the employee’s position.', severity: 'error' });
-    return;
-  }
-
   setSaving(true);
 
   try {
@@ -327,7 +319,6 @@ export default function UserManagement() {
         password: form.password,
         role: form.role,
         employee_id: form.role === 'employee' ? form.employeeId : null,
-        position: form.role === 'employee' ? form.position : null,
         outlet: form.outlet === NO_OUTLET ? '' : form.outlet,
       }),
     });
@@ -359,7 +350,6 @@ export default function UserManagement() {
     };
 
     setUsers((prev) => [...prev, newUser]);
-    if (newUser.employeeId) void fetchEmployeeOptions();
 
     setOpenAdd(false);
     setForm(EMPTY_FORM);
@@ -485,7 +475,7 @@ export default function UserManagement() {
         throw new Error(result?.message || 'Could not update the account password.');
       }
       setPasswordForm(EMPTY_PASSWORD_FORM);
-      setSnackbar({ open: true, message: result.message, severity: result.notification_email_sent === false ? 'warning' : 'success' });
+      setSnackbar({ open: true, message: result.message, severity: 'success' });
     } catch (error) {
       setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Could not update the account password.', severity: 'error' });
     } finally {
@@ -1113,17 +1103,6 @@ export default function UserManagement() {
                 {OUTLETS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
               </TextField>
             </Grid>
-
-            {form.role === 'employee' && (
-              <Grid size={12}>
-                <TextField fullWidth select required label="Position" value={form.position}
-                  onChange={event => setForm(current => ({ ...current, position: event.target.value }))}
-                  InputLabelProps={{ shrink: true }} sx={softTextFieldSx}>
-                  <MenuItem value="" disabled>Select Position…</MenuItem>
-                  {jobTitles.map(title => <MenuItem key={title} value={title}>{title}</MenuItem>)}
-                </TextField>
-              </Grid>
-            )}
 
             {renderDialogSectionTitle('III. LOGIN CREDENTIALS')}
             <Grid size={{ xs: 12, md: 6 }}>

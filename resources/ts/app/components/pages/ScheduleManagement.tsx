@@ -2,7 +2,6 @@ import { formatDisplayDate, formatDisplayDateRange, formatTypedDateDigits, parse
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
-import { useLiveModuleRefresh } from '../../lib/useLiveModuleRefresh';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, Table, TableBody, TableCell,
@@ -812,6 +811,19 @@ export default function ScheduleManagement() {
 
     if (employeeError) throw employeeError;
 
+    const { data: userAccountsData, error: userAccountsError } = await supabase
+      .from("user_accounts")
+      .select("employee_id, outlet");
+
+    if (userAccountsError) throw userAccountsError;
+
+    const outletMap = new Map(
+      (userAccountsData ?? []).map((u: any) => [
+        u.employee_id,
+        u.outlet,
+      ])
+    );
+
     const employeeMap = new Map<string, { name: string; position: string; outlet: string }>(
       (employeeData ?? []).map((e: any) => [
         e.employee_id,
@@ -820,7 +832,7 @@ export default function ScheduleManagement() {
             .replace(/\s+/g, " ")
             .trim(),
           position: e.position ?? "",
-          outlet: e.outlet || "",
+          outlet: outletMap.get(e.employee_id) || e.outlet || "",
         },
       ])
     );
@@ -864,13 +876,13 @@ export default function ScheduleManagement() {
 
   useEffect(() => { fetchSchedules(); }, []);
 
-  // Fetch employee list — includes position AND outlet for auto-fill.
-  // The database limits this list to the signed-in Supervisor's team.
+   // Fetch employee list — includes position AND outlet for auto-fill
+  useEffect(() => {
   const fetchEmployees = async () => {
     const { data, error } = await supabase
       .from("employees")
       .select("employee_id, first_name, middle_name, last_name, position, outlet, status")
-      .or("status.is.null,status.neq.Resigned")
+      .neq("status", "Resigned")
       .order("first_name", { ascending: true });
 
     if (error) {
@@ -878,31 +890,36 @@ export default function ScheduleManagement() {
       return;
     }
 
+    const { data: userAccountsData, error: userAccountsError } = await supabase
+      .from("user_accounts")
+      .select("employee_id, outlet");
+
+    if (userAccountsError) {
+      console.error("Failed to fetch user account outlets:", userAccountsError);
+      return;
+    }
+
+    const outletMap = new Map(
+      (userAccountsData ?? []).map((u: any) => [
+        u.employee_id,
+        u.outlet,
+      ])
+    );
+
     const list = (data ?? []).map((e: any) => ({
       employeeId: e.employee_id,
       name: `${e.first_name ?? ""} ${e.middle_name ?? ""} ${e.last_name ?? ""}`
         .replace(/\s+/g, " ")
         .trim(),
       position: e.position ?? "",
-      outlet: e.outlet || "",
+      outlet: outletMap.get(e.employee_id) || e.outlet || "",
     }));
 
     setEmployeeList(list);
   };
 
-  useEffect(() => {
-    void fetchEmployees();
-  }, [user?.id]);
-
-  useLiveModuleRefresh({
-    enabled: currentRole.includes('supervisor'),
-    channelName: 'supervisor-schedule-management',
-    tables: ['employees', 'schedule', 'user_accounts'],
-    refresh: () => {
-      void fetchEmployees();
-      void fetchSchedules();
-    },
-  });
+  fetchEmployees();
+}, []);
 
   const getEmployeeById = (employeeId: string) =>
     employeeList.find(emp => emp.employeeId === employeeId);
