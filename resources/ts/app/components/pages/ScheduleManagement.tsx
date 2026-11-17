@@ -811,19 +811,6 @@ export default function ScheduleManagement() {
 
     if (employeeError) throw employeeError;
 
-    const { data: userAccountsData, error: userAccountsError } = await supabase
-      .from("user_accounts")
-      .select("employee_id, outlet");
-
-    if (userAccountsError) throw userAccountsError;
-
-    const outletMap = new Map(
-      (userAccountsData ?? []).map((u: any) => [
-        u.employee_id,
-        u.outlet,
-      ])
-    );
-
     const employeeMap = new Map<string, { name: string; position: string; outlet: string }>(
       (employeeData ?? []).map((e: any) => [
         e.employee_id,
@@ -832,7 +819,7 @@ export default function ScheduleManagement() {
             .replace(/\s+/g, " ")
             .trim(),
           position: e.position ?? "",
-          outlet: outletMap.get(e.employee_id) || e.outlet || "",
+          outlet: e.outlet || "",
         },
       ])
     );
@@ -882,7 +869,7 @@ export default function ScheduleManagement() {
     const { data, error } = await supabase
       .from("employees")
       .select("employee_id, first_name, middle_name, last_name, position, outlet, status")
-      .neq("status", "Resigned")
+      .or("status.is.null,status.neq.Resigned")
       .order("first_name", { ascending: true });
 
     if (error) {
@@ -890,36 +877,20 @@ export default function ScheduleManagement() {
       return;
     }
 
-    const { data: userAccountsData, error: userAccountsError } = await supabase
-      .from("user_accounts")
-      .select("employee_id, outlet");
-
-    if (userAccountsError) {
-      console.error("Failed to fetch user account outlets:", userAccountsError);
-      return;
-    }
-
-    const outletMap = new Map(
-      (userAccountsData ?? []).map((u: any) => [
-        u.employee_id,
-        u.outlet,
-      ])
-    );
-
     const list = (data ?? []).map((e: any) => ({
       employeeId: e.employee_id,
       name: `${e.first_name ?? ""} ${e.middle_name ?? ""} ${e.last_name ?? ""}`
         .replace(/\s+/g, " ")
         .trim(),
       position: e.position ?? "",
-      outlet: outletMap.get(e.employee_id) || e.outlet || "",
+      outlet: e.outlet || "",
     }));
 
     setEmployeeList(list);
   };
 
   fetchEmployees();
-}, []);
+}, [user?.id]);
 
   const getEmployeeById = (employeeId: string) =>
     employeeList.find(emp => emp.employeeId === employeeId);

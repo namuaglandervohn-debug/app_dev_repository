@@ -1742,7 +1742,11 @@ export default function RecruitmentManagement() {
   };
 
   const renderDocumentsSection = (submittedDocuments: string[]) => {
-    const docs = buildDocumentsForApplication(selectedApp, submittedDocuments);
+    const applicationDocuments = buildDocumentsForApplication(selectedApp, submittedDocuments);
+    const docs = applicationDocuments.filter(document => !document.isCertificate);
+    const submittedDocumentNames = submittedDocuments.filter(name =>
+      !applicationDocuments.some(document => document.name === name && document.isCertificate)
+    );
 
     return (
       <>
@@ -1751,7 +1755,7 @@ export default function RecruitmentManagement() {
         {renderProfileField('Birth Certificate', selectedApp?.hasBirthCert ? 'Submitted' : 'Not Submitted')}
         {renderProfileField('Transcript of Records / Diploma', selectedApp?.hasTOR ? 'Submitted' : 'Not Submitted')}
         {renderProfileField('Medical Certificate', selectedApp?.hasMedCert ? 'Submitted' : 'Not Submitted')}
-        {renderProfileField('Submitted Documents', submittedDocuments, { xs: 12 })}
+        {renderProfileField('Submitted Documents', submittedDocumentNames, { xs: 12 })}
 
         <Grid size={12}>
           <Grid container spacing={1.5}>
@@ -1774,6 +1778,28 @@ export default function RecruitmentManagement() {
           </Grid>
         </Grid>
       </>
+    );
+  };
+
+  const renderCertificationFiles = (submittedDocuments: string[]) => {
+    const certificates = buildDocumentsForApplication(selectedApp, submittedDocuments)
+      .filter(document => document.isCertificate);
+
+    return (
+      <Grid size={12}>
+        <Typography variant="body2" sx={{ color: GREEN_UI.greenDark, fontWeight: 600, mb: 1 }}>
+          Certifications / Trainings
+        </Typography>
+        <Grid container spacing={1.5}>
+          {certificates.length > 0 ? (
+            certificates.map(renderDocumentCard)
+          ) : (
+            <Grid size={12}>
+              <Alert severity="info">No certificate or training files were submitted.</Alert>
+            </Grid>
+          )}
+        </Grid>
+      </Grid>
     );
   };
 
@@ -2342,13 +2368,6 @@ export default function RecruitmentManagement() {
                     ? extra.skills
                     : [];
 
-              const certifications =
-                Array.isArray(raw.certifications) && raw.certifications.length
-                  ? raw.certifications
-                  : Array.isArray(extra.certifications)
-                    ? extra.certifications
-                    : [];
-
               const characterReferences =
                 Array.isArray(raw.character_references) && raw.character_references.length
                   ? raw.character_references
@@ -2427,7 +2446,7 @@ export default function RecruitmentManagement() {
                   {renderProfileSectionTitle('V. SKILLS AND QUALIFICATIONS')}
                   {renderProfileField('Skills', skills, { xs: 12 })}
                   {renderProfileField('Other Skills', raw.other_skills ?? extra.otherSkills, { xs: 12 })}
-                  {renderProfileField('Certifications / Trainings', certifications, { xs: 12 })}
+                  {renderCertificationFiles(submittedDocuments)}
 
                   {renderProfileSectionTitle('VI. GOVERNMENT IDS, CHARACTER REFERENCES, and EMERGENCY CONTACT')}
                   {renderProfileField('TIN', selectedApp.tin, { xs: 12, sm: 6 }, 'tin')}
