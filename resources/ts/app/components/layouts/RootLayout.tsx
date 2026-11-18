@@ -11,7 +11,7 @@ import {
 import {
   SpaceDashboard, PersonAddAlt1, Groups, CalendarMonth, Schedule, Assignment,
   Payments, Insights, Analytics, Logout, Menu as MenuIcon,
-  NotificationsNone, ManageAccounts, ReceiptLong, AccountCircle, BadgeOutlined, Work,
+  NotificationsNone, ManageAccounts, ReceiptLong, AccountCircle, Work,
   KeyboardArrowDown,
 } from '@mui/icons-material';
 import { useState, useEffect, type ReactNode } from 'react';
@@ -31,8 +31,7 @@ const ALL_MENU_ITEMS = [
   { text: 'User Accounts',     icon: <ManageAccounts />,     path: '/dashboard/users',            roles: ['hr'] },
   { text: 'Employees',         icon: <Groups />,             path: '/dashboard/employees',        roles: ['hr','supervisor','gm'] },
   { text: 'Schedule',          icon: <CalendarMonth />,      path: '/dashboard/schedule',         roles: ['hr','supervisor','employee'] },
-  { text: 'DTR', icon: <BadgeOutlined />, path: '/dashboard/dtr', roles: ['hr','employee'] },
-  { text: 'Attendance',        icon: <Schedule />,           path: '/dashboard/attendance',       roles: ['hr','supervisor'] },
+  { text: 'Attendance Management', icon: <Schedule />,       path: '/dashboard/attendance',       roles: ['hr','supervisor','employee'] },
   { text: 'Requests',          icon: <Assignment />,         path: '/dashboard/requests',         roles: ['hr','supervisor','employee'] },
   { text: 'Payroll',           icon: <Payments />,           path: '/dashboard/payroll',          roles: ['hr','accounting'] },
   { text: 'My Payslips',       icon: <ReceiptLong />,        path: '/dashboard/payslips',         roles: ['employee'] },

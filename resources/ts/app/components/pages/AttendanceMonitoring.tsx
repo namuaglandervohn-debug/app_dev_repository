@@ -5,6 +5,7 @@ import { getWorkIntervals, type CalculatedAttendance } from '../../lib/scheduled
 import TextField from '../DateTextField';
 import ProfilePhotoAvatar from '../ProfilePhotoAvatar';
 import { useProfilePhotoDirectory } from '../../lib/useProfilePhotoDirectory';
+import { useNavigate } from "react-router";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -58,6 +59,7 @@ import {
   AddTaskRounded,
   CloseRounded,
   VisibilityOutlined,
+  BadgeOutlined,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
@@ -1410,6 +1412,7 @@ async function saveImportTask(task: SaveImportTask, calculate: Awaited<ReturnTyp
 
 export default function AttendanceMonitoring() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
   const [attendances, setAttendances] = useState<Attendance[]>([]);
@@ -2267,7 +2270,7 @@ export default function AttendanceMonitoring() {
                 mb: 0.75,
               }}
             >
-              Attendance Monitoring
+              Attendance Management
             </Typography>
           </Box>
 
@@ -3056,6 +3059,21 @@ export default function AttendanceMonitoring() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDetailsRecord(null)} sx={pillButtonSx}>Close</Button>
+          {detailsRecord?.employeeId && canManageAttendance && (
+            <Button
+              variant="outlined"
+              startIcon={<BadgeOutlined />}
+              onClick={() => {
+                const record = detailsRecord;
+                setDetailsRecord(null);
+                const month = normalizeDateForFilter(record.date).slice(0, 7);
+                navigate(`/dashboard/attendance?view=dtr&employeeId=${encodeURIComponent(record.employeeId!)}${month ? `&month=${encodeURIComponent(month)}` : ""}`);
+              }}
+              sx={pillButtonSx}
+            >
+              View Employee DTR
+            </Button>
+          )}
           {detailsRecord && canManageAttendance && (
             <Button variant="contained" color="warning" startIcon={<EditNote />} onClick={() => { const record = detailsRecord; setDetailsRecord(null); openEdit(record); }} sx={pillButtonSx}>
               Correct Record

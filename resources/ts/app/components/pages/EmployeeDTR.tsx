@@ -2,6 +2,7 @@ import { attendancePunchFields, loadAttendanceCalculator } from '../../lib/loadA
 import type { CalculatedAttendance } from '../../lib/scheduledAttendance';
 import { formatDisplayDateRange, parseScheduleDateRange } from '../../lib/displayDate';
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   Box,
   Typography,
@@ -25,6 +26,7 @@ import {
   CalendarMonth,
   CheckCircleOutline,
   Print,
+  ArrowBack,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
@@ -336,6 +338,10 @@ const printStyles = `
 
 export default function EmployeeDTR() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedEmployeeId = searchParams.get("employeeId") ?? "";
+  const requestedMonth = searchParams.get("month") ?? "";
 
   const [records, setRecords] = useState<DTRRecord[]>([]);
   const [schedules, setSchedules] = useState<EmployeeScheduleRow[]>([]);
@@ -345,8 +351,8 @@ export default function EmployeeDTR() {
   const [loading, setLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const currentMonthValue = new Date().toISOString().slice(0, 7);
-  const [selectedMonth, setSelectedMonth] = useState(currentMonthValue);
-  const [loadedLatestMonth, setLoadedLatestMonth] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(/^\d{4}-\d{2}$/.test(requestedMonth) ? requestedMonth : currentMonthValue);
+  const [loadedLatestMonth, setLoadedLatestMonth] = useState(/^\d{4}-\d{2}$/.test(requestedMonth));
   const role = String((user as any)?.role ?? "").toLowerCase();
   const isHR = role === "hr" || role === "hr_admin" || role.includes("hr") || role.includes("admin");
   const currentEmployeeId = String((user as any)?.employeeId ?? (user as any)?.employee_id ?? "");
@@ -404,8 +410,17 @@ export default function EmployeeDTR() {
   }, [isHR]);
 
   useEffect(() => {
+    if (!isHR || !requestedEmployeeId || !employeeOptions.some(option => option.employeeId === requestedEmployeeId)) return;
+    setSelectedEmployeeId(requestedEmployeeId);
+  }, [employeeOptions, isHR, requestedEmployeeId]);
+
+  useEffect(() => {
+    if (/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      setLoadedLatestMonth(true);
+      return;
+    }
     setLoadedLatestMonth(false);
-  }, [targetEmployeeId]);
+  }, [requestedMonth, targetEmployeeId]);
 
   useEffect(() => {
     if (!targetEmployeeId || loadedLatestMonth) return;
@@ -635,6 +650,7 @@ export default function EmployeeDTR() {
             }}
           >
             <Box sx={{ maxWidth: 720 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap" }}>
               <Typography
                 variant="h4"
                 fontWeight={700}
@@ -648,9 +664,15 @@ export default function EmployeeDTR() {
               >
                 {isHR ? "Employee Daily Time Records" : "My Daily Time Record"}
               </Typography>
+              </Box>
             </Box>
 
             <Box sx={{ display: "flex", gap: 1.25, flexWrap: "wrap", alignItems: "center" }}>
+              {isHR && (
+                <Button variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate("/dashboard/attendance")}>
+                  Attendance Records
+                </Button>
+              )}
               {isHR && (
                 <Autocomplete
                   size="small"

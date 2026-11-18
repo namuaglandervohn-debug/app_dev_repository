@@ -7,7 +7,7 @@ import ApplicationForm from "./components/pages/ApplicationForm";
 import EmployeeRecords from "./components/pages/EmployeeRecords";
 import EmployeeProfile from "./components/pages/EmployeeProfile";
 import ScheduleManagement from "./components/pages/ScheduleManagement";
-import AttendanceMonitoring from "./components/pages/AttendanceMonitoring";
+import AttendanceManagement from "./components/pages/AttendanceManagement";
 import RequestManagement from "./components/pages/RequestManagement";
 import PayrollComputation from "./components/pages/PayrollComputation";
 import PerformanceEvaluation from "./components/pages/PerformanceEvaluation";
@@ -17,7 +17,6 @@ import TrackApplicationPage from "./components/pages/TrackApplicationPage";
 import UserManagement from "./components/pages/UserManagement";
 import EmployeePayslips from "./components/pages/EmployeePayslips";
 import MyProfile from "./components/pages/MyProfile";
-import EmployeeDTR from "./components/pages/EmployeeDTR";
 import LandingPage from "./components/pages/LandingPage";
 import JobPostingManagement from "./components/pages/JobPostingManagement";
 import NotFoundPage from "./components/pages/NotFoundPage";
@@ -60,14 +59,14 @@ export const router = createBrowserRouter([
       { path: "users", element: <UserManagement /> },
       { path: "employees", element: <EmployeeRecords /> },
       { path: "employees/:id", element: <EmployeeProfile /> },
-      { path: "attendance", element: <AttendanceMonitoring /> },
+      { path: "attendance", element: <AttendanceManagement /> },
       { path: "payroll", element: <PayrollComputation /> },
       { path: "reports", element: <Reports /> },
       { path: "schedule", element: <ScheduleManagement /> },
       { path: "requests", element: <RequestManagement /> },
       { path: "evaluation", element: <PerformanceEvaluation /> },
-      { path: "time", element: <Navigate to="/dashboard/dtr" replace /> },
-      { path: "dtr", element: <EmployeeDTR /> },
+      { path: "time", element: <Navigate to="/dashboard/attendance?view=dtr" replace /> },
+      { path: "dtr", element: <Navigate to="/dashboard/attendance?view=dtr" replace /> },
       { path: "payslips", element: <EmployeePayslips /> },
       { path: "profile", element: <MyProfile /> },
       { path: "*", element: <NotFoundPage /> },
