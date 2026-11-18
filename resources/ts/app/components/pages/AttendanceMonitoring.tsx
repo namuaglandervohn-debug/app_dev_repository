@@ -19,6 +19,7 @@ import {
   TableHead,
   TableRow,
   Chip,
+  Autocomplete,
   Stack,
   useMediaQuery,
   useTheme,
@@ -56,6 +57,7 @@ import {
   UploadFileRounded,
   AddTaskRounded,
   CloseRounded,
+  VisibilityOutlined,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
@@ -1436,6 +1438,7 @@ export default function AttendanceMonitoring() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [deleteAllDialog, setDeleteAllDialog] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
+  const [detailsRecord, setDetailsRecord] = useState<Attendance | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState({
     current: 0,
@@ -2448,24 +2451,40 @@ export default function AttendanceMonitoring() {
             />
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
-            <TextField
-              fullWidth
-              label="Search Employee"
-              value={filterEmployee}
-              onChange={(e) => {
-                setFilterEmployee(e.target.value);
+            <Autocomplete
+              freeSolo
+              options={[...new Set(employeeDirectory.map(employee => employee.name).filter(Boolean))]}
+              inputValue={filterEmployee}
+              onInputChange={(_, value) => {
+                setFilterEmployee(value);
                 setPage(0);
               }}
-              placeholder="Name or Employee ID"
-              InputLabelProps={{ shrink: true }}
-              sx={softTextFieldSx}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <PersonRounded sx={{ color: GREEN_UI.greenDark }} />
-                  </InputAdornment>
-                ),
+              onChange={(_, value) => {
+                setFilterEmployee(typeof value === 'string' ? value : value ?? '');
+                setPage(0);
               }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  fullWidth
+                  label="Search Employee"
+                  placeholder="Type or select a name / ID"
+                  helperText="Select a person to view all of their attendance records."
+                  InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
+                  sx={softTextFieldSx}
+                  InputProps={{
+                    ...params.InputProps,
+                    startAdornment: (
+                      <>
+                        <InputAdornment position="start">
+                          <PersonRounded sx={{ color: GREEN_UI.greenDark }} />
+                        </InputAdornment>
+                        {params.InputProps.startAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
             />
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
@@ -2588,6 +2607,15 @@ export default function AttendanceMonitoring() {
                   {att.approvedTime && <Typography variant="caption">{att.approvedTime}</Typography>}
                   {canManageAttendance && (
                     <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      <Chip
+                        label="View Details"
+                        size="small"
+                        clickable
+                        variant="outlined"
+                        icon={<VisibilityOutlined />}
+                        onClick={() => setDetailsRecord(att)}
+                        sx={{ ...pillButtonSx, minWidth: 120 }}
+                      />
                       <Chip
                         label="Correct"
                         size="small"
@@ -2792,6 +2820,15 @@ export default function AttendanceMonitoring() {
                           }}
                         >
                           <Chip
+                            label="View Details"
+                            size="small"
+                            clickable
+                            variant="outlined"
+                            icon={<VisibilityOutlined />}
+                            onClick={() => setDetailsRecord(att)}
+                            sx={{ ...pillButtonSx, minWidth: 110 }}
+                          />
+                          <Chip
                             label="Correct"
                             size="small"
                             clickable
@@ -2947,6 +2984,85 @@ export default function AttendanceMonitoring() {
           </Grid>
         </Paper>
       )}
+
+      <Dialog
+        open={Boolean(detailsRecord)}
+        onClose={() => setDetailsRecord(null)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: { xs: 3, sm: 4 },
+            border: `1px solid ${GREEN_UI.border}`,
+            boxShadow: GREEN_UI.shadow,
+            bgcolor: GREEN_UI.cardBg,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Box sx={{ ...iconTileSx, width: 40, height: 40 }}><VisibilityOutlined fontSize="small" /></Box>
+            <Box>
+              <Typography variant="h6" fontWeight={800} sx={{ color: GREEN_UI.text }}>Attendance Record Details</Typography>
+              <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
+                {detailsRecord ? `${attendanceName(detailsRecord)} · ${detailsRecord.displayId ?? detailsRecord.id}` : ''}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          {detailsRecord && (
+            <Grid container spacing={1.25}>
+              {([
+                ['Employee', attendanceName(detailsRecord)],
+                ['Employee ID', detailsRecord.employeeId || 'Not linked'],
+                ['Attendance Date', formatDisplayDate(normalizeDateForFilter(detailsRecord.date))],
+                ['Status', detailsRecord.status],
+                ['Time In', detailsRecord.timeIn || '—'],
+                ['Time Out', detailsRecord.timeOut || '—'],
+                ['Total Hours', detailsRecord.totalHours || '0'],
+                ['Late', `${detailsRecord.late || 0} minutes`],
+                ['Undertime', `${detailsRecord.undertime || 0} minutes`],
+                ['Overtime', `${detailsRecord.overtime || 0} minutes`],
+                ['Payroll Review', detailsRecord.discrepancy || '—'],
+                ['Validation', detailsRecord.validationStatus || 'Unprocessed'],
+                ['Source', detailsRecord.source || 'Unknown'],
+                ['Reviewed By', detailsRecord.reviewedBy || 'Not reviewed'],
+                ['Approved Time Adjustments', detailsRecord.approvedTime || 'None'],
+              ] as const).map(([label, value]) => (
+                <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}>
+                  <Paper elevation={0} sx={{ p: 1.25, height: '100%', borderRadius: 2, border: `1px solid ${GREEN_UI.border}`, bgcolor: GREEN_UI.cardBgSoft }}>
+                    <Typography variant="caption" fontWeight={700} sx={{ display: 'block', color: GREEN_UI.muted }}>{label}</Typography>
+                    <Typography variant="body2" fontWeight={700} sx={{ color: GREEN_UI.text, overflowWrap: 'anywhere' }}>{value}</Typography>
+                  </Paper>
+                </Grid>
+              ))}
+              {detailsRecord.workIntervals?.length ? (
+                <Grid size={12}>
+                  <Paper elevation={0} sx={{ p: 1.25, borderRadius: 2, border: `1px solid ${GREEN_UI.border}`, bgcolor: GREEN_UI.cardBgSoft }}>
+                    <Typography variant="caption" fontWeight={700} sx={{ display: 'block', color: GREEN_UI.muted, mb: 0.5 }}>Recorded Work Sessions</Typography>
+                    <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                      {detailsRecord.workIntervals.map(([start, end], index) => (
+                        <Chip key={`${start}-${end}-${index}`} size="small" variant="outlined"
+                          label={`${formatMinutesAsTime(start)} – ${formatMinutesAsTime(end)}`}
+                          sx={{ borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark, fontWeight: 700 }} />
+                      ))}
+                    </Box>
+                  </Paper>
+                </Grid>
+              ) : null}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDetailsRecord(null)} sx={pillButtonSx}>Close</Button>
+          {detailsRecord && canManageAttendance && (
+            <Button variant="contained" color="warning" startIcon={<EditNote />} onClick={() => { const record = detailsRecord; setDetailsRecord(null); openEdit(record); }} sx={pillButtonSx}>
+              Correct Record
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       {/* Manual Entry Dialog */}
       <Dialog
