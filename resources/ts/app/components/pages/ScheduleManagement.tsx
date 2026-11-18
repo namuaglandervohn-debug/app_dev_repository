@@ -769,7 +769,10 @@ export default function ScheduleManagement() {
   const currentRole = String((user as any)?.role ?? '').toLowerCase();
   const currentEmployeeId = String((user as any)?.employee_id ?? (user as any)?.employeeId ?? '');
   const currentUserName = String((user as any)?.name ?? (user as any)?.full_name ?? (user as any)?.email ?? 'User');
-  const canPublish = currentRole === 'hr_admin' || currentRole.includes('hr') || currentRole.includes('admin') || currentRole.includes('supervisor') || currentRole === 'general_manager';
+  const canManageSchedule = currentRole === 'supervisor' || currentRole.includes('supervisor');
+  const canValidateSchedule = currentRole === 'hr' || currentRole === 'hr_admin' || currentRole.includes('hr_admin');
+  const canSelectSchedule = canManageSchedule || canValidateSchedule;
+  const canSeeScheduleRoster = canSelectSchedule || currentRole === 'employee' || currentRole.includes('employee');
   const canConfirm = currentRole === 'employee' || currentRole.includes('employee');
 
   // ── Push a schedule notification to an employee (fire-and-forget) ──────
@@ -984,6 +987,7 @@ export default function ScheduleManagement() {
 
   const handleSaveDraft = async () => {
   try {
+    if (!canManageSchedule) throw new Error('Only Supervisors can create employee schedules.');
     setSaving(true);
     const employeeIds = selectedEmployeeIds.length > 0 ? selectedEmployeeIds : [form.employeeId].filter(Boolean);
     if (employeeIds.length === 0) throw new Error('Please choose at least one employee.');
@@ -1041,6 +1045,10 @@ export default function ScheduleManagement() {
   };
 
   const handleSaveSpecialDuty = async () => {
+    if (!canManageSchedule) {
+      setSnackbar({ open: true, message: 'Only Supervisors can create special duty schedules.', severity: 'error' });
+      return;
+    }
     const selectedEmployees = specialDutyForm.employeeIds
       .map(employeeId => getEmployeeById(employeeId))
       .filter(Boolean) as NonNullable<ReturnType<typeof getEmployeeById>>[];
@@ -1124,15 +1132,20 @@ export default function ScheduleManagement() {
     }
   };
 
-  // Publish: only callable when status === 'Draft'; after success button hides until next edit
+  // HR validates a Supervisor's draft by publishing it for employee confirmation.
   const handlePublish = async (s: Schedule) => {
   try {
-    const { error } = await supabase
+    if (!canValidateSchedule || s.status !== 'Draft') throw new Error('Only HR can validate schedules that are saved as drafts.');
+    const { data: updatedSchedule, error } = await supabase
       .from("schedule")
       .update({ status: "Published" })
-      .eq("schedule_id", s.id);
+      .eq("schedule_id", s.id)
+      .eq("status", "Draft")
+      .select('schedule_id')
+      .maybeSingle();
 
     if (error) throw error;
+    if (!updatedSchedule) throw new Error('This draft was already changed. Refresh the schedule list and try again.');
 
     await pushNotification(
       s.employeeId,
@@ -1149,7 +1162,7 @@ export default function ScheduleManagement() {
 
     setSnackbar({
       open: true,
-      message: "✅ Schedule published — employee can now view and confirm.",
+      message: "✅ Schedule validated and published — the employee can now view and confirm it.",
       severity: "success",
     });
   } catch (e: any) {
@@ -1236,6 +1249,10 @@ export default function ScheduleManagement() {
 };
 
   const handleDelete = async (id: string) => {
+  if (!canManageSchedule) {
+    setSnackbar({ open: true, message: 'Only Supervisors can delete schedules.', severity: 'error' });
+    return;
+  }
   if (!window.confirm(`Delete schedule ${id}? This cannot be undone.`)) return;
 
   try {
@@ -1263,6 +1280,10 @@ export default function ScheduleManagement() {
 };
 
   const handleDeleteSelected = async () => {
+    if (!canManageSchedule) {
+      setSnackbar({ open: true, message: 'Only Supervisors can delete schedules.', severity: 'error' });
+      return;
+    }
     if (selectedScheduleIds.length === 0) {
       setSnackbar({ open: true, message: "Select at least one schedule to delete.", severity: "error" });
       return;
@@ -1316,9 +1337,13 @@ export default function ScheduleManagement() {
     setEditDialog(true);
   };
 
-  // Edit: resets status to 'Draft' → Publish button reappears; notifies employee
+  // Editing returns the schedule to Draft; HR publishes it after validation.
   const handleEditSave = async () => {
   if (!editRecord) return;
+  if (!canManageSchedule) {
+    setSnackbar({ open: true, message: 'Only Supervisors can edit schedules.', severity: 'error' });
+    return;
+  }
 
   setSaving(true);
 
@@ -1342,13 +1367,6 @@ export default function ScheduleManagement() {
       .eq("schedule_id", editRecord.id);
 
     if (error) throw error;
-
-    await pushNotification(
-    editRecord.employeeId,
-    "Schedule Updated",
-    `Your schedule for ${formatDisplayDateRange(editForm.week)} has been updated.`,
-    "schedule"
-  );
 
     setEditDialog(false);
     await fetchSchedules();
@@ -1405,14 +1423,18 @@ export default function ScheduleManagement() {
 
   const filteredIds = filtered.map(schedule => schedule.id);
   const employeePhotos = useProfilePhotoDirectory('employee', filtered.map(schedule => schedule.employeeId));
-  const selectedVisibleIds = selectedScheduleIds.filter(id => filteredIds.includes(id));
-  const allVisibleSelected = filteredIds.length > 0 && selectedVisibleIds.length === filteredIds.length;
+  const selectableFilteredIds = canValidateSchedule
+    ? filtered.filter(schedule => schedule.status === 'Draft').map(schedule => schedule.id)
+    : filteredIds;
+  const selectedVisibleIds = selectedScheduleIds.filter(id => selectableFilteredIds.includes(id));
+  const selectedDraftCount = selectedScheduleIds.filter(id => schedules.some(schedule => schedule.id === id && schedule.status === 'Draft')).length;
+  const allVisibleSelected = selectableFilteredIds.length > 0 && selectedVisibleIds.length === selectableFilteredIds.length;
   const partiallyVisibleSelected = selectedVisibleIds.length > 0 && !allVisibleSelected;
 
   const toggleSelectAllVisible = (checked: boolean) => {
     setSelectedScheduleIds(prev => {
-      const hiddenSelections = prev.filter(id => !filteredIds.includes(id));
-      return checked ? [...hiddenSelections, ...filteredIds] : hiddenSelections;
+      const hiddenSelections = prev.filter(id => !selectableFilteredIds.includes(id));
+      return checked ? [...hiddenSelections, ...selectableFilteredIds] : hiddenSelections;
     });
   };
 
@@ -1423,21 +1445,30 @@ export default function ScheduleManagement() {
   };
 
   const publishSelectedSchedules = async () => {
-    if (selectedScheduleIds.length === 0) {
-      setSnackbar({ open: true, message: 'Select at least one schedule to update.', severity: 'error' });
+    if (!canValidateSchedule) {
+      setSnackbar({ open: true, message: 'Only HR can validate schedules.', severity: 'error' });
+      return;
+    }
+    const draftIds = selectedScheduleIds.filter(id => schedules.some(schedule => schedule.id === id && schedule.status === 'Draft'));
+    if (draftIds.length === 0) {
+      setSnackbar({ open: true, message: 'Select at least one draft schedule to validate.', severity: 'error' });
       return;
     }
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { data: updatedSchedules, error } = await supabase
         .from('schedule')
         .update({ status: 'Published' })
-        .in('schedule_id', selectedScheduleIds);
+        .in('schedule_id', draftIds)
+        .eq('status', 'Draft')
+        .select('schedule_id');
 
       if (error) throw error;
+      const updatedIds = (updatedSchedules ?? []).map((schedule: any) => schedule.schedule_id);
+      if (updatedIds.length === 0) throw new Error('The selected drafts were already changed. Refresh the schedule list and try again.');
 
-      const selectedRecords = schedules.filter(schedule => selectedScheduleIds.includes(schedule.id));
+      const selectedRecords = schedules.filter(schedule => updatedIds.includes(schedule.id));
       await Promise.all(selectedRecords.map(schedule =>
         pushNotification(
           schedule.employeeId,
@@ -1448,7 +1479,7 @@ export default function ScheduleManagement() {
       ));
 
       setSchedules(prev => prev.map(schedule =>
-        selectedScheduleIds.includes(schedule.id)
+        updatedIds.includes(schedule.id)
           ? {
               ...schedule,
               status: 'Published',
@@ -1456,7 +1487,7 @@ export default function ScheduleManagement() {
           : schedule
       ));
       setSelectedScheduleIds([]);
-      setSnackbar({ open: true, message: `Published ${selectedRecords.length} selected schedule(s).`, severity: 'success' });
+      setSnackbar({ open: true, message: `Validated and published ${selectedRecords.length} schedule(s).`, severity: 'success' });
     } catch (e: any) {
       setSnackbar({ open: true, message: `Publish selected schedules failed: ${e.message ?? e}`, severity: 'error' });
     } finally {
@@ -1749,7 +1780,7 @@ export default function ScheduleManagement() {
                 </Button>
               </span>
             </Tooltip>
-            {canPublish && (
+            {canManageSchedule && (
               <Button
                 variant="contained"
                 startIcon={<AddCircleOutline />}
@@ -1772,7 +1803,7 @@ export default function ScheduleManagement() {
                 Create Schedule
               </Button>
             )}
-            {canPublish && (
+            {canManageSchedule && (
               <Button
                 variant="outlined"
                 startIcon={importingExcel ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />}
@@ -1790,7 +1821,7 @@ export default function ScheduleManagement() {
                 {importingExcel ? 'Importing…' : 'Import Excel'}
               </Button>
             )}
-            {canPublish && (
+            {canManageSchedule && (
               <Button
                 variant="outlined"
                 startIcon={importingImage ? <CircularProgress size={16} color="inherit" /> : <Image />}
@@ -1813,6 +1844,17 @@ export default function ScheduleManagement() {
           </Box>
         </Box>
       </Paper>
+
+      {canManageSchedule && (
+        <Alert severity="info" sx={{ mb: 2, borderRadius: '16px' }}>
+          Supervisors create, edit, and save employee schedules as drafts. HR reviews and validates each draft before it is published to employees.
+        </Alert>
+      )}
+      {canValidateSchedule && (
+        <Alert severity="info" sx={{ mb: 2, borderRadius: '16px' }}>
+          Review schedules saved by Supervisors, then choose <strong>Validate &amp; Publish</strong>. Validation makes the schedule available for the employee to confirm.
+        </Alert>
+      )}
 
       <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
         {scheduleStats.map(stat => (
@@ -1885,7 +1927,7 @@ export default function ScheduleManagement() {
         </Box>
 
         <Grid container spacing={1.5} alignItems="center">
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, md: canManageSchedule ? 4 : 6 }}>
             <TextField
               fullWidth
               label="Search Schedules"
@@ -1904,7 +1946,7 @@ export default function ScheduleManagement() {
               }}
             />
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, md: canManageSchedule ? 4 : 6 }}>
             <TextField
               fullWidth
               select
@@ -1920,6 +1962,7 @@ export default function ScheduleManagement() {
               {ASSIGNED_WORK_AREAS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
             </TextField>
           </Grid>
+          {canManageSchedule && (
           <Grid size={{ xs: 12, md: 4 }}>
             <Button
               fullWidth
@@ -1944,17 +1987,18 @@ export default function ScheduleManagement() {
               Delete Selected
             </Button>
           </Grid>
+          )}
         </Grid>
 
-        {canPublish && (
+        {canManageSchedule && (
           <Grid container spacing={1.5} alignItems="center" sx={{ mt: 1.5 }}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid size={{ xs: 12 }}>
               <Button
                 fullWidth
                 variant="outlined"
                 startIcon={<PlaylistAddCheck />}
                 onClick={() => toggleSelectAllVisible(!allVisibleSelected)}
-                disabled={filtered.length === 0}
+                disabled={selectableFilteredIds.length === 0}
                 sx={{
                   ...pillButtonSx,
                   height: 40,
@@ -1964,7 +2008,31 @@ export default function ScheduleManagement() {
                   '&:hover': { borderColor: GREEN_UI.green, bgcolor: GREEN_UI.greenSoft },
                 }}
               >
-                {allVisibleSelected ? 'Clear Visible Selection' : `Select All Visible (${filtered.length})`}
+                {allVisibleSelected ? 'Clear Visible Selection' : `Select All Visible (${selectableFilteredIds.length})`}
+              </Button>
+            </Grid>
+          </Grid>
+        )}
+
+        {canValidateSchedule && (
+          <Grid container spacing={1.5} alignItems="center" sx={{ mt: 1.5 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<PlaylistAddCheck />}
+                onClick={() => toggleSelectAllVisible(!allVisibleSelected)}
+                disabled={selectableFilteredIds.length === 0}
+                sx={{
+                  ...pillButtonSx,
+                  height: 40,
+                  borderColor: GREEN_UI.borderStrong,
+                  color: GREEN_UI.greenDark,
+                  bgcolor: '#ffffff',
+                  '&:hover': { borderColor: GREEN_UI.green, bgcolor: GREEN_UI.greenSoft },
+                }}
+              >
+                {allVisibleSelected ? 'Clear Visible Selection' : `Select Draft Schedules (${selectableFilteredIds.length})`}
               </Button>
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>
@@ -1973,7 +2041,7 @@ export default function ScheduleManagement() {
                 variant="contained"
                 startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <TaskAlt />}
                 onClick={publishSelectedSchedules}
-                disabled={saving || selectedScheduleIds.length === 0}
+                disabled={saving || selectedDraftCount === 0}
                 sx={{
                   ...pillButtonSx,
                   height: 40,
@@ -1982,7 +2050,7 @@ export default function ScheduleManagement() {
                   '&:hover': { bgcolor: '#19693b' },
                 }}
               >
-                Publish {selectedScheduleIds.length} Selected
+                Validate & Publish {selectedDraftCount} Selected
               </Button>
             </Grid>
           </Grid>
@@ -2020,15 +2088,15 @@ export default function ScheduleManagement() {
                   },
                 }}
               >
-                {canPublish && (
+                  {canSelectSchedule && (
                   <TableCell padding="checkbox">
-                    <Checkbox
+                    {selectableFilteredIds.length > 0 && <Checkbox
                       size="small"
                       checked={allVisibleSelected}
                       indeterminate={partiallyVisibleSelected}
                       onChange={event => toggleSelectAllVisible(event.target.checked)}
-                      inputProps={{ 'aria-label': 'Select all visible schedules' }}
-                    />
+                      inputProps={{ 'aria-label': 'Select schedules available for your action' }}
+                    />}
                   </TableCell>
                 )}
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>ID</TableCell>
@@ -2045,7 +2113,7 @@ export default function ScheduleManagement() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={canPublish ? 16 : 15} align="center" sx={{ py: 7 }}>
+                  <TableCell colSpan={canSelectSchedule ? 16 : 15} align="center" sx={{ py: 7 }}>
                     <Box sx={{ maxWidth: 380, mx: 'auto' }}>
                       <Box
                         sx={{
@@ -2067,7 +2135,7 @@ export default function ScheduleManagement() {
                       </Typography>
                       <Typography variant="body2" sx={{ color: GREEN_UI.muted, mt: 0.5 }}>
                         {schedules.length === 0
-                          ? 'Create a weekly schedule or import an Excel file to start assigning shifts.'
+                          ? 'A Supervisor can create a weekly schedule or import an Excel file. HR can validate schedules after they are saved as drafts.'
                           : 'Try clearing the search or outlet filter to view more schedule records.'}
                       </Typography>
                     </Box>
@@ -2083,14 +2151,14 @@ export default function ScheduleManagement() {
                     '& td': { py: 1.55, color: GREEN_UI.text },
                   }}
                 >
-                  {canPublish && (
+                  {canSelectSchedule && (
                     <TableCell padding="checkbox">
-                      <Checkbox
+                      {(canManageSchedule || s.status === 'Draft') && <Checkbox
                         size="small"
                         checked={selectedScheduleIds.includes(s.id)}
                         onChange={event => toggleScheduleSelection(s.id, event.target.checked)}
                         inputProps={{ 'aria-label': `Select schedule ${s.id}` }}
-                      />
+                      />}
                     </TableCell>
                   )}
                   <TableCell>
@@ -2187,19 +2255,8 @@ export default function ScheduleManagement() {
                     <Chip label={s.status} size="small" variant="outlined" sx={statusChipSx(s.status)} />
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {canPublish && (
+                    {canManageSchedule && (
                       <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
-                        {s.status === 'Draft' && (
-                          <Chip
-                            icon={<TaskAlt sx={{ fontSize: '0.85rem !important' }} />}
-                            label="Publish"
-                            size="small"
-                            clickable
-                            variant="outlined"
-                            onClick={() => handlePublish(s)}
-                            sx={{ ...actionChipSx('success'), '& .MuiChip-icon': { color: GREEN_UI.greenDark } }}
-                          />
-                        )}
                         <Chip
                           icon={<EditIcon sx={{ fontSize: '0.85rem !important' }} />}
                           label="Edit Schedule"
@@ -2219,6 +2276,18 @@ export default function ScheduleManagement() {
                           sx={{ ...actionChipSx('danger'), minWidth: 78, '& .MuiChip-icon': { color: '#9c2f2f' } }}
                         />
                       </Box>
+                    )}
+
+                    {canValidateSchedule && s.status === 'Draft' && (
+                      <Chip
+                        icon={<TaskAlt sx={{ fontSize: '0.85rem !important' }} />}
+                        label="Validate & Publish"
+                        size="small"
+                        clickable
+                        variant="outlined"
+                        onClick={() => handlePublish(s)}
+                        sx={{ ...actionChipSx('success'), '& .MuiChip-icon': { color: GREEN_UI.greenDark } }}
+                      />
                     )}
 
                     {canConfirm && s.status === 'Published' && (
@@ -2261,7 +2330,7 @@ export default function ScheduleManagement() {
         )}
       </TableContainer>
 
-      {!loading && (canPublish || canConfirm) && (
+      {!loading && canSeeScheduleRoster && (
         <WeeklySchedule schedules={canConfirm ? filtered.filter(schedule => ['Published', 'Confirmed'].includes(schedule.status)) : filtered} />
       )}
 
