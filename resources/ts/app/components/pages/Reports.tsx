@@ -21,6 +21,8 @@ import {
   TableRow,
   Divider,
   TablePagination,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   Print,
@@ -34,8 +36,12 @@ import {
   RestartAlt,
   Tune,
   InsertDriveFile,
+  PictureAsPdf,
+  Download,
 } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
+import { COMPANY } from '../../lib/constants';
 
 interface ReportData {
   [key: string]: any[];
@@ -45,6 +51,19 @@ interface ReportType {
   value: string;
   label: string;
   icon: React.ReactElement;
+}
+
+interface GeneratedReport {
+  id: string;
+  report_title: string;
+  report_type: string;
+  period_start: string | null;
+  period_end: string | null;
+  file_name: string;
+  storage_path: string;
+  record_count: number;
+  prepared_by: string;
+  created_at: string;
 }
 
 const REPORT_TYPES: ReportType[] = [
@@ -299,6 +318,7 @@ const getStatusColor = (value: any) => {
 };
 
 export default function Reports() {
+  const { user } = useAuth();
   const [reportType, setReportType] = useState('employees');
   const [dateFrom, setDateFrom] = useState(() => `${getReportYear()}-01-01`);
   const [dateTo, setDateTo] = useState(() => `${getReportYear()}-12-31`);
@@ -311,6 +331,13 @@ export default function Reports() {
   const [warning, setWarning] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [reportHistory, setReportHistory] = useState<GeneratedReport[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfNotice, setPdfNotice] = useState<string | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
   const loadTable = async (tableName: string, orderColumn?: string) => {
@@ -543,6 +570,23 @@ export default function Reports() {
     fetchAll();
   }, []);
 
+  const fetchReportHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    const { data, error } = await supabase.from('generated_report_history')
+      .select('id,report_title,report_type,period_start,period_end,file_name,storage_path,record_count,prepared_by,created_at')
+      .order('created_at', { ascending: false }).limit(10);
+    if (error) {
+      setReportHistory([]);
+      setHistoryError(`Could not load saved report history: ${error.message}`);
+    } else {
+      setReportHistory((data ?? []) as GeneratedReport[]);
+    }
+    setHistoryLoading(false);
+  };
+
+  useEffect(() => { void fetchReportHistory(); }, []);
+
   useEffect(() => {
     setPage(0);
   }, [reportType, dateFrom, dateTo, rowsPerPage, logDate, logUser, logModule]);
@@ -619,6 +663,139 @@ export default function Reports() {
     a.download = `${reportType}_report_${dateFrom}_to_${dateTo}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadPdfReport = async () => {
+    if (!filtered.length || generatingPdf) return;
+    setGeneratingPdf(true);
+    setPdfError(null);
+    setPdfNotice(null);
+    let uploadedPath: string | null = null;
+    try {
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const authUserId = sessionData.session?.user.id;
+      if (!authUserId) throw new Error('Sign in again before generating a report.');
+
+      const isLogReport = reportType === 'systemLogs';
+      const reportDates = isLogReport && logDate
+        ? formatDisplayDate(logDate)
+        : `${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)}`;
+      const generatedAt = new Date();
+      const slug = reportType.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+      const fileName = `${slug}_report_${dateFrom}_to_${dateTo}.pdf`;
+      const document = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4', compress: true });
+      const pageWidth = document.internal.pageSize.getWidth();
+      const margin = 34;
+      const preparedBy = user?.name || sessionData.session?.user.email || 'Authorized HRIS user';
+
+      autoTable(document, {
+        head: [cols.map(labelize)],
+        body: filtered.map(row => cols.map(column => formatValue(column, row[column]))),
+        startY: 94,
+        margin: { top: 94, right: margin, bottom: 38, left: margin },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: 7, cellPadding: 4, overflow: 'linebreak', textColor: [38, 54, 43], lineColor: [220, 232, 221], lineWidth: 0.4 },
+        headStyles: { fillColor: [31, 122, 70], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        alternateRowStyles: { fillColor: [246, 251, 244] },
+        horizontalPageBreak: true,
+        horizontalPageBreakRepeat: 0,
+        willDrawPage: () => {
+          document.setFillColor(31, 122, 70);
+          document.rect(0, 0, pageWidth, 80, 'F');
+          document.setTextColor(255, 255, 255);
+          document.setFont('helvetica', 'bold');
+          document.setFontSize(16);
+          document.text(COMPANY.name.toUpperCase(), margin, 26);
+          document.setFont('helvetica', 'normal');
+          document.setFontSize(9);
+          document.text('HUMAN RESOURCE INFORMATION SYSTEM', margin, 42);
+          document.setFont('helvetica', 'bold');
+          document.setFontSize(13);
+          document.text(selected.label, margin, 63);
+          document.setFont('helvetica', 'normal');
+          document.setFontSize(8);
+          document.text(`Period: ${reportDates}   |   Records: ${filtered.length}`, pageWidth - margin, 26, { align: 'right' });
+          document.text(`Prepared by: ${preparedBy}`, pageWidth - margin, 42, { align: 'right' });
+          document.text(`Generated: ${formatDisplayDateTime(generatedAt)}`, pageWidth - margin, 58, { align: 'right' });
+        },
+        didDrawPage: () => {
+          const height = document.internal.pageSize.getHeight();
+          document.setDrawColor(169, 223, 182);
+          document.line(margin, height - 27, pageWidth - margin, height - 27);
+          document.setFont('helvetica', 'normal');
+          document.setFontSize(8);
+          document.setTextColor(103, 121, 108);
+          document.text(`${COMPANY.name}  ·  Confidential HR report`, margin, height - 13);
+        },
+      });
+
+      const pageCount = document.getNumberOfPages();
+      for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
+        document.setPage(pageIndex);
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(8);
+        document.setTextColor(103, 121, 108);
+        document.text(`Page ${pageIndex} of ${pageCount}`, pageWidth - margin, document.internal.pageSize.getHeight() - 13, { align: 'right' });
+      }
+
+      const pdfBlob = document.output('blob');
+      const storagePath = `${authUserId}/${Date.now()}_${slug}.pdf`;
+      const { error: uploadError } = await supabase.storage.from('hr-report-pdfs').upload(storagePath, pdfBlob, {
+        contentType: 'application/pdf',
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+      uploadedPath = storagePath;
+
+      const periodStart = isLogReport && logDate ? logDate : dateFrom;
+      const periodEnd = isLogReport && logDate ? logDate : dateTo;
+      const { data: savedReport, error: historyInsertError } = await supabase.from('generated_report_history')
+        .insert({
+          report_title: selected.label,
+          report_type: reportType,
+          period_start: periodStart || null,
+          period_end: periodEnd || null,
+          file_name: fileName,
+          storage_path: storagePath,
+          record_count: filtered.length,
+          prepared_by: preparedBy,
+          created_by: authUserId,
+        })
+        .select('id,report_title,report_type,period_start,period_end,file_name,storage_path,record_count,prepared_by,created_at')
+        .single();
+      if (historyInsertError) throw historyInsertError;
+
+      document.save(fileName);
+      setReportHistory(current => [savedReport as GeneratedReport, ...current].slice(0, 10));
+      setPdfNotice('PDF downloaded and saved to report history.');
+    } catch (cause) {
+      if (uploadedPath) await supabase.storage.from('hr-report-pdfs').remove([uploadedPath]).catch(() => {});
+      setPdfError(cause instanceof Error ? cause.message : 'Could not generate the PDF report.');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const downloadSavedReport = async (report: GeneratedReport) => {
+    if (downloadingReportId) return;
+    setDownloadingReportId(report.id);
+    setPdfError(null);
+    try {
+      const { data, error } = await supabase.storage.from('hr-report-pdfs').download(report.storage_path);
+      if (error) throw error;
+      const url = URL.createObjectURL(data);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = report.file_name;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) {
+      setPdfError(cause instanceof Error ? cause.message : 'Could not download the saved PDF.');
+    } finally {
+      setDownloadingReportId(null);
+    }
   };
 
   const handlePrint = () => {
@@ -1014,6 +1191,15 @@ export default function Reports() {
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button
             variant="contained"
+            startIcon={generatingPdf ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdf />}
+            onClick={() => void downloadPdfReport()}
+            disabled={loadingAll || filtered.length === 0 || generatingPdf}
+            sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, '&:hover': { bgcolor: GREEN_UI.greenDark } }}
+          >
+            {generatingPdf ? 'Creating PDF…' : 'Download PDF'}
+          </Button>
+          <Button
+            variant="contained"
             startIcon={<Print />}
             onClick={handlePrint}
             disabled={loadingAll || filtered.length === 0}
@@ -1040,6 +1226,68 @@ export default function Reports() {
             Export All Reports
           </Button>
         </Box>
+        {pdfError && <Alert severity="error" sx={{ mt: 1.5 }}>{pdfError}</Alert>}
+        {pdfNotice && <Alert severity="success" sx={{ mt: 1.5 }}>{pdfNotice}</Alert>}
+      </Paper>
+
+      <Paper elevation={0} sx={{ ...softCardSx, mb: 2.5, overflow: 'hidden' }}>
+        <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap', borderBottom: `1px solid ${GREEN_UI.border}` }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Box sx={{ width: 40, height: 40, borderRadius: '14px', display: 'grid', placeItems: 'center', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark }}>
+              <InsertDriveFile fontSize="small" />
+            </Box>
+            <Box>
+              <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text }}>Generated PDF history</Typography>
+              <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>The 10 latest reports saved by authorized staff.</Typography>
+            </Box>
+          </Box>
+          <Button size="small" variant="outlined" startIcon={historyLoading ? <CircularProgress size={14} /> : <Sync />}
+            disabled={historyLoading} onClick={() => void fetchReportHistory()}
+            sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}>
+            Refresh history
+          </Button>
+        </Box>
+        {historyError && <Alert severity="warning" sx={{ m: 2 }}>{historyError}</Alert>}
+        {historyLoading ? <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 100 }}><CircularProgress size={24} sx={{ color: GREEN_UI.green }} /></Box>
+          : reportHistory.length === 0 ? <Box sx={{ py: 4, px: 2, textAlign: 'center' }}>
+            <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>No PDF reports saved yet</Typography>
+            <Typography variant="body2" sx={{ color: GREEN_UI.muted, mt: 0.5 }}>Choose a report and select Download PDF to create the first saved copy.</Typography>
+          </Box>
+          : <TableContainer sx={{ maxHeight: 430 }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow>
+                  {['REPORT', 'REPORTING PERIOD', 'RECORDS', 'PREPARED BY', 'GENERATED', 'FILE'].map(column => (
+                    <TableCell key={column} sx={{ bgcolor: '#f0f8eb', color: GREEN_UI.greenDark, fontWeight: 800 }}>{column}</TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {reportHistory.map(report => (
+                  <TableRow key={report.id} hover>
+                    <TableCell sx={{ fontWeight: 700, color: GREEN_UI.text }}>{report.report_title}</TableCell>
+                    <TableCell sx={{ color: GREEN_UI.muted, whiteSpace: 'nowrap' }}>
+                      {report.period_start ? formatDisplayDate(report.period_start) : '—'}
+                      {report.period_end && report.period_end !== report.period_start ? ` to ${formatDisplayDate(report.period_end)}` : ''}
+                    </TableCell>
+                    <TableCell><Chip size="small" variant="outlined" label={report.record_count} sx={{ borderColor: GREEN_UI.borderStrong }} /></TableCell>
+                    <TableCell sx={{ color: GREEN_UI.muted }}>{report.prepared_by}</TableCell>
+                    <TableCell sx={{ color: GREEN_UI.muted, whiteSpace: 'nowrap' }}>{formatDisplayDateTime(report.created_at)}</TableCell>
+                    <TableCell>
+                      <Tooltip title={`Download ${report.file_name}`}>
+                        <span>
+                          <IconButton aria-label={`Download ${report.file_name}`} size="small" disabled={Boolean(downloadingReportId)}
+                            onClick={() => void downloadSavedReport(report)} sx={{ color: GREEN_UI.greenDark, border: `1px solid ${GREEN_UI.borderStrong}`, borderRadius: '10px' }}>
+                            {downloadingReportId === report.id ? <CircularProgress size={17} /> : <Download fontSize="small" />}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>}
       </Paper>
 
       <Grid container spacing={1.5} sx={{ mb: 2.5 }}>

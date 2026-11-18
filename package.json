@@ -51,6 +51,8 @@
     "embla-carousel-react": "8.6.0",
     "input-otp": "1.4.2",
     "install": "^0.13.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "lucide-react": "0.487.0",
     "mammoth": "^1.10.0",
     "motion": "12.23.24",
