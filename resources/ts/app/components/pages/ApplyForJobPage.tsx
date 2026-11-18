@@ -803,19 +803,33 @@ export default function ApplyForJobPage() {
       if (profileResult.error) throw profileResult.error;
 
       const resumeFileData = resumeFiles[0] ? await fileToDataUrl(resumeFiles[0]) : null;
-      const usedNames = new Set([...resumeFiles, ...supportingFiles].map(file => file.name));
+      const usedNames = new Set<string>();
+      const uniqueName = (original: string) => {
+        if (!usedNames.has(original)) { usedNames.add(original); return original; }
+        const dot = original.lastIndexOf('.');
+        const stem = dot > 0 ? original.slice(0, dot) : original;
+        const extension = dot > 0 ? original.slice(dot) : '';
+        let copy = 2;
+        let candidate = `${stem} (${copy})${extension}`;
+        while (usedNames.has(candidate)) candidate = `${stem} (${++copy})${extension}`;
+        usedNames.add(candidate);
+        return candidate;
+      };
+      if (resumeFiles[0]) usedNames.add(resumeFiles[0].name);
+      const additionalResumeFiles = await Promise.all(resumeFiles.slice(1).map(async (file) => ({
+        name: uniqueName(file.name),
+        type: applicationFileType(file),
+        data: await fileToDataUrl(file),
+        category: 'resume',
+      })));
       const certificates = await Promise.all(certificateFiles.map(async file => {
-        const dot = file.name.lastIndexOf('.');
-        let name = file.name;
-        for (let copy = 2; usedNames.has(name); copy++) {
-          name = `${file.name.slice(0, dot)} (${copy})${file.name.slice(dot)}`;
-        }
-        usedNames.add(name);
+        const name = uniqueName(file.name);
         const type = applicationFileType(file);
         return { name, type, data: await fileToDataUrl(new Blob([file], { type })) };
       }));
       const supportingDocumentFiles = [
-        ...await Promise.all(supportingFiles.map(async (file) => ({ name: file.name, type: file.type, data: await fileToDataUrl(file) }))),
+        ...additionalResumeFiles,
+        ...await Promise.all(supportingFiles.map(async (file) => ({ name: uniqueName(file.name), type: applicationFileType(file), data: await fileToDataUrl(file) }))),
         ...certificates,
       ];
       const supportingDocumentNames = supportingDocumentFiles.map(file => file.name);
@@ -1403,8 +1417,8 @@ export default function ApplyForJobPage() {
                       <Alert severity="info" icon={<ArticleOutlined />} sx={{ borderRadius: 2, border: '1px solid rgba(22,101,52,0.12)', bgcolor: '#f0fdf4', color: '#14532d' }}>
                         <Stack spacing={0.75}>
                           <Typography variant="body2" fontWeight={700}>Accepted file types: {ACCEPTED_APPLICATION_FILE_LABEL}.</Typography>
-                          <Typography variant="body2">Resume/Biodata: upload one file only. Supporting documents are required and may include: {SUPPORTING_DOCUMENT_EXAMPLES}.</Typography>
-                          <Typography variant="body2">Use clear scanned copies or readable photos. PDF files are preferred for multi-page documents.</Typography>
+                          <Typography variant="body2">You may upload multiple resume, certificate, and supporting-document files. Supporting documents may include: {SUPPORTING_DOCUMENT_EXAMPLES}.</Typography>
+                          <Typography variant="body2">For front-and-back IDs or documents with separate pages, upload each clear image as a separate file. PDF files are also accepted for multi-page documents.</Typography>
                         </Stack>
                       </Alert>
                     </Grid>
@@ -1415,17 +1429,19 @@ export default function ApplyForJobPage() {
                             <Box sx={{ width: 38, height: 38, borderRadius: '14px', display: 'grid', placeItems: 'center', bgcolor: '#dcfce7', color: '#166534', flexShrink: 0 }}><ArticleOutlined fontSize="small" /></Box>
                             <Box sx={{ minWidth: 0 }}>
                               <Typography fontWeight={800} sx={{ color: '#14532d' }}>Resume / Biodata</Typography>
-                              <Typography variant="body2" color="text.secondary">Upload one file only. Accepted: {ACCEPTED_APPLICATION_FILE_LABEL}.</Typography>
+                              <Typography variant="body2" color="text.secondary">Upload one or more files. Accepted: {ACCEPTED_APPLICATION_FILE_LABEL}.</Typography>
                             </Box>
                           </Stack>
                           <Button fullWidth component="label" variant="contained" startIcon={<UploadFile />} sx={{ ...softButtonSx, minHeight: 48, background: 'linear-gradient(135deg, #166534 0%, #22c55e 100%)' }}>
-                            <input hidden type="file" accept={ACCEPTED_APPLICATION_FILE_TYPES} onChange={(e) => { const files = Array.from(e.target.files ?? []); setResumeFiles(files.slice(0, 1)); clearFieldError('resumeFiles'); }} />
-                            {resumeFiles[0] ? 'Replace Resume' : 'Select Resume'}
+                            <input hidden multiple type="file" accept={ACCEPTED_APPLICATION_FILE_TYPES} onChange={(e) => { const files = Array.from(e.target.files ?? []); setResumeFiles((current) => [...current, ...files]); clearFieldError('resumeFiles'); e.target.value = ''; }} />
+                            {resumeFiles.length ? 'Add Resume Files' : 'Select Resume Files'}
                           </Button>
-                          {resumeFiles[0] ? (
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
-                              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{resumeFiles[0].name}</Typography></Stack>
-                              {fileActions(resumeFiles[0], () => setResumeFiles([]), true)}
+                          {resumeFiles.length ? (
+                            <Stack spacing={1}>
+                              {resumeFiles.map((file, fileIndex) => <Stack key={`${file.name}-${file.lastModified}-${fileIndex}`} direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{file.name}</Typography></Stack>
+                                {fileActions(file, () => setResumeFiles(current => current.filter((_, index) => index !== fileIndex)), true)}
+                              </Stack>)}
                             </Stack>
                           ) : (
                             <Typography variant="caption" color="text.secondary">Required before submitting the application.</Typography>

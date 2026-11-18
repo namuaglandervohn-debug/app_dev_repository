@@ -56,13 +56,27 @@ export default function ApplicationForm() {
         resumeFileName = resumeFiles[0].name;
         resumeFileData = await fileToBase64(resumeFiles[0]);
       }
-      const supportingDocumentFiles = await Promise.all(
-        supportingFiles.map(async (f) => ({
-          name: f.name,
-          type: f.type,
-          data: await fileToBase64(f),
-        }))
-      );
+      const usedNames = new Set<string>(resumeFileName ? [resumeFileName] : []);
+      const uniqueName = (original: string) => {
+        if (!usedNames.has(original)) { usedNames.add(original); return original; }
+        const dot = original.lastIndexOf('.');
+        const stem = dot > 0 ? original.slice(0, dot) : original;
+        const extension = dot > 0 ? original.slice(dot) : '';
+        let copy = 2;
+        let candidate = `${stem} (${copy})${extension}`;
+        while (usedNames.has(candidate)) candidate = `${stem} (${++copy})${extension}`;
+        usedNames.add(candidate);
+        return candidate;
+      };
+      const supportingDocumentFiles = await Promise.all([
+        ...resumeFiles.slice(1).map(async (f) => ({
+          name: uniqueName(f.name), type: f.type, data: await fileToBase64(f), category: 'resume',
+        })),
+        ...supportingFiles.map(async (f) => ({
+          name: uniqueName(f.name), type: f.type, data: await fileToBase64(f),
+        })),
+      ]);
+      const supportingDocumentNames = supportingDocumentFiles.map(file => file.name);
 
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
@@ -79,7 +93,7 @@ export default function ApplicationForm() {
         cover_letter: formData.coverLetter,
         resume_file_name: resumeFileName,
         resume_file_data: resumeFileData,
-        supporting_documents: supportingFiles.map((f) => f.name),
+        supporting_documents: supportingDocumentNames,
         supporting_document_files: supportingDocumentFiles,
         status: 'Submitted',
       });
@@ -87,7 +101,7 @@ export default function ApplicationForm() {
       saveApplicationFiles(applicantId, {
         resumeFileName,
         resumeFileData,
-        supportingDocuments: supportingFiles.map((f) => f.name),
+        supportingDocuments: supportingDocumentNames,
         supportingDocumentFiles,
       });
 
@@ -186,11 +200,11 @@ export default function ApplicationForm() {
               </Typography>
               <FileUploadField
                 label="Upload Resume"
-                accept=".pdf,.doc,.docx"
-                multiple={false}
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                multiple
                 files={resumeFiles}
                 onChange={setResumeFiles}
-                helperText="PDF, DOC, DOCX · Max 10 MB"
+                helperText="PDF, DOC, DOCX, JPG, PNG · Max 10 MB per file"
               />
             </Grid>
 
@@ -205,7 +219,7 @@ export default function ApplicationForm() {
                 multiple
                 files={supportingFiles}
                 onChange={setSupportingFiles}
-                helperText="IDs, Certificates, etc. · PDF, DOC, JPG, PNG"
+                helperText="IDs, certificates, and page images · PDF, DOC, DOCX, JPG, PNG · Max 10 MB per file"
               />
             </Grid>
 

@@ -100,6 +100,7 @@ export function previousApplicationFiles(row: Record<string, unknown>) {
   const documentNames = Array.isArray(row.supporting_documents) ? row.supporting_documents.map(text) : [];
   const resumeName = text(row.resume_file_name);
   const resume = restoreFile(resumeName, row.resume_file_data);
+  const resumes: File[] = resume ? [resume] : [];
   const supporting: File[] = [];
   const certificates: File[] = [];
   const missing = new Set([...documentNames, ...certificateNames].filter(Boolean));
@@ -109,11 +110,12 @@ export function previousApplicationFiles(row: Record<string, unknown>) {
     const name = text(document.name ?? document.fileName);
     const file = restoreFile(name, document.data ?? document.dataUrl);
     if (file) {
-      (certificateNames.has(name) ? certificates : supporting).push(file);
+      if (document.category === 'resume') resumes.push(file);
+      else (certificateNames.has(name) ? certificates : supporting).push(file);
       missing.delete(name);
     } else if (name) {
       missing.add(name);
     }
   }
-  return { resume: resume ? [resume] : [], supporting, certificates, missing: [...missing] };
+  return { resume: resumes, supporting, certificates, missing: [...missing] };
 }
