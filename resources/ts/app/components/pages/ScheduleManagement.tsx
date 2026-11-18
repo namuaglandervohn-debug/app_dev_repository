@@ -741,7 +741,7 @@ export default function ScheduleManagement() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
-  const [filterOutlet, setFilterOutlet] = useState('all');
+  const [filterOutlet, setFilterOutlet] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
   const [editDialog, setEditDialog] = useState(false);
@@ -1394,8 +1394,9 @@ export default function ScheduleManagement() {
       }
     }
 
-    const selectedOutlet = filterOutlet === NO_OUTLET ? '' : normalizeWorkArea(filterOutlet);
-    if (filterOutlet !== "all" && normalizeWorkArea(s.outlet) !== selectedOutlet) return false;
+    if (filterOutlet.length > 0 && !filterOutlet.some(outlet =>
+      outlet === NO_OUTLET ? !String(s.outlet ?? '').trim() : normalizeWorkArea(s.outlet) === normalizeWorkArea(outlet)
+    )) return false;
 
     const query = search.trim().toLowerCase();
     if (!query) return true;
@@ -1917,7 +1918,7 @@ export default function ScheduleManagement() {
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
           <Chip
             icon={<Storefront sx={{ fontSize: '0.9rem !important' }} />}
-            label={filterOutlet === 'all' ? 'All Outlets' : filterOutlet === NO_OUTLET ? 'No Outlet' : displayWorkArea(filterOutlet)}
+            label={filterOutlet.length === 0 ? 'All Outlets' : filterOutlet.map(outlet => outlet === NO_OUTLET ? 'No Outlet' : displayWorkArea(outlet)).join(', ')}
             size="small"
             variant="outlined"
             sx={{ ...outletChipSx, '& .MuiChip-icon': { color: GREEN_UI.greenDark } }}
@@ -1945,20 +1946,37 @@ export default function ScheduleManagement() {
             />
           </Grid>
           <Grid size={{ xs: 12, md: canManageSchedule ? 4 : 6 }}>
-            <TextField
-              fullWidth
-              select
-              label="Filter by Outlet"
+            <Autocomplete
+              multiple
+              disableCloseOnSelect
+              options={[...ASSIGNED_WORK_AREAS, NO_OUTLET]}
               value={filterOutlet}
-              onChange={e => setFilterOutlet(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              size="small"
-              sx={softTextFieldSx}
-            >
-              <MenuItem key="all" value="all">All Outlets</MenuItem>
-              <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
-              {ASSIGNED_WORK_AREAS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
-            </TextField>
+              onChange={(_, selected) => setFilterOutlet(selected)}
+              getOptionLabel={outlet => outlet === NO_OUTLET ? 'No Outlet' : outlet}
+              isOptionEqualToValue={(option, value) => option === value}
+              renderOption={(props, outlet, { selected }) => (
+                <li {...props}>
+                  <Checkbox
+                    size="small"
+                    checked={selected}
+                    sx={{ mr: 1, color: GREEN_UI.greenDark, '&.Mui-checked': { color: GREEN_UI.greenDark } }}
+                  />
+                  {outlet === NO_OUTLET ? 'No Outlet' : outlet}
+                </li>
+              )}
+              renderInput={params => (
+                <TextField
+                  {...params}
+                  fullWidth
+                  label="Filter by Outlet"
+                  placeholder={filterOutlet.length ? 'Add another outlet' : 'All outlets'}
+                  InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
+                  size="small"
+                  sx={softTextFieldSx}
+                  helperText="Choose one or more outlets. Clear the selection to view all outlets."
+                />
+              )}
+            />
           </Grid>
           {canManageSchedule && (
           <Grid size={{ xs: 12, md: 4 }}>
