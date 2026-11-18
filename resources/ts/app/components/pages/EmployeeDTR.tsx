@@ -669,7 +669,18 @@ export default function EmployeeDTR() {
 
             <Box sx={{ display: "flex", gap: 1.25, flexWrap: "wrap", alignItems: "center" }}>
               {isHR && (
-                <Button variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate("/dashboard/attendance")}>
+                <Button
+                  variant="contained"
+                  startIcon={<ArrowBack />}
+                  onClick={() => navigate("/dashboard/attendance")}
+                  sx={{
+                    ...pillButtonSx,
+                    py: 1.1,
+                    bgcolor: GREEN_UI.green,
+                    boxShadow: "0 12px 24px rgba(58, 168, 101, 0.25)",
+                    "&:hover": { bgcolor: GREEN_UI.greenDark, boxShadow: "0 16px 28px rgba(31, 122, 70, 0.28)" },
+                  }}
+                >
                   Attendance Records
                 </Button>
               )}
