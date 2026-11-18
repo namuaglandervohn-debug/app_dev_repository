@@ -1309,9 +1309,6 @@ export default function PerformanceEvaluation() {
               </Grid>
             ))}
           </Grid>
-          <Typography variant="caption" sx={{ display: "block", color: GREEN_UI.muted, mt: 1.5 }}>
-            Rankings use each employee’s latest approved evaluation in the selected period. Scores come from the evaluation’s saved role-appropriate weighted criteria.
-          </Typography>
         </Paper>
       )}
 

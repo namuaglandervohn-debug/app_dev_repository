@@ -1849,11 +1849,6 @@ export default function ScheduleManagement() {
           Supervisors create, edit, and save employee schedules as drafts. HR reviews and validates each draft before it is published to employees.
         </Alert>
       )}
-      {canValidateSchedule && (
-        <Alert severity="info" sx={{ mb: 2, borderRadius: '16px' }}>
-          Review schedules saved by Supervisors, then choose <strong>Validate &amp; Publish</strong>. Validation makes the schedule available for the employee to confirm.
-        </Alert>
-      )}
 
       <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
         {scheduleStats.map(stat => (
@@ -1973,7 +1968,6 @@ export default function ScheduleManagement() {
                   InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
                   size="small"
                   sx={softTextFieldSx}
-                  helperText="Choose one or more outlets. Clear the selection to view all outlets."
                 />
               )}
             />

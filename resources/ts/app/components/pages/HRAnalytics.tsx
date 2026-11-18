@@ -55,11 +55,10 @@ const groupByMonth = <T,>(rows: T[], getDate: (row: T) => unknown) => {
 
 const emptyData = (): ChartsData => ({ attendance: [], performance: [], outlets: [], requests: [], recruitment: [] });
 
-function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+function ChartCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Paper elevation={0} sx={{ height: '100%', p: { xs: 1.75, sm: 2.25 }, borderRadius: '22px', border: `1px solid ${BORDER}`, bgcolor: 'rgba(255,255,255,.94)', boxShadow: '0 12px 30px rgba(43,91,55,.07)' }}>
       <Typography variant="subtitle1" fontWeight={750} sx={{ color: '#1e2d24' }}>{title}</Typography>
-      <Typography variant="caption" sx={{ color: MUTED }}>{subtitle}</Typography>
       <Box sx={{ width: '100%', height: 260, mt: 1.5, position: 'relative' }}>
         {children}
       </Box>
@@ -179,7 +178,6 @@ export default function HRAnalytics() {
     <Box sx={{ mt: 2.5, mb: 2.5 }}>
       <Box sx={{ mb: 1.75 }}>
         <Typography variant="h5" fontWeight={800} sx={{ color: '#1e2d24', letterSpacing: '-.025em' }}>HR Data &amp; Trends</Typography>
-        <Typography variant="body2" sx={{ color: MUTED }}>Six-month view of attendance, performance, staffing, requests, and recruitment.</Typography>
       </Box>
       {!!loadIssues.length && (
         <Alert severity="warning" sx={{ mb: 1.5, borderRadius: '14px' }}>
@@ -189,7 +187,7 @@ export default function HRAnalytics() {
       {loading && <Alert severity="info" sx={{ mb: 1.5, borderRadius: '14px' }}>Loading HR analytics…</Alert>}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Employee Attendance Trends" subtitle="On-time, late, and absent records by month">
+          <ChartCard title="Employee Attendance Trends">
             {!loading && <NoChartData hasData={data.attendance.some(row => Number(row.onTime) + Number(row.late) + Number(row.absent) > 0)} />}
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.attendance} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
@@ -206,7 +204,7 @@ export default function HRAnalytics() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Employee Performance Trends" subtitle="Average final evaluation score for completed evaluations">
+          <ChartCard title="Employee Performance Trends">
             {!loading && <NoChartData hasData={data.performance.some(row => Number(row.evaluations) > 0)} />}
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data.performance} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
@@ -221,7 +219,7 @@ export default function HRAnalytics() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Employee Distribution per Outlet" subtitle="Active employees grouped by their assigned outlet">
+          <ChartCard title="Employee Distribution per Outlet">
             {!loading && <NoChartData hasData={data.outlets.length > 0} />}
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -235,7 +233,7 @@ export default function HRAnalytics() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Leave, Overtime & Undertime Trends" subtitle="Submitted employee requests by month and type">
+          <ChartCard title="Leave, Overtime & Undertime Trends">
             {!loading && <NoChartData hasData={data.requests.some(row => Number(row.leave) + Number(row.overtime) + Number(row.undertime) > 0)} />}
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.requests} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
@@ -252,7 +250,7 @@ export default function HRAnalytics() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12 }}>
-          <ChartCard title="Recruitment & Application Trends" subtitle="Application volume and hiring outcomes by month">
+          <ChartCard title="Recruitment & Application Trends">
             {!loading && <NoChartData hasData={data.recruitment.some(row => Number(row.received) + Number(row.interview) + Number(row.hired) + Number(row.notQualified) > 0)} />}
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.recruitment} margin={{ top: 8, right: 16, left: -18, bottom: 0 }}>

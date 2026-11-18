@@ -781,7 +781,6 @@ export default function UserManagement() {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
           <Box>
             <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text }}>Employee self-registration requests</Typography>
-            <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>Approve to link a sign-in account to the employee record already in HRIS.</Typography>
           </Box>
           <Chip icon={<HourglassEmpty />} label={`${employeeAccountRequests.length} pending`} variant="outlined" sx={{ fontWeight: 700, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }} />
         </Box>

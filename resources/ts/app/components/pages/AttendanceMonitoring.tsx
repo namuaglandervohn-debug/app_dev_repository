@@ -2505,7 +2505,6 @@ export default function AttendanceMonitoring() {
                   fullWidth
                   label="Search Employee"
                   placeholder="Type or select a name / ID"
-                  helperText="Select a person to view all of their attendance records."
                   InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
                   sx={softTextFieldSx}
                   InputProps={{
@@ -2773,7 +2772,6 @@ export default function AttendanceMonitoring() {
               <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.2 }}>
             Summary {filterDate ? `for ${filterDate}` : "(All Records)"}
               </Typography>
-              <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>Discrepancy Review: automatic counts for filtered attendance records.</Typography>
             </Box>
           </Box>
           <Grid container spacing={1.5}>

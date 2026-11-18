@@ -210,9 +210,6 @@ export default function ScheduleSwapRequests() {
           <SwapHoriz sx={{ color: '#1b7546' }} />
           <Box>
             <Typography variant="h6" fontWeight={800} color="#173421">Schedule Swap Requests</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Employees request a shift trade; the receiving employee responds before HR makes the final decision.
-            </Typography>
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
