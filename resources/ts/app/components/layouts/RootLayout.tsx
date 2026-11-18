@@ -111,7 +111,9 @@ export default function RootLayout({ children, applicant }: {
     }
   };
 
-  fetchNotifications();
+  void fetchNotifications();
+  const refreshTimer = window.setInterval(() => { void fetchNotifications(); }, 60_000);
+  return () => window.clearInterval(refreshTimer);
 }, [user]);
 
   if (loading) {
@@ -366,6 +368,7 @@ export default function RootLayout({ children, applicant }: {
                       onClick={() => {
                         if (notif.type === "application") navigate("/dashboard/recruitment");
                         if (notif.type === "schedule") navigate("/dashboard/schedule");
+                        if (notif.type === "anniversary") navigate("/dashboard/employees");
                       }}
                       sx={{
                         p: 2,
