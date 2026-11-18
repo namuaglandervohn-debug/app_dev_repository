@@ -53,10 +53,19 @@ export default function RootLayout({ children, applicant }: {
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
+    try { return window.localStorage.getItem('hris-sidebar-hidden') !== 'true'; }
+    catch { return true; }
+  });
   const [notifAnchor, setNotifAnchor] = useState<null | HTMLElement>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifCount, setNotifCount] = useState(0);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    try { window.localStorage.setItem('hris-sidebar-hidden', desktopSidebarOpen ? 'false' : 'true'); }
+    catch { /* Sidebar still works if browser storage is unavailable. */ }
+  }, [desktopSidebarOpen]);
 
   // Fetch notifications based on role — must be before any early return
   useEffect(() => {
@@ -257,7 +266,9 @@ export default function RootLayout({ children, applicant }: {
         position="fixed"
         elevation={0}
         sx={{
-          width: { md: `calc(100% - ${drawerWidth}px)` },
+          left: { md: desktopSidebarOpen ? drawerWidth : 0 },
+          width: { md: `calc(100% - ${desktopSidebarOpen ? drawerWidth : 0}px)` },
+          transition: theme.transitions.create(['left', 'width'], { duration: theme.transitions.duration.shorter }),
           background: accountColors.header,
           color: accountColors.onGreen,
           borderBottom: 1,
@@ -266,9 +277,18 @@ export default function RootLayout({ children, applicant }: {
         }}
       >
         <Toolbar sx={{ gap: 1, minHeight: { xs: toolbarHeight, sm: toolbarHeight } }}>
-          <IconButton aria-label="Open account navigation" color="inherit" edge="start" onClick={() => setMobileOpen(true)} sx={{ display: { md: 'none' } }}>
+          <Tooltip title={isDesktop ? (desktopSidebarOpen ? 'Hide navigation' : 'Show navigation') : 'Open navigation'}>
+            <IconButton
+              aria-label={isDesktop ? (desktopSidebarOpen ? 'Hide navigation' : 'Show navigation') : 'Open navigation'}
+              aria-expanded={isDesktop ? desktopSidebarOpen : mobileOpen}
+              color="inherit"
+              edge="start"
+              onClick={() => isDesktop ? setDesktopSidebarOpen(open => !open) : setMobileOpen(true)}
+              sx={{ flexShrink: 0 }}
+            >
             <MenuIcon />
-          </IconButton>
+            </IconButton>
+          </Tooltip>
           <Typography noWrap sx={{ flex: 1, minWidth: 0, fontWeight: 750, fontSize: '0.95rem' }}>
             Buenaventura HRIS
           </Typography>
@@ -395,8 +415,20 @@ export default function RootLayout({ children, applicant }: {
       <Drawer
         variant="permanent"
         sx={{
-          display: { xs: 'none', md: 'block' }, width: drawerWidth, flexShrink: 0,
-          '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', borderRight: 1, borderColor: 'divider', backgroundImage: 'none' },
+          display: { xs: 'none', md: 'block' },
+          width: { md: desktopSidebarOpen ? drawerWidth : 0 },
+          flexShrink: 0,
+          transition: theme.transitions.create('width', { duration: theme.transitions.duration.shorter }),
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            borderRight: desktopSidebarOpen ? 1 : 0,
+            borderColor: 'divider',
+            backgroundImage: 'none',
+            transform: desktopSidebarOpen ? 'translateX(0)' : `translateX(-${drawerWidth}px)`,
+            transition: theme.transitions.create('transform', { duration: theme.transitions.duration.shorter }),
+            overflowX: 'hidden',
+          },
         }}
       >
         {drawerContent}
