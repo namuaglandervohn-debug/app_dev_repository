@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
+import HRAnalytics from './HRAnalytics';
 
 const GREEN_UI = {
   pageBg:
@@ -171,6 +172,8 @@ export default function GMDashboard() {
       )}
       {/* Stat Cards */}
       <DashboardOverview metrics={statCards} />
+
+      <HRAnalytics />
 
       <Grid container spacing={{ xs: 1.5, md: 2.5 }}>
         {/* Applicants For Interview */}

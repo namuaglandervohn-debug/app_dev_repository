@@ -23,6 +23,7 @@ import {
   WarningAmber,
 } from "@mui/icons-material";
 import { supabase } from "../../lib/supabaseClient";
+import HRAnalytics from './HRAnalytics';
 
 interface Stats {
   activeEmployees: number;
@@ -576,6 +577,8 @@ export default function HRDashboard() {
       )}
 
       <DashboardOverview metrics={statCards} />
+
+      <HRAnalytics />
 
       {false && (
       <Grid container spacing={{ xs: 2, md: 2.5 }}>
