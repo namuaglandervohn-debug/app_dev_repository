@@ -2409,6 +2409,7 @@ export default function ScheduleManagement() {
               <Grid size={{ xs: 12, md: 4 }}>
                 <Autocomplete
                   multiple
+                  disableCloseOnSelect
                   options={employeeList}
                   getOptionLabel={(option) => option.name}
                   value={employeeList.filter(emp => selectedEmployeeIds.includes(emp.employeeId))}
@@ -2424,12 +2425,27 @@ export default function ScheduleManagement() {
                       outlet: first?.outlet ?? "",
                     }));
                   }}
+                  renderOption={(props, option, { selected }) => (
+                    <li {...props}>
+                      <Checkbox
+                        size="small"
+                        checked={selected}
+                        sx={{ mr: 1, color: GREEN_UI.greenDark, '&.Mui-checked': { color: GREEN_UI.greenDark } }}
+                      />
+                      <Box>
+                        <Typography variant="body2">{option.name}</Typography>
+                        <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
+                          {option.employeeId}{option.position ? ` · ${option.position}` : ''}
+                        </Typography>
+                      </Box>
+                    </li>
+                  )}
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       fullWidth
                       required
-                      label="Choose Employees"
+                      label="Choose Employees (select one or more)"
                       placeholder="Select employees"
                       size="small"
                       InputLabelProps={{ shrink: true }}
@@ -2558,23 +2574,32 @@ export default function ScheduleManagement() {
               )}
               <Grid size={12}>
                 <Typography variant="caption" sx={{ color: GREEN_UI.muted, fontWeight: 700, display: 'block', mb: 0.75 }}>
-                  Applicable Workdays
+                  Select workdays to apply this shift to
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                   {DAYS.map(day => (
-                    <Chip
+                    <FormControlLabel
                       key={day}
                       label={DAY_NAMES[day]}
-                      size="small"
-                      clickable
-                      disabled={!isAvailableForBulk(day)}
-                      aria-pressed={workdaysToApply.includes(day)}
-                      color={workdaysToApply.includes(day) ? 'success' : 'default'}
-                      variant={workdaysToApply.includes(day) ? 'filled' : 'outlined'}
-                      onClick={() => setApplicableWorkdays(prev =>
-                        prev.includes(day) ? prev.filter(value => value !== day) : [...prev, day]
+                      control={(
+                        <Checkbox
+                          size="small"
+                          checked={applicableWorkdays.includes(day)}
+                          disabled={!isAvailableForBulk(day)}
+                          onChange={() => setApplicableWorkdays(prev =>
+                            prev.includes(day) ? prev.filter(value => value !== day) : [...prev, day]
+                          )}
+                          sx={{ color: GREEN_UI.greenDark, '&.Mui-checked': { color: GREEN_UI.greenDark } }}
+                        />
                       )}
-                      sx={{ fontWeight: 700 }}
+                      sx={{
+                        mr: 0.5,
+                        px: 1,
+                        border: `1px solid ${GREEN_UI.border}`,
+                        borderRadius: '10px',
+                        backgroundColor: applicableWorkdays.includes(day) ? 'rgba(25, 135, 84, 0.08)' : 'transparent',
+                        '& .MuiFormControlLabel-label': { fontSize: '0.875rem', fontWeight: 600 },
+                      }}
                     />
                   ))}
                   <Chip
