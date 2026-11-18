@@ -1391,6 +1391,7 @@ CREATE TRIGGER trg_evaluation_criteria_updated_at BEFORE UPDATE ON public.evalua
 CREATE TRIGGER trg_payroll_items_updated_at BEFORE UPDATE ON public.payroll_items FOR EACH ROW EXECUTE FUNCTION set_payroll_items_updated_at();
 CREATE TRIGGER trg_payroll_summaries_updated_at BEFORE UPDATE ON public.payroll_summaries FOR EACH ROW EXECUTE FUNCTION set_payroll_summaries_updated_at();
 CREATE TRIGGER validate_active_leave_type BEFORE INSERT OR UPDATE OF leave_type, request_type ON public.employee_requests FOR EACH ROW EXECUTE FUNCTION validate_active_leave_type();
+create schema if not exists hris_private;
 create or replace function hris_private.enforce_schedule_workflow()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin

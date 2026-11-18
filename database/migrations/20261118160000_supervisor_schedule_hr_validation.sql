@@ -5,6 +5,8 @@ alter table public.schedule
   add column if not exists validated_by uuid,
   add column if not exists validated_at timestamptz;
 
+create schema if not exists hris_private;
+
 create or replace function hris_private.enforce_schedule_workflow()
 returns trigger
 language plpgsql
