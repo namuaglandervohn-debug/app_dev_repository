@@ -850,7 +850,8 @@ export default function ScheduleManagement() {
       employeeId: s.employee_id ?? "",
       employee: employeeMap.get(s.employee_id)?.name ?? "—",
       position: employeeMap.get(s.employee_id)?.position || s.position || "",
-      outlet: displayWorkArea(employeeMap.get(s.employee_id)?.outlet || s.outlet || ""),
+      // A schedule may assign the employee to a different work outlet than their home outlet.
+      outlet: displayWorkArea(s.outlet || employeeMap.get(s.employee_id)?.outlet || ""),
       week: s.week ?? "",
       timeIn: s.time_in ?? "",
       timeOut: s.time_out ?? "",
@@ -927,9 +928,6 @@ export default function ScheduleManagement() {
   const getEmployeeById = (employeeId: string) =>
     employeeList.find(emp => emp.employeeId === employeeId);
 
-  const hasEmployeeOutlet = (employeeId: string) =>
-    Boolean(getEmployeeById(employeeId)?.outlet);
-
   const { morningIn, morningOut, afternoonIn, afternoonOut } = form.bulkTimes;
   const morning = `${morningIn} - ${morningOut}`;
   const hasCompleteBulkTimes = Boolean(morningIn && morningOut && Boolean(afternoonIn) === Boolean(afternoonOut));
@@ -997,13 +995,13 @@ export default function ScheduleManagement() {
     const payload = employeeIds.map((employeeId, index) => {
       const selectedEmployee = getEmployeeById(employeeId);
       const employeePosition = selectedEmployee?.position || form.position || "";
-      const employeeOutlet = selectedEmployee?.outlet || (form.outlet === NO_OUTLET ? "" : form.outlet || "");
+      const scheduleOutlet = form.outlet === NO_OUTLET ? "" : form.outlet || "";
 
       return {
         schedule_id: scheduleIds[index],
         employee_id: employeeId,
         position: employeePosition,
-        outlet: employeeOutlet,
+        outlet: scheduleOutlet,
         week: form.week ?? "",
         time_in: form.timeIn || null,
         time_out: form.timeOut || null,
@@ -1108,7 +1106,7 @@ export default function ScheduleManagement() {
         schedule_id: scheduleIds[index],
         employee_id: employee.employeeId,
         position: employee.position || specialDutyForm.position || '',
-        outlet: employee.outlet || specialDutyForm.outlet || '',
+        outlet: specialDutyForm.outlet === NO_OUTLET ? '' : specialDutyForm.outlet || '',
         week: `${weekRange}${SPECIAL_DUTY_SEPARATOR}${reason}`,
         time_in: specialDutyForm.timeIn || null,
         time_out: specialDutyForm.timeOut || null,
@@ -1326,7 +1324,7 @@ export default function ScheduleManagement() {
       employeeId: s.employeeId,
       employee: linkedEmployee?.name || s.employee,
       position: linkedEmployee?.position || s.position,
-      outlet: linkedEmployee?.outlet || s.outlet || NO_OUTLET,
+      outlet: s.outlet || linkedEmployee?.outlet || NO_OUTLET,
       week: s.week,
       timeIn: s.timeIn, timeOut: s.timeOut, breakTime: s.breakTime,
       bulkTimes: EMPTY_BULK_TIMES,
@@ -1350,13 +1348,13 @@ export default function ScheduleManagement() {
   try {
     const linkedEmployee = getEmployeeById(editRecord.employeeId);
     const employeePosition = linkedEmployee?.position || editForm.position || "";
-    const employeeOutlet = linkedEmployee?.outlet || (editForm.outlet === NO_OUTLET ? "" : editForm.outlet || "");
+    const scheduleOutlet = editForm.outlet === NO_OUTLET ? "" : editForm.outlet || "";
 
     const { error } = await supabase
       .from("schedule")
       .update({
         position: employeePosition,
-        outlet: employeeOutlet,
+        outlet: scheduleOutlet,
         week: editForm.week ?? "",
         time_in: editForm.timeIn || null,
         time_out: editForm.timeOut || null,
@@ -2473,13 +2471,13 @@ export default function ScheduleManagement() {
                 <TextField
                   fullWidth
                   select
-                  label="Outlet / Branch"
+                  label="Schedule Outlet / Branch"
                   value={form.outlet}
                   size="small"
                   sx={softTextFieldSx}
-                  disabled={selectedEmployeeIds.length === 1 && hasEmployeeOutlet(form.employeeId)}
                   onChange={e => setForm(prev => ({ ...prev, outlet: e.target.value }))}
                   InputLabelProps={{ shrink: true }}
+                  helperText="Applies to this schedule only; the employee’s official outlet stays unchanged."
                 >
                   <MenuItem key="outlet-empty" value="">Select outlet</MenuItem>
                   <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
@@ -2696,6 +2694,23 @@ export default function ScheduleManagement() {
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
+                  select
+                  label="Schedule Outlet / Branch"
+                  value={specialDutyForm.outlet}
+                  onChange={event => setSpecialDutyForm(prev => ({ ...prev, outlet: event.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  sx={softTextFieldSx}
+                  helperText="Applies to this special duty only; the employee’s official outlet stays unchanged."
+                >
+                  <MenuItem value="">Select outlet</MenuItem>
+                  <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
+                  {OUTLETS.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth
                   label="Duty Date"
                   type="date"
                   required
@@ -2795,6 +2810,7 @@ export default function ScheduleManagement() {
                     .map(employee => employee.name)
                     .join(', ')
                 : 'Not selected'],
+              ['Schedule outlet', displayWorkArea(specialDutyForm.outlet) || 'Not selected'],
               ['Date', specialDutyForm.dutyDate || 'Not selected'],
               ['Time', specialDutyForm.shift || (specialDutyForm.timeIn && specialDutyForm.timeOut ? `${specialDutyForm.timeIn} - ${specialDutyForm.timeOut}` : 'Not selected')],
               ['Reason', specialDutyForm.reason || 'Not provided'],
@@ -2902,13 +2918,13 @@ export default function ScheduleManagement() {
                 <TextField
                   fullWidth
                   select
-                  label="Outlet / Branch"
+                  label="Schedule Outlet / Branch"
                   value={editForm.outlet}
-                  disabled={hasEmployeeOutlet(editRecord?.employeeId ?? editForm.employeeId)}
                   onChange={e => setEditForm(prev => ({ ...prev, outlet: e.target.value }))}
                   InputLabelProps={{ shrink: true }}
                   size="small"
                   sx={softTextFieldSx}
+                  helperText="Applies to this schedule only; the employee’s official outlet stays unchanged."
                 >
                   <MenuItem key="edit-outlet-empty" value="">Select outlet…</MenuItem>
                   <MenuItem value={NO_OUTLET}>No Outlet</MenuItem>
