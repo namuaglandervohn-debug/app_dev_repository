@@ -49,10 +49,7 @@ import {
   ArrowForwardIos,
   FactCheckRounded,
   CalendarMonthRounded,
-  BadgeRounded,
   PersonRounded,
-  AccessTimeRounded,
-  TimerRounded,
   WatchLaterRounded,
   EventBusyRounded,
   UploadFileRounded,
@@ -96,6 +93,16 @@ type EmployeeOption = {
   position?: string | null;
   outlet?: string | null;
   status?: string | null;
+};
+type EmployeeAttendanceGroup = {
+  key: string;
+  employeeId?: string;
+  name: string;
+  records: Attendance[];
+  totalHours: number;
+  lateMinutes: number;
+  undertimeMinutes: number;
+  overtimeMinutes: number;
 };
 type SheetRow = Array<string | number | boolean | Date | null | undefined>;
 
@@ -1442,6 +1449,7 @@ export default function AttendanceMonitoring() {
   const [deleteAllDialog, setDeleteAllDialog] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
   const [detailsRecord, setDetailsRecord] = useState<Attendance | null>(null);
+  const [selectedEmployeeGroup, setSelectedEmployeeGroup] = useState<EmployeeAttendanceGroup | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState({
     current: 0,
@@ -1964,9 +1972,34 @@ export default function AttendanceMonitoring() {
     });
   }, [attendances, employeeNames, filterDate, filterEmployee, filterStatus]);
 
+  const employeeGroups = useMemo(() => {
+    const grouped = new Map<string, Attendance[]>();
+    filtered.forEach(record => {
+      const employeeId = String(record.employeeId ?? "").trim();
+      const name = attendanceName(record);
+      const key = employeeId ? `id:${employeeId.toLowerCase()}` : `name:${name.toLowerCase().replace(/\s+/g, " ").trim()}`;
+      grouped.set(key, [...(grouped.get(key) ?? []), record]);
+    });
+
+    return [...grouped.entries()].map(([key, records]) => {
+      const sortedRecords = [...records].sort((a, b) => normalizeDateForFilter(b.date).localeCompare(normalizeDateForFilter(a.date)));
+      const first = sortedRecords[0];
+      return {
+        key,
+        employeeId: first.employeeId,
+        name: attendanceName(first),
+        records: sortedRecords,
+        totalHours: sortedRecords.reduce((sum, record) => sum + toSafeNumber(record.totalHours), 0),
+        lateMinutes: sortedRecords.reduce((sum, record) => sum + toSafeNumber(record.late), 0),
+        undertimeMinutes: sortedRecords.reduce((sum, record) => sum + toSafeNumber(record.undertime), 0),
+        overtimeMinutes: sortedRecords.reduce((sum, record) => sum + toSafeNumber(record.overtime), 0),
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [filtered, employeeNames]);
+
   const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / rowsPerPage)),
-    [filtered.length, rowsPerPage],
+    () => Math.max(1, Math.ceil(employeeGroups.length / rowsPerPage)),
+    [employeeGroups.length, rowsPerPage],
   );
 
   useEffect(() => {
@@ -1975,12 +2008,12 @@ export default function AttendanceMonitoring() {
 
   const paginatedFiltered = useMemo(() => {
     const start = page * rowsPerPage;
-    return filtered.slice(start, start + rowsPerPage);
-  }, [filtered, page, rowsPerPage]);
-  const employeePhotos = useProfilePhotoDirectory('employee', paginatedFiltered.map(record => record.employeeId));
+    return employeeGroups.slice(start, start + rowsPerPage);
+  }, [employeeGroups, page, rowsPerPage]);
+  const employeePhotos = useProfilePhotoDirectory('employee', paginatedFiltered.map(group => group.employeeId));
 
-  const pageStart = filtered.length === 0 ? 0 : page * rowsPerPage + 1;
-  const pageEnd = Math.min((page + 1) * rowsPerPage, filtered.length);
+  const pageStart = employeeGroups.length === 0 ? 0 : page * rowsPerPage + 1;
+  const pageEnd = Math.min((page + 1) * rowsPerPage, employeeGroups.length);
   const canGoPrevious = page > 0;
   const canGoNext = page < totalPages - 1;
 
@@ -2549,318 +2582,93 @@ export default function AttendanceMonitoring() {
         </Paper>
       ) : isSmallScreen ? (
         <Stack spacing={1.25}>
-          {filtered.length === 0 ? (
+          {employeeGroups.length === 0 ? (
             <Paper elevation={0} sx={{ ...softCardSx, p: 3, textAlign: "center", color: GREEN_UI.muted }}>
               {attendances.length === 0
                 ? "No attendance records yet. Use Manual Entry or Import Biometric Data."
                 : "No results match your filters."}
             </Paper>
-          ) : (
-            paginatedFiltered.map((att) => (
-              <Paper key={att.id} elevation={0} sx={{ ...softCardSx, p: 2 }}>
-                <Stack spacing={1.5}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      gap: 1,
-                    }}
-                  >
-                    <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ProfilePhotoAvatar photo={att.employeeId ? employeePhotos.get(att.employeeId) : undefined} name={attendanceName(att)}
-                        sx={{ ...iconTileSx, width: 34, height: 34, fontSize: '0.82rem' }} />
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography fontWeight={700} noWrap sx={{ color: GREEN_UI.text }}>
-                          {attendanceName(att)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                          {formatDisplayDate(normalizeDateForFilter(att.date))}{!att.employeeId && ' · Employee link needed'}
-                        </Typography>
-                      </Box>
+          ) : paginatedFiltered.map(group => (
+            <Paper key={group.key} elevation={0} sx={{ ...softCardSx, p: 2 }}>
+              <Stack spacing={1.5}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
+                  <Box sx={{ minWidth: 0, display: "flex", alignItems: "center", gap: 1 }}>
+                    <ProfilePhotoAvatar photo={group.employeeId ? employeePhotos.get(group.employeeId) : undefined} name={group.name}
+                      sx={{ ...iconTileSx, width: 38, height: 38, fontSize: "0.82rem" }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography fontWeight={750} noWrap sx={{ color: GREEN_UI.text }}>{group.name}</Typography>
+                      <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>{group.employeeId || "Employee link needed"}</Typography>
                     </Box>
-                    <Chip
-                      label={att.status}
-                      size="small"
-                      variant="outlined"
-                      sx={statusChipSx(att.status)}
-                    />
                   </Box>
-
-                  <Grid container spacing={1.5}>
-                    {[
-                      ["Time In", att.timeIn || "—"],
-                      ["Time Out", att.timeOut || "—"],
-                      ["Total Hours", att.totalHours || "—"],
-                      ["Late", `${att.late || 0} min`],
-                      ["Undertime", `${att.undertime || 0} min`],
-                      ["Overtime", `${att.overtime || 0} min`],
-                    ].map(([label, value]) => (
+                  <Chip size="small" label={`${group.records.length} record${group.records.length === 1 ? "" : "s"}`} variant="outlined" />
+                </Box>
+                <Grid container spacing={1.25}>
+                  {[["Total Hours", group.totalHours.toFixed(2)], ["Late", `${group.lateMinutes} min`], ["Undertime", `${group.undertimeMinutes} min`], ["Overtime", `${group.overtimeMinutes} min`]]
+                    .map(([label, value]) => (
                       <Grid key={label} size={{ xs: 6 }}>
-                        <Typography variant="caption" sx={{ color: GREEN_UI.muted, fontWeight: 700 }}>
-                          {label}
-                        </Typography>
-                        <Typography variant="body2" fontWeight={600} sx={{ color: GREEN_UI.text }}>
-                          {value}
-                        </Typography>
+                        <Typography variant="caption" sx={{ color: GREEN_UI.muted, fontWeight: 700 }}>{label}</Typography>
+                        <Typography variant="body2" fontWeight={700} sx={{ color: GREEN_UI.text }}>{value}</Typography>
                       </Grid>
                     ))}
-                  </Grid>
-
-                  {att.approvedTime && <Typography variant="caption">{att.approvedTime}</Typography>}
-                  {canManageAttendance && (
-                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                      <Chip
-                        label="View Details"
-                        size="small"
-                        clickable
-                        variant="outlined"
-                        icon={<VisibilityOutlined />}
-                        onClick={() => setDetailsRecord(att)}
-                        sx={{ ...pillButtonSx, minWidth: 120 }}
-                      />
-                      <Chip
-                        label="Correct"
-                        size="small"
-                        clickable
-                        variant="outlined"
-                        color="warning"
-                        onClick={() => openEdit(att)}
-                        sx={{ ...pillButtonSx, minWidth: 104 }}
-                      />
-                      <Chip
-                        label="Delete"
-                        size="small"
-                        clickable
-                        variant="outlined"
-                        color="error"
-                        onClick={() => handleDelete(att.id)}
-                        sx={{ ...pillButtonSx, minWidth: 96 }}
-                      />
-                    </Box>
-                  )}
-                </Stack>
-              </Paper>
-            ))
-          )}
+                </Grid>
+                <Button variant="outlined" startIcon={<VisibilityOutlined />} onClick={() => setSelectedEmployeeGroup(group)} sx={pillButtonSx}>
+                  View Attendance
+                </Button>
+              </Stack>
+            </Paper>
+          ))}
         </Stack>
       ) : (
-        <TableContainer
-          component={Paper}
-          elevation={0}
-          sx={{
-            ...softCardSx,
-            overflowX: "auto",
-            "&::-webkit-scrollbar": { height: 10 },
-            "&::-webkit-scrollbar-thumb": { bgcolor: "#cfe8d1"},
-          }}
-        >
-          <Table sx={{ minWidth: 960, "& th, & td": { borderColor: "rgba(139, 184, 144, 0.16)" } }}>
+        <TableContainer component={Paper} elevation={0} sx={{ ...softCardSx, overflowX: "auto", "&::-webkit-scrollbar": { height: 10 }, "&::-webkit-scrollbar-thumb": { bgcolor: "#cfe8d1" } }}>
+          <Table sx={{ minWidth: 900, "& th, & td": { borderColor: "rgba(139, 184, 144, 0.16)" } }}>
             <TableHead>
-              <TableRow
-                sx={{
-                  background: "linear-gradient(90deg, #eff8eb 0%, #f8fcf5 100%)",
-                  "& th": {
-                    color: GREEN_UI.greenDark,
-                    fontWeight: 700,
-                    fontSize: "0.78rem",
-                    letterSpacing: "0.02em",
-                    textTransform: "uppercase",
-                    py: 1.7,
-                    whiteSpace: "nowrap",
-                  },
-                }}
-              >
-                <TableCell>ID</TableCell>
+              <TableRow sx={{ background: "linear-gradient(90deg, #eff8eb 0%, #f8fcf5 100%)", "& th": { color: GREEN_UI.greenDark, fontWeight: 700, fontSize: "0.78rem", letterSpacing: "0.02em", textTransform: "uppercase", py: 1.7, whiteSpace: "nowrap" } }}>
                 <TableCell>Employee</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Time In</TableCell>
-                <TableCell>Time Out</TableCell>
+                <TableCell>Attendance Records</TableCell>
                 <TableCell>Total Hours</TableCell>
                 <TableCell>Late (min)</TableCell>
                 <TableCell>Undertime (min)</TableCell>
                 <TableCell>Overtime (min)</TableCell>
-                <TableCell>Discrepancy</TableCell>
-                <TableCell>Status</TableCell>
-                {canManageAttendance && <TableCell>Actions</TableCell>}
+                <TableCell>Latest Record</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={canManageAttendance ? 12 : 11}
-                    align="center"
-                    sx={{ py: 7, color: GREEN_UI.muted }}
-                  >
-                    {attendances.length === 0
-                      ? "No attendance records yet. Use Manual Entry or Import Biometric Data."
-                      : "No results match your filters."}
+              {employeeGroups.length === 0 ? (
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 7, color: GREEN_UI.muted }}>
+                  {attendances.length === 0 ? "No attendance records yet. Use Manual Entry or Import Biometric Data." : "No results match your filters."}
+                </TableCell></TableRow>
+              ) : paginatedFiltered.map(group => (
+                <TableRow key={group.key} hover sx={{ "&:hover": { backgroundColor: "rgba(230, 248, 233, 0.36) !important" } }}>
+                  <TableCell sx={{ minWidth: 230 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <ProfilePhotoAvatar photo={group.employeeId ? employeePhotos.get(group.employeeId) : undefined} name={group.name}
+                        sx={{ ...iconTileSx, width: 38, height: 38, fontSize: "0.82rem" }} />
+                      <Box>
+                        <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>{group.name}</Typography>
+                        <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>{group.employeeId || "Employee link needed"}</Typography>
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell>{group.records.length}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{group.totalHours.toFixed(2)}</TableCell>
+                  <TableCell sx={{ color: group.lateMinutes ? "warning.main" : "inherit" }}>{group.lateMinutes}</TableCell>
+                  <TableCell sx={{ color: group.undertimeMinutes ? "warning.main" : "inherit" }}>{group.undertimeMinutes}</TableCell>
+                  <TableCell sx={{ color: group.overtimeMinutes ? "success.main" : "inherit" }}>{group.overtimeMinutes}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDisplayDate(normalizeDateForFilter(group.records[0].date))}</TableCell>
+                  <TableCell>
+                    <Button size="small" variant="outlined" startIcon={<VisibilityOutlined />} onClick={() => setSelectedEmployeeGroup(group)} sx={pillButtonSx}>
+                      View
+                    </Button>
                   </TableCell>
                 </TableRow>
-              ) : (
-                paginatedFiltered.map((att) => (
-                  <TableRow
-                    key={att.id}
-                    hover
-                    sx={{
-                      transition: "background 160ms ease",
-                      "&:hover": { backgroundColor: "rgba(230, 248, 233, 0.36) !important" },
-                    }}
-                  >
-                    <TableCell>
-                      <Chip
-                        icon={<BadgeRounded sx={{ fontSize: "15px !important" }} />}
-                        label={att.displayId ?? att.id}
-                        size="small"
-                        variant="outlined"
-                        sx={{
-                          fontWeight: 600,
-                          color: GREEN_UI.greenDark,
-                          borderColor: GREEN_UI.borderStrong,
-                          bgcolor: GREEN_UI.greenSoft,
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 190 }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <ProfilePhotoAvatar photo={att.employeeId ? employeePhotos.get(att.employeeId) : undefined} name={attendanceName(att)}
-                          sx={{ ...iconTileSx, width: 34, height: 34, fontSize: '0.82rem' }} />
-                        <Box>
-                          <Typography fontWeight={600} sx={{ color: GREEN_UI.text, whiteSpace: "nowrap" }}>{attendanceName(att)}</Typography>
-                          {!att.employeeId && <Typography variant="caption" color="warning.dark">Employee link needed</Typography>}
-                        </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, color: GREEN_UI.text }}>
-                        <CalendarMonthRounded sx={{ fontSize: 18, color: GREEN_UI.greenDark }} />
-                        <Typography variant="body2" fontWeight={700}>{formatDisplayDate(normalizeDateForFilter(att.date))}</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                        <AccessTimeRounded sx={{ fontSize: 18, color: GREEN_UI.greenDark }} />
-                        <Typography variant="body2" fontWeight={700}>{att.timeIn || "—"}</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                        <TimerRounded sx={{ fontSize: 18, color: GREEN_UI.greenDark }} />
-                        <Typography variant="body2" fontWeight={700}>{att.timeOut || "—"}</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: GREEN_UI.text }}>{att.totalHours}</TableCell>
-                    <TableCell
-                      sx={{
-                        color:
-                          Number(att.late) > 0 ? "warning.main" : "inherit",
-                      }}
-                    >
-                      {att.late}
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        color:
-                          Number(att.undertime) > 0
-                            ? "warning.main"
-                            : "inherit",
-                      }}
-                    >
-                      {att.undertime}
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        color:
-                          Number(att.overtime) > 0 ? "success.main" : "inherit",
-                      }}
-                    >
-                      {att.overtime}
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 210 }}>
-                      <Chip
-                        label={att.discrepancy}
-                        size="small"
-                        variant="outlined"
-                        sx={{
-                          maxWidth: 260,
-                          bgcolor: needsAttendanceReview(att.discrepancy) ? "#fff7e0" : GREEN_UI.greenSoft,
-                          color: needsAttendanceReview(att.discrepancy) ? "#9b6b00" : GREEN_UI.greenDark,
-                          borderColor: needsAttendanceReview(att.discrepancy) ? "#f5d786" : GREEN_UI.borderStrong,
-                          fontWeight: 600,
-                          "& .MuiChip-label": {
-                            display: "block",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          },
-                        }}
-                      />
-                      <Typography variant="caption" display="block">
-                        {att.source || "Unknown source"} · {att.validationStatus || "Unprocessed"}
-                        {att.reviewedBy && ` · Reviewed by ${att.reviewedBy}`}
-                      </Typography>
-                      {att.approvedTime && <Typography variant="caption" display="block">{att.approvedTime}</Typography>}
-                      {canReviewAttendance && att.employeeId && ["Needs Review", "Unprocessed", "Corrected"].includes(att.validationStatus ?? "") && (
-                        <Button size="small" disabled={saving} onClick={() => reviewAttendance(att)}>Mark Reviewed</Button>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={att.status}
-                        size="small"
-                        variant="outlined"
-                        sx={statusChipSx(att.status)}
-                      />
-                    </TableCell>
-                    {canManageAttendance && (
-                      <TableCell>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 0.5,
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <Chip
-                            label="View Details"
-                            size="small"
-                            clickable
-                            variant="outlined"
-                            icon={<VisibilityOutlined />}
-                            onClick={() => setDetailsRecord(att)}
-                            sx={{ ...pillButtonSx, minWidth: 110 }}
-                          />
-                          <Chip
-                            label="Correct"
-                            size="small"
-                            clickable
-                            variant="outlined"
-                            color="warning"
-                            onClick={() => openEdit(att)}
-                            sx={{ ...pillButtonSx, minWidth: 110 }}
-                          />
-                          <Chip
-                            label="Delete"
-                            size="small"
-                            clickable
-                            variant="outlined"
-                            color="error"
-                            onClick={() => handleDelete(att.id)}
-                            sx={{ ...pillButtonSx, minWidth: 110 }}
-                          />
-                        </Box>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
-              )}
+              ))}
             </TableBody>
           </Table>
         </TableContainer>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && employeeGroups.length > 0 && (
         <Paper
           elevation={0}
           sx={{
@@ -2915,7 +2723,7 @@ export default function AttendanceMonitoring() {
               variant="body2"
               sx={{ minWidth: 135, color: GREEN_UI.muted, fontWeight: 600 }}
             >
-              {pageStart}-{pageEnd} of {filtered.length}
+              {pageStart}-{pageEnd} of {employeeGroups.length} employees
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <Tooltip title="Previous page">
@@ -2987,6 +2795,96 @@ export default function AttendanceMonitoring() {
           </Grid>
         </Paper>
       )}
+
+      <Dialog
+        open={Boolean(selectedEmployeeGroup)}
+        onClose={() => setSelectedEmployeeGroup(null)}
+        maxWidth="xl"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: { xs: 3, sm: 4 }, border: `1px solid ${GREEN_UI.border}`, boxShadow: GREEN_UI.shadow, bgcolor: GREEN_UI.cardBg } }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+            <Box sx={{ ...iconTileSx, width: 40, height: 40 }}><FactCheckRounded fontSize="small" /></Box>
+            <Box>
+              <Typography variant="h6" fontWeight={800} sx={{ color: GREEN_UI.text }}>
+                {selectedEmployeeGroup?.name} · Attendance Details
+              </Typography>
+              <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
+                {selectedEmployeeGroup?.employeeId || "Employee link needed"} · {selectedEmployeeGroup?.records.length ?? 0} attendance record(s) in the current view
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: "12px !important" }}>
+          <TableContainer sx={{ border: `1px solid ${GREEN_UI.border}`, borderRadius: 2, overflowX: "auto" }}>
+            <Table size="small" sx={{ minWidth: 1050 }}>
+              <TableHead>
+                <TableRow sx={{ background: "linear-gradient(90deg, #eff8eb 0%, #f8fcf5 100%)", "& th": { color: GREEN_UI.greenDark, fontWeight: 800, whiteSpace: "nowrap" } }}>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Time In</TableCell>
+                  <TableCell>Time Out</TableCell>
+                  <TableCell>Total Hours</TableCell>
+                  <TableCell>Late</TableCell>
+                  <TableCell>Undertime</TableCell>
+                  <TableCell>Overtime</TableCell>
+                  <TableCell>Status / Validation</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(selectedEmployeeGroup?.records ?? []).map(record => (
+                  <TableRow key={record.id} hover>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDisplayDate(normalizeDateForFilter(record.date))}</TableCell>
+                    <TableCell>{record.timeIn || "—"}</TableCell>
+                    <TableCell>{record.timeOut || "—"}</TableCell>
+                    <TableCell>{record.totalHours || "0"}</TableCell>
+                    <TableCell>{record.late || "0"} min</TableCell>
+                    <TableCell>{record.undertime || "0"} min</TableCell>
+                    <TableCell>{record.overtime || "0"} min</TableCell>
+                    <TableCell sx={{ minWidth: 170 }}>
+                      <Chip size="small" label={record.status} variant="outlined" sx={statusChipSx(record.status)} />
+                      <Typography variant="caption" display="block" sx={{ color: GREEN_UI.muted }}>
+                        {record.validationStatus || "Unprocessed"} · {record.source || "Unknown source"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap" }}>
+                        <Tooltip title="View record details">
+                          <IconButton size="small" aria-label={`View attendance details for ${formatDisplayDate(normalizeDateForFilter(record.date))}`} onClick={() => setDetailsRecord(record)} sx={{ color: GREEN_UI.greenDark }}>
+                            <VisibilityOutlined fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        {canReviewAttendance && record.employeeId && ["Needs Review", "Unprocessed", "Corrected"].includes(record.validationStatus ?? "") && (
+                          <Button size="small" disabled={saving} onClick={() => reviewAttendance(record)}>Review</Button>
+                        )}
+                        {canManageAttendance && <>
+                          <Tooltip title="Correct record">
+                            <IconButton size="small" aria-label="Correct attendance record" onClick={() => { setSelectedEmployeeGroup(null); openEdit(record); }} sx={{ color: GREEN_UI.warningDark }}>
+                              <EditNote fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete record">
+                            <IconButton size="small" aria-label="Delete attendance record" onClick={() => { setSelectedEmployeeGroup(null); void handleDelete(record.id); }} sx={{ color: GREEN_UI.dangerDark }}>
+                              <DeleteSweep fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>}
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!selectedEmployeeGroup?.records.length && (
+                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: GREEN_UI.muted }}>No attendance records match the current filters.</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setSelectedEmployeeGroup(null)} sx={pillButtonSx}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={Boolean(detailsRecord)}
