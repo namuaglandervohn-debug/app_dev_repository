@@ -6,11 +6,11 @@ import {
   TableContainer, TableHead, TableRow, Chip, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, MenuItem, Grid,
   CircularProgress, Alert, Tooltip, IconButton, InputAdornment,
-  Divider,
+  Divider, Stack,
 } from '@mui/material';
 import {
   AddCircleOutline, Sync, EditNote, Visibility, VisibilityOff, Password, DeleteOutline,
-  AdminPanelSettings, Badge, ManageSearch,
+  AdminPanelSettings, Badge, ManageSearch, CheckCircleOutline, HighlightOff, HourglassEmpty,
 } from '@mui/icons-material';
 import { supabase } from "../../lib/supabaseClient";
 import { NO_OUTLET, OUTLETS } from '../../lib/constants';
@@ -36,6 +36,14 @@ interface EmployeeOption {
   name: string;
   outlet: string;
   position: string;
+}
+
+interface EmployeeAccountRequest {
+  id: string;
+  employee_id: string;
+  full_name: string;
+  email: string;
+  created_at: string;
 }
 
 const EMPTY_FORM = {
@@ -170,6 +178,10 @@ export default function UserManagement() {
   const [form, setForm]             = useState(EMPTY_FORM);
   const [editForm, setEditForm]     = useState<Partial<UserAccount>>({});
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+  const [employeeAccountRequests, setEmployeeAccountRequests] = useState<EmployeeAccountRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
+  const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null);
   const [search, setSearch]         = useState('');
   const [passwordForm, setPasswordForm] = useState(EMPTY_PASSWORD_FORM);
   const [showPwd, setShowPwd]       = useState(false);
@@ -216,6 +228,46 @@ export default function UserManagement() {
 };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  const fetchEmployeeAccountRequests = async () => {
+    setRequestsLoading(true);
+    setRequestsError(null);
+    const { data, error } = await supabase.from('employee_account_requests')
+      .select('id,employee_id,full_name,email,created_at').eq('status', 'Pending')
+      .order('created_at', { ascending: true });
+    if (error) {
+      setRequestsError(`Could not load employee registrations: ${error.message}`);
+      setEmployeeAccountRequests([]);
+    } else {
+      setEmployeeAccountRequests((data ?? []) as EmployeeAccountRequest[]);
+    }
+    setRequestsLoading(false);
+  };
+
+  useEffect(() => { void fetchEmployeeAccountRequests(); }, []);
+
+  const reviewEmployeeAccountRequest = async (request: EmployeeAccountRequest, action: 'approve' | 'reject') => {
+    if (reviewingRequestId) return;
+    setReviewingRequestId(request.id);
+    try {
+      const { data, error } = await supabase.rpc(action === 'approve'
+        ? 'approve_employee_account_request'
+        : 'reject_employee_account_request', { p_request_id: request.id });
+      if (error) throw error;
+      if (action === 'approve' && data?.approved !== true) throw new Error('HR approval was not confirmed.');
+      if (action === 'reject' && data?.rejected !== true) throw new Error('Request rejection was not confirmed.');
+      setEmployeeAccountRequests(current => current.filter(item => item.id !== request.id));
+      if (action === 'approve') await fetchUsers();
+      setSnackbar({ open: true, message: action === 'approve'
+        ? `${request.full_name}'s account is approved and linked to ${request.employee_id}.`
+        : `Registration request for ${request.employee_id} was rejected.`, severity: 'success' });
+    } catch (cause) {
+      setSnackbar({ open: true, message: cause instanceof Error ? cause.message : 'Could not review the registration.', severity: 'error' });
+      await fetchEmployeeAccountRequests();
+    } finally {
+      setReviewingRequestId(null);
+    }
+  };
 
   const fetchEmployeeOptions = async () => {
     const { data, error } = await supabase
@@ -689,8 +741,8 @@ export default function UserManagement() {
                 <Button
                   variant="contained"
                   startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <Sync />}
-                  onClick={fetchUsers}
-                  disabled={loading}
+                  onClick={() => { void fetchUsers(); void fetchEmployeeAccountRequests(); }}
+                  disabled={loading || requestsLoading}
                   sx={{
                     ...pillButtonSx,
                     py: 1.1,
@@ -723,6 +775,33 @@ export default function UserManagement() {
             </Button>
           </Box>
         </Box>
+      </Paper>
+
+      <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 2, sm: 2.5 }, mb: 2.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
+          <Box>
+            <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text }}>Employee self-registration requests</Typography>
+            <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>Approve to link a sign-in account to the employee record already in HRIS.</Typography>
+          </Box>
+          <Chip icon={<HourglassEmpty />} label={`${employeeAccountRequests.length} pending`} variant="outlined" sx={{ fontWeight: 700, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }} />
+        </Box>
+        {requestsError ? <Alert severity="warning" sx={{ mb: employeeAccountRequests.length ? 1.5 : 0 }}>{requestsError}</Alert> : null}
+        {requestsLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}><CircularProgress size={24} sx={{ color: GREEN_UI.green }} /></Box>
+          : employeeAccountRequests.length === 0 ? <Typography variant="body2" sx={{ color: GREEN_UI.muted, py: 1 }}>No employee registrations are waiting for review.</Typography>
+          : <Stack spacing={1}>
+            {employeeAccountRequests.map(request => (
+              <Box key={request.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap', p: 1.5, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfef9' }}>
+                <Box sx={{ minWidth: 220, flex: '1 1 300px' }}>
+                  <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>{request.full_name || 'Employee'} <Typography component="span" variant="body2" sx={{ color: GREEN_UI.muted }}>· {request.employee_id}</Typography></Typography>
+                  <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>{request.email} · Submitted {new Date(request.created_at).toLocaleDateString()}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button size="small" variant="outlined" color="error" startIcon={<HighlightOff />} disabled={Boolean(reviewingRequestId)} onClick={() => void reviewEmployeeAccountRequest(request, 'reject')}>Reject</Button>
+                  <Button size="small" variant="contained" startIcon={reviewingRequestId === request.id ? <CircularProgress size={15} color="inherit" /> : <CheckCircleOutline />} disabled={Boolean(reviewingRequestId)} onClick={() => void reviewEmployeeAccountRequest(request, 'approve')}>Approve and link</Button>
+                </Box>
+              </Box>
+            ))}
+          </Stack>}
       </Paper>
 
       <Grid container spacing={1.5} sx={{ mb: 2.5 }}>

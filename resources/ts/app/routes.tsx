@@ -22,9 +22,11 @@ import LandingPage from "./components/pages/LandingPage";
 import JobPostingManagement from "./components/pages/JobPostingManagement";
 import NotFoundPage from "./components/pages/NotFoundPage";
 import ApplicantPortal from './components/pages/ApplicantPortal';
+import EmployeeSelfRegistration from './components/pages/EmployeeSelfRegistration';
 
 export const router = createBrowserRouter([
   { path: '/applicant', element: <ApplicantPortal /> },
+  { path: '/employee-register', element: <EmployeeSelfRegistration /> },
   {
     path: "/",
     element: <LandingPage />,

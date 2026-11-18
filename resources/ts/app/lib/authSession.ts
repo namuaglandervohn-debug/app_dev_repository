@@ -47,6 +47,16 @@ export async function loadAuthProfile(client: Client, authUser: AuthIdentity): P
     const inactive = await client.from('user_accounts').select('user_id').eq('auth_user_id', authUser.id).maybeSingle();
     if (inactive.error) throw inactive.error;
     if (inactive.data) throw new MissingAuthProfileError(missingProfileMessage);
+    if (authUser.user_metadata?.registration_kind === 'employee') {
+      const registration = await client.from('employee_account_requests').select('status').eq('auth_user_id', authUser.id).maybeSingle();
+      if (registration.error) throw registration.error;
+      if (registration.data?.status === 'Pending') {
+        throw new MissingAuthProfileError('Your employee registration is awaiting HR approval. You can sign in after HR approves it.');
+      }
+      if (registration.data?.status === 'Rejected') {
+        throw new MissingAuthProfileError('Your employee registration was not approved. Please contact HR for assistance.');
+      }
+    }
     const applicant = await client.from('applicant_profiles').select('auth_user_id,profile').eq('auth_user_id', authUser.id).maybeSingle();
     if (applicant.error) throw applicant.error;
     let profile = applicant.data?.profile;

@@ -21,7 +21,9 @@ if (inBrowser && signupCallback) {
   // before the browser client can adopt it.
   const destination = window.location.pathname === '/applicant'
     ? window.location.pathname + window.location.search
-    : '/applicant';
+    : window.location.pathname === '/login' && new URLSearchParams(window.location.search).has('employeeRegistration')
+      ? window.location.pathname + window.location.search
+      : '/applicant';
   window.history.replaceState(window.history.state, '', destination);
 }
 

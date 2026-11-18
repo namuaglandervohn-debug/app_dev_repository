@@ -10,3 +10,12 @@ export function applicantConfirmationRedirect(origin: string) {
   }
   return new URL('/applicant', url).href;
 }
+
+export function employeeConfirmationRedirect(origin: string) {
+  const url = new URL(origin);
+  const { hostname } = url;
+  const isLoopback = hostname === 'localhost' || hostname.endsWith('.localhost')
+    || /^127(?:\.\d{1,3}){3}$/.test(hostname) || hostname === '[::1]';
+  const base = isLoopback ? new URL(publicApplicantUrl).origin : url.origin;
+  return new URL('/login?employeeRegistration=1', base).href;
+}

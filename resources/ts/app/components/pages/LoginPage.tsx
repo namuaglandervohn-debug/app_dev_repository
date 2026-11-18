@@ -61,14 +61,17 @@ export default function LoginPage() {
   const freshLogin = searchParams.get("fresh") === "1";
   const next = searchParams.get('next') ?? '';
   const nextQuery = /^\/apply(?:\?|$)/.test(next) ? `next=${encodeURIComponent(next)}` : '';
+  const employeeRegistration = searchParams.get('employeeRegistration') === '1';
   const applicantPath = nextQuery ? `/applicant?${nextQuery}` : '/applicant';
   const registrationPath = `/applicant?mode=register${nextQuery ? `&${nextQuery}` : ''}`;
   const [signInGroup, setSignInGroup] = useState<SignInGroup | null>(registrationEmail || nextQuery ? 'applicant' : null);
 
   useEffect(() => {
     if (consumeSignupEmailConfirmation()) {
-      setSignInGroup('applicant');
-      setNotice('Email verified. Sign in with your email and password.');
+      setSignInGroup(employeeRegistration ? 'employee' : 'applicant');
+      setNotice(employeeRegistration
+        ? 'Email verified. Your employee account still needs HR approval before you can sign in.'
+        : 'Email verified. Sign in with your email and password.');
     }
   }, []);
 
@@ -322,6 +325,9 @@ export default function LoginPage() {
               {signInGroup === 'staff' && <Typography variant="caption" sx={{ color: '#3e604b', display: 'block', mt: 0.75 }}>
                 HR/Admin, General Manager, Supervisor, and Accounting &amp; Finance
               </Typography>}
+              {signInGroup === 'employee' && <Button component={RouterLink} to="/employee-register" size="small" sx={{ mt: 0.5, px: 0, textTransform: 'none' }}>
+                Existing employee? Register your account
+              </Button>}
 
               <TextField
                 fullWidth
