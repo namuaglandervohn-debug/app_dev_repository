@@ -1429,7 +1429,6 @@ export default function AttendanceMonitoring() {
   const [importDialog, setImportDialog] = useState(false);
   const [importPreview, setImportPreview] = useState<Partial<Attendance>[]>([]);
   const [skippedImportRows, setSkippedImportRows] = useState<{ employee: string; date: string; reason: string }[]>([]);
-  const [importText, setImportText] = useState("");
   const [importFormat, setImportFormat] = useState("");
   const [parsingImport, setParsingImport] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -1623,7 +1622,6 @@ export default function AttendanceMonitoring() {
 
         if (isTextOnly) {
           const text = String(ev.target?.result ?? "");
-          setImportText(text);
           const result = parseTextForAttendance(text);
           applyImportResult(result.records, result.format);
           return;
@@ -1636,7 +1634,6 @@ export default function AttendanceMonitoring() {
           dense: true,
         });
         const result = parseWorkbookForAttendance(workbook);
-        setImportText("");
         applyImportResult(result.records, result.format);
       } catch (err: any) {
         setImportPreview([]);
@@ -1656,22 +1653,6 @@ export default function AttendanceMonitoring() {
       reader.readAsText(file);
     } else {
       reader.readAsArrayBuffer(file);
-    }
-  };
-
-  const handleParseTextInput = async () => {
-    if (!importText.trim()) return;
-
-    setParsingImport(true);
-    setImportPreview([]);
-    setImportFormat("");
-
-    try {
-      await waitForBrowserPaint();
-      const result = parseTextForAttendance(importText);
-      applyImportResult(result.records, result.format);
-    } finally {
-      setParsingImport(false);
     }
   };
 
@@ -1932,7 +1913,6 @@ export default function AttendanceMonitoring() {
 
       setImportDialog(false);
       setImportPreview([]);
-      setImportText("");
       setImportFormat("");
       setSnackbar({
         open: true,
@@ -3025,13 +3005,6 @@ export default function AttendanceMonitoring() {
             required
             value={form.employee}
             onChange={(e) => setForm({ ...form, employee: e.target.value })}
-            helperText={
-              form.employee
-                ? `Employee ID saved: ${form.employee}`
-                : employeeOptions.length === 0
-                  ? "No active employees found in employees table."
-                  : "Display shows the name; backend saves the Employee ID."
-            }
             InputLabelProps={{ shrink: true }}
           >
             <MenuItem value="">Select employee…</MenuItem>
@@ -3077,7 +3050,6 @@ export default function AttendanceMonitoring() {
           if (importing || parsingImport) return;
           setImportDialog(false);
           setImportPreview([]);
-          setImportText("");
           setImportFormat("");
         }}
         maxWidth="md"
@@ -3109,19 +3081,6 @@ export default function AttendanceMonitoring() {
           </Box>
         </DialogTitle>
         <DialogContent sx={{ pt: "12px !important" }}>
-          <Alert severity="info" sx={{ mb: 2, borderRadius: "18px" }}>
-            <strong>Import order:</strong>
-            <br />
-            <strong>1)</strong> Upload <code>Employee Attendance Record</code>{" "}
-            first to create the raw daily time-in/time-out rows.
-            <br />
-            <strong>2)</strong> Upload <code>Abnormal Report</code> second to
-            add absences, missing punches, late, and early-out exceptions.
-            <br />
-            <strong>3)</strong> Upload <code>Attendance Report</code> third for
-            time-card verification and missing daily rows. Duplicate
-            employee/date records are skipped automatically.
-          </Alert>
           <Box
             sx={{
               mb: 2,
@@ -3151,24 +3110,7 @@ export default function AttendanceMonitoring() {
                 onChange={handleFileUpload}
               />
             </Button>
-            <Button
-              variant="outlined"
-              onClick={handleParseTextInput}
-              disabled={!importText.trim() || parsingImport || importing}
-            >
-              {parsingImport ? "Parsing…" : "Parse Pasted Data"}
-            </Button>
           </Box>
-          <TextField
-            fullWidth
-            multiline
-            rows={6}
-            label="Paste biometric data here (optional CSV/text import)"
-            value={importText}
-            onChange={(e) => setImportText(e.target.value)}
-            placeholder="You may still paste a simple CSV here, but the Upload Report File button now supports the biometric Employee Attendance Record export directly."
-            disabled={importing}
-          />
 
           {parsingImport && (
             <Box sx={{ mt: 3 }}>
@@ -3275,7 +3217,6 @@ export default function AttendanceMonitoring() {
             onClick={() => {
               setImportDialog(false);
               setImportPreview([]);
-              setImportText("");
               setImportFormat("");
             }}
           >
