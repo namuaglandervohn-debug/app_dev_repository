@@ -72,6 +72,7 @@ const APPLICATION_FILE_TYPES = new Map(Object.entries({
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
 }));
 const applicationFileType = (file: File) => APPLICATION_FILE_TYPES.get(file.name.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? '');
+const applicationFileTitleKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
 const SUPPORTING_DOCUMENT_EXAMPLES = 'Transcript of Records, Birth Certificate, Medical Certificate, valid ID, training certificates, or other required documents';
 
 function ApplicationFilePreview({ file, onClose }: { file: File; onClose: () => void }) {
@@ -259,6 +260,8 @@ export default function ApplyForJobPage() {
   const [otherSkillsEnabled, setOtherSkillsEnabled] = useState(false);
   const [certificateFiles, setCertificateFiles] = useState<File[]>([]);
   const [certificateError, setCertificateError] = useState('');
+  const [documentTitles, setDocumentTitles] = useState<Record<string, string>>({});
+  const [documentTitleError, setDocumentTitleError] = useState('');
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const certificateInput = useRef<HTMLInputElement>(null);
   const [successDialog, setSuccessDialog] = useState(false);
@@ -302,6 +305,8 @@ export default function ApplyForJobPage() {
         setResumeFiles([]);
         setSupportingFiles([]);
         setCertificateFiles([]);
+        setDocumentTitles({});
+        setDocumentTitleError('');
         setMissingHistoryFiles([]);
         const rows = submissions.data ?? [];
         setHistory(rows);
@@ -347,6 +352,9 @@ export default function ApplyForJobPage() {
       setResumeFiles(files.resume);
       setSupportingFiles(files.supporting);
       setCertificateFiles(files.certificates);
+      setDocumentTitles(Object.fromEntries([
+        ...files.resume, ...files.supporting, ...files.certificates,
+      ].map(file => [applicationFileTitleKey(file), files.titlesByName[file.name] || file.name.replace(/\.[^.]+$/, '')])));
       setMissingHistoryFiles(files.missing);
       setChoosingHistory(false);
     } catch {
@@ -793,6 +801,12 @@ export default function ApplyForJobPage() {
     if (submitter?.dataset.submitApplication !== 'true') return;
 
     if (submissionInProgress.current || !validateAllSteps()) return;
+    const uploadedFiles = [...resumeFiles, ...supportingFiles, ...certificateFiles];
+    if (uploadedFiles.some(file => !documentTitles[applicationFileTitleKey(file)]?.trim())) {
+      setDocumentTitleError('Add a descriptive title for every uploaded file.');
+      setActiveStep(certificateFiles.some(file => !documentTitles[applicationFileTitleKey(file)]?.trim()) ? 3 : 5);
+      return;
+    }
     submissionInProgress.current = true;
     setSubmitting(true); setError(''); setEmailNotice(''); setEmailPending(false);
     try {
@@ -818,6 +832,7 @@ export default function ApplyForJobPage() {
       if (resumeFiles[0]) usedNames.add(resumeFiles[0].name);
       const additionalResumeFiles = await Promise.all(resumeFiles.slice(1).map(async (file) => ({
         name: uniqueName(file.name),
+        title: documentTitles[applicationFileTitleKey(file)]?.trim(),
         type: applicationFileType(file),
         data: await fileToDataUrl(file),
         category: 'resume',
@@ -825,11 +840,12 @@ export default function ApplyForJobPage() {
       const certificates = await Promise.all(certificateFiles.map(async file => {
         const name = uniqueName(file.name);
         const type = applicationFileType(file);
-        return { name, type, data: await fileToDataUrl(new Blob([file], { type })) };
+        return { name, title: documentTitles[applicationFileTitleKey(file)]?.trim(), type, data: await fileToDataUrl(new Blob([file], { type })) };
       }));
       const supportingDocumentFiles = [
+        ...(resumeFiles[0] ? [{ name: resumeFiles[0].name, title: documentTitles[applicationFileTitleKey(resumeFiles[0])]?.trim(), type: applicationFileType(resumeFiles[0]), category: 'resume' }] : []),
         ...additionalResumeFiles,
-        ...await Promise.all(supportingFiles.map(async (file) => ({ name: uniqueName(file.name), type: applicationFileType(file), data: await fileToDataUrl(file) }))),
+        ...await Promise.all(supportingFiles.map(async (file) => ({ name: uniqueName(file.name), title: documentTitles[applicationFileTitleKey(file)]?.trim(), type: applicationFileType(file), data: await fileToDataUrl(file) }))),
         ...certificates,
       ];
       const supportingDocumentNames = supportingDocumentFiles.map(file => file.name);
@@ -870,6 +886,7 @@ export default function ApplyForJobPage() {
         workExperience: normalizedWorkExperiences[0] ?? null,
         workExperiences: normalizedWorkExperiences,
         skills: formData.skills, otherSkills: formData.otherSkills.trim(), certifications: certificates.map(file => file.name),
+        documentTitles: Object.fromEntries(supportingDocumentFiles.map(file => [file.name, file.title])),
         characterReferences: normalizedCharacterReferences,
         emergencyContact: primaryEmergencyContact,
         emergencyContacts: normalizedEmergencyContacts,
@@ -1341,9 +1358,11 @@ export default function ApplyForJobPage() {
                       </Button>
                     </Box>
                     {certificateError && <Alert severity="error">{certificateError}</Alert>}
+                    {documentTitleError && <Alert severity="error">{documentTitleError}</Alert>}
                     {certificateFiles.map((file, index) => (
-                      <Stack key={`${file.name}-${index}`} direction="row" alignItems="center" justifyContent="space-between" gap={1} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
-                        <Typography variant="body2" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{file.name}</Typography>
+                      <Stack key={`${file.name}-${file.lastModified}-${index}`} direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between" gap={1} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
+                        <Typography variant="body2" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere', flex: 1 }}>{file.name}</Typography>
+                        <TextField size="small" required label="Document title" placeholder="e.g. Food Safety Training" value={documentTitles[applicationFileTitleKey(file)] ?? ''} onChange={event => { setDocumentTitles(current => ({ ...current, [applicationFileTitleKey(file)]: event.target.value })); setDocumentTitleError(''); }} sx={{ minWidth: { sm: 240 } }} />
                         {fileActions(file, () => setCertificateFiles(current => current.filter((_, fileIndex) => fileIndex !== index)))}
                       </Stack>
                     ))}
@@ -1438,8 +1457,10 @@ export default function ApplyForJobPage() {
                           </Button>
                           {resumeFiles.length ? (
                             <Stack spacing={1}>
+                              {documentTitleError && <Alert severity="error">{documentTitleError}</Alert>}
                               {resumeFiles.map((file, fileIndex) => <Stack key={`${file.name}-${file.lastModified}-${fileIndex}`} direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
-                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{file.name}</Typography></Stack>
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{file.name}</Typography></Stack>
+                                <TextField size="small" required label="Document title" placeholder="e.g. Resume / Biodata" value={documentTitles[applicationFileTitleKey(file)] ?? ''} onChange={event => { setDocumentTitles(current => ({ ...current, [applicationFileTitleKey(file)]: event.target.value })); setDocumentTitleError(''); }} sx={{ minWidth: { sm: 240 } }} />
                                 {fileActions(file, () => setResumeFiles(current => current.filter((_, index) => index !== fileIndex)), true)}
                               </Stack>)}
                             </Stack>
@@ -1466,9 +1487,11 @@ export default function ApplyForJobPage() {
                           </Button>
                           {supportingFiles.length > 0 ? (
                             <Stack spacing={1}>
+                              {documentTitleError && <Alert severity="error">{documentTitleError}</Alert>}
                               {supportingFiles.map((file, fileIndex) => (
                                 <Stack key={`${file.name}-${file.lastModified}-${fileIndex}`} direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #bbf7d0', bgcolor: '#f0fdf4' }}>
-                                  <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{file.name}</Typography></Stack>
+                                  <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}><CheckCircleOutlineRounded sx={{ color: '#15803d', fontSize: 18 }} /><Typography variant="body2" fontWeight={700} sx={{ color: '#14532d', overflowWrap: 'anywhere' }}>{file.name}</Typography></Stack>
+                                  <TextField size="small" required label="Document title" placeholder="e.g. Birth Certificate" value={documentTitles[applicationFileTitleKey(file)] ?? ''} onChange={event => { setDocumentTitles(current => ({ ...current, [applicationFileTitleKey(file)]: event.target.value })); setDocumentTitleError(''); }} sx={{ minWidth: { sm: 240 } }} />
                                   {fileActions(file, () => setSupportingFiles(prev => prev.filter((_, currentIndex) => currentIndex !== fileIndex)), true)}
                                 </Stack>
                               ))}

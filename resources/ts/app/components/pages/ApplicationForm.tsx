@@ -9,22 +9,10 @@ import {
 } from '@mui/material';
 import { ArrowBackIosNew, Send, TaskAlt, ContentCopy } from '@mui/icons-material';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
-import FileUploadField from '../FileUploadField';
 import { copyToClipboard } from '../../lib/copyToClipboard';
-import { saveApplicationFiles } from '../../lib/applicationFiles';
 import { supabase } from '../../lib/supabaseClient';
 import { submitApplicant } from '../../lib/submitApplicant';
 import ActionSnackbar from '../ActionSnackbar';
-
-/** Convert a File to a base64 data URI */
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function ApplicationForm() {
   const navigate = useNavigate();
@@ -33,8 +21,6 @@ export default function ApplicationForm() {
     firstName: '', lastName: '', email: '', phone: '',
     position: '', experience: '', education: '', coverLetter: '',
   });
-  const [resumeFiles, setResumeFiles] = useState<File[]>([]);
-  const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const submissionInProgress = useRef(false);
   const [error, setError] = useState('');
@@ -49,35 +35,6 @@ export default function ApplicationForm() {
     submissionInProgress.current = true;
     setSubmitting(true); setError('');
     try {
-      // Encode files as base64 so they persist and are viewable in HR view
-      let resumeFileName: string | null = null;
-      let resumeFileData: string | null = null;
-      if (resumeFiles[0]) {
-        resumeFileName = resumeFiles[0].name;
-        resumeFileData = await fileToBase64(resumeFiles[0]);
-      }
-      const usedNames = new Set<string>(resumeFileName ? [resumeFileName] : []);
-      const uniqueName = (original: string) => {
-        if (!usedNames.has(original)) { usedNames.add(original); return original; }
-        const dot = original.lastIndexOf('.');
-        const stem = dot > 0 ? original.slice(0, dot) : original;
-        const extension = dot > 0 ? original.slice(dot) : '';
-        let copy = 2;
-        let candidate = `${stem} (${copy})${extension}`;
-        while (usedNames.has(candidate)) candidate = `${stem} (${++copy})${extension}`;
-        usedNames.add(candidate);
-        return candidate;
-      };
-      const supportingDocumentFiles = await Promise.all([
-        ...resumeFiles.slice(1).map(async (f) => ({
-          name: uniqueName(f.name), type: f.type, data: await fileToBase64(f), category: 'resume',
-        })),
-        ...supportingFiles.map(async (f) => ({
-          name: uniqueName(f.name), type: f.type, data: await fileToBase64(f),
-        })),
-      ]);
-      const supportingDocumentNames = supportingDocumentFiles.map(file => file.name);
-
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
       const applicantId = await submitApplicant(supabase, {
@@ -91,18 +48,7 @@ export default function ApplicationForm() {
         experience: formData.experience,
         education: formData.education,
         cover_letter: formData.coverLetter,
-        resume_file_name: resumeFileName,
-        resume_file_data: resumeFileData,
-        supporting_documents: supportingDocumentNames,
-        supporting_document_files: supportingDocumentFiles,
         status: 'Submitted',
-      });
-
-      saveApplicationFiles(applicantId, {
-        resumeFileName,
-        resumeFileData,
-        supportingDocuments: supportingDocumentNames,
-        supportingDocumentFiles,
       });
 
       setNewAppId(applicantId);
@@ -125,8 +71,6 @@ export default function ApplicationForm() {
 
   const resetForm = () => {
     setFormData({ firstName: '', lastName: '', email: '', phone: '', position: '', experience: '', education: '', coverLetter: '' });
-    setResumeFiles([]);
-    setSupportingFiles([]);
   };
 
   const f = formData;
@@ -191,36 +135,6 @@ export default function ApplicationForm() {
             </Grid>
             <Grid size={12}>
               <TextField fullWidth multiline rows={4} label="Cover Letter / Message" value={f.coverLetter} onChange={set('coverLetter')} placeholder="Tell us why you're interested in this position..." />
-            </Grid>
-
-            {/* ── Resume Upload ── */}
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Typography variant="body2" fontWeight={600} sx={{ mb: 1, color: 'text.primary' }}>
-                Resume / CV
-              </Typography>
-              <FileUploadField
-                label="Upload Resume"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                multiple
-                files={resumeFiles}
-                onChange={setResumeFiles}
-                helperText="PDF, DOC, DOCX, JPG, PNG · Max 10 MB per file"
-              />
-            </Grid>
-
-            {/* ── Supporting Documents Upload ── */}
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Typography variant="body2" fontWeight={600} sx={{ mb: 1, color: 'text.primary' }}>
-                Supporting Documents
-              </Typography>
-              <FileUploadField
-                label="Upload Supporting Documents"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                multiple
-                files={supportingFiles}
-                onChange={setSupportingFiles}
-                helperText="IDs, certificates, and page images · PDF, DOC, DOCX, JPG, PNG · Max 10 MB per file"
-              />
             </Grid>
 
             <Grid size={12}>

@@ -37,7 +37,6 @@ import {
   CheckCircle,
 } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
-import FileUploadField from '../FileUploadField';
 import { useAuth } from '../../context/AuthContext';
 import ActionSnackbar from '../ActionSnackbar';
 import { APPLICANT_NATIONALITIES } from '../../lib/applicantProfile';
@@ -53,12 +52,10 @@ import { CIVIL_STATUS, GENDER, SUFFIXES, EDUCATIONAL_ATTAINMENT, HEAR_ABOUT_OPTI
 import { applicationTextFieldSx, applicationPrimaryButtonSx, applicationSecondaryButtonSx } from '../layouts/applicationFormStyles';
 
 interface DocFile {
-  name: string; type: string; data: string;
+  name: string; title?: string; type: string; data: string;
   category?: 'certificate';
 }
 
-const PROFILE_FILE_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
-const PROFILE_FILE_TYPES_LABEL = 'PDF, DOC, DOCX, JPG, JPEG, and PNG';
 const ACCOUNT_TABS = ['Account', 'Personal', 'Education', 'Work', 'References', 'Documents'];
 const EMPTY_PASSWORD_FIELDS = { password: '', confirmation: '', showPassword: false, showConfirmation: false };
 
@@ -66,12 +63,19 @@ function getProfileFiles(profile: Employee) {
   const applicantFiles = profile.applicantDocuments ?? [];
   const applicantCertificates = applicantFiles.filter(file => file.category === 'certificate');
   const certificates = [...applicantCertificates];
-  const documents = new Map(applicantFiles.filter(file => file.category !== 'certificate').map(file => [file.name, file]));
+  const documents = new Map<string, DocFile>();
+  for (const file of applicantFiles.filter(file => file.category !== 'certificate')) {
+    const existing = documents.get(file.name);
+    documents.set(file.name, { ...existing, ...file, title: file.title || existing?.title, data: file.data || existing?.data, type: file.type || existing?.type });
+  }
 
   for (const file of profile.employeeDocumentsOnly ?? []) {
     if (applicantCertificates.some(original => original.name === file.name && original.data === file.data)) continue;
     if (file.category === 'certificate') certificates.push(file);
-    else documents.set(file.name, file);
+    else {
+      const existing = documents.get(file.name);
+      documents.set(file.name, { ...existing, ...file, title: file.title || existing?.title, data: file.data || existing?.data, type: file.type || existing?.type });
+    }
   }
 
   return { certificates, documents: [...documents.values()] };
@@ -211,15 +215,6 @@ const TIME_OPTIONS = [
   '7:00 PM', '8:00 PM', '9:00 PM', '10:00 PM', '11:00 PM',
 ];
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 function downloadFile(dataUri: string, filename: string) {
   const a = document.createElement('a');
   a.href = dataUri;
@@ -346,9 +341,6 @@ export default function EmployeeProfile() {
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [deleteDialog, setDeleteDialog] = useState(false);
-  // New document upload state
-  const [newDocFiles, setNewDocFiles] = useState<File[]>([]);
-  const [newCertificateFiles, setNewCertificateFiles] = useState<File[]>([]);
   const [previewDoc, setPreviewDoc] = useState<DocFile | null>(null);
   const [wordPreview, setWordPreview] = useState<{ file: DocFile; text: string } | null>(null);
   const [profileTab, setProfileTab] = useState('Personal');
@@ -467,6 +459,7 @@ export default function EmployeeProfile() {
           applicantData?.resume_file_name && applicantData?.resume_file_data
             ? [{
                 name: applicantData.resume_file_name,
+                title: parsedApplication.documentTitles?.[applicantData.resume_file_name],
                 type: "application/pdf",
                 data: applicantData.resume_file_data,
               }]
@@ -477,9 +470,11 @@ export default function EmployeeProfile() {
           ...(Array.isArray(applicantData?.certifications) ? applicantData.certifications : []),
         ]);
         const supportingDocs: DocFile[] = Array.isArray(applicantData?.supporting_document_files)
-          ? applicantData.supporting_document_files.map((file: DocFile) =>
-            certificateNames.has(file.name) ? { ...file, category: 'certificate' } : file
-          )
+          ? applicantData.supporting_document_files.map((file: DocFile) => ({
+            ...file,
+            title: file.title || parsedApplication.documentTitles?.[file.name],
+            ...(certificateNames.has(file.name) ? { category: 'certificate' as const } : {}),
+          }))
           : [];
 
         applicantDocs = [...resumeDoc, ...supportingDocs];
@@ -565,11 +560,7 @@ export default function EmployeeProfile() {
   setSaving(true);
 
   try {
-    const addedFiles = [
-      ...newDocFiles.map(file => ({ file })),
-      ...newCertificateFiles.map(file => ({ file, category: 'certificate' as const })),
-    ];
-    const documentsChanged = addedFiles.length > 0 || editForm.employeeDocumentsOnly !== employee?.employeeDocumentsOnly;
+    const documentsChanged = editForm.employeeDocumentsOnly !== employee?.employeeDocumentsOnly;
 
     const employeeUpdate: Record<string, any> = {
       first_name: editForm.first_name ?? "",
@@ -599,13 +590,7 @@ export default function EmployeeProfile() {
     };
     if (nextOverride !== savedSalary) employeeUpdate.salary = nextOverride || null;
     if (documentsChanged) {
-      const encoded = await Promise.all(addedFiles.map(async ({ file, ...metadata }) => ({
-        name: file.name,
-        type: file.type,
-        data: await fileToBase64(file),
-        ...metadata,
-      })));
-      employeeUpdate.documents = [...(editForm.employeeDocumentsOnly ?? []), ...encoded];
+      employeeUpdate.documents = [...(editForm.employeeDocumentsOnly ?? [])];
     }
     const outletChanged = editForm.outlet !== employee?.outlet;
     if (outletChanged) {
@@ -735,8 +720,6 @@ export default function EmployeeProfile() {
     setEditForm(updatedEmployee);
     setEditing(false);
     setSalaryDraft(null);
-    setNewDocFiles([]);
-    setNewCertificateFiles([]);
     setPasswordFields(EMPTY_PASSWORD_FIELDS);
 
     setSnackbar({
@@ -860,8 +843,6 @@ export default function EmployeeProfile() {
     setEditing(false);
     setEditForm(employee);
     setSalaryDraft(null);
-    setNewDocFiles([]);
-    setNewCertificateFiles([]);
     setPasswordFields(EMPTY_PASSWORD_FIELDS);
   };
 
@@ -870,7 +851,10 @@ export default function EmployeeProfile() {
   const certificateNames = new Set((employee.applicantDocuments ?? [])
     .filter(file => file.category === 'certificate').map(file => file.name));
   const isGeneralDocument = (name: string) => !certificateNames.has(name);
-  const submittedDocumentNames = (employee.applicationForm?.submittedDocuments ?? []).filter(isGeneralDocument);
+  const submittedDocumentNames = (employee.applicationForm?.submittedDocuments ?? []).filter(isGeneralDocument).map(name => {
+    const document = profileFiles.documents.find(file => file.name === name);
+    return document?.title && document.title !== name ? `${document.title} (${name})` : name;
+  });
 
   const renderCertificates = (files: DocFile[], editable = false) => (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -878,7 +862,10 @@ export default function EmployeeProfile() {
       {files.map((file, index) => (
         <Paper key={`${file.name}-${index}`} variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: '16px', borderColor: GREEN_UI.border }}>
           <DocIcon name={file.name} type={file.type} />
-          <Typography variant="body2" fontWeight={600} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{file.name}</Typography>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" fontWeight={600} sx={{ overflowWrap: 'anywhere' }}>{file.title || file.name}</Typography>
+            {file.title && file.title !== file.name && <Typography variant="caption" color="text.secondary">{file.name}</Typography>}
+          </Box>
           {file.data && (
             <Tooltip title="Preview">
               <IconButton size="small" color="primary" aria-label={`Preview ${file.name}`} onClick={() => { setWordPreview(null); setPreviewDoc(file); }}>
@@ -1100,8 +1087,6 @@ export default function EmployeeProfile() {
                   onClick={() => {
                     setEditForm(employee);
                     setSalaryDraft(null);
-                    setNewDocFiles([]);
-                    setNewCertificateFiles([]);
                     setEditProfileTab(canManageAccount ? 'Account' : 'Personal');
                     setPasswordFields(EMPTY_PASSWORD_FIELDS);
                     setOtherSkillsEnabled(Boolean(employee.applicationForm?.otherSkills));
@@ -1342,9 +1327,9 @@ export default function EmployeeProfile() {
                           <DocIcon name={doc.name} type={doc.type} />
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography variant="body1" fontWeight={600} sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {doc.name}
+                              {doc.title || doc.name}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">Employee Document</Typography>
+                            <Typography variant="caption" color="text.secondary">{doc.title && doc.title !== doc.name ? `${doc.name} · ` : ''}Employee Document</Typography>
                           </Box>
                           {doc.data && (
                             <>
@@ -1637,9 +1622,6 @@ export default function EmployeeProfile() {
               <Paper elevation={0} sx={{ ...innerCardSx, p: { xs: 1.5, sm: 2 } }}>
                 <Typography variant="h6" sx={{ color: GREEN_UI.text, fontWeight: 700, mb: 2 }}>Certificates / Training</Typography>
                 {renderCertificates(editFiles.certificates, true)}
-                <Typography variant="body2" sx={{ mt: 2, mb: 1, fontWeight: 500 }}>Upload Additional Certificates</Typography>
-                <FileUploadField label="Upload Certificates" accept={PROFILE_FILE_TYPES} multiple files={newCertificateFiles}
-                  onChange={setNewCertificateFiles} browseButtonSx={applicationPrimaryButtonSx} browseFileLabel="Certificates" helperText={PROFILE_FILE_TYPES_LABEL} />
               </Paper>
             </Box>
           )}
@@ -1696,9 +1678,9 @@ export default function EmployeeProfile() {
                       <DocIcon name={doc.name} type={doc.type} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                          {doc.name}
+                          {doc.title || doc.name}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">Employee Document</Typography>
+                        <Typography variant="caption" color="text.secondary">{doc.title && doc.title !== doc.name ? `${doc.name} · ` : ''}Employee Document</Typography>
                       </Box>
                       {doc.data && (
                         <Tooltip title="Preview">
@@ -1720,8 +1702,6 @@ export default function EmployeeProfile() {
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ my: 2 }}>No documents uploaded yet.</Typography>
               )}
-              <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>Upload Additional Documents</Typography>
-              <FileUploadField label="Upload Documents" accept={PROFILE_FILE_TYPES} multiple files={newDocFiles} onChange={setNewDocFiles} browseButtonSx={applicationPrimaryButtonSx} helperText={PROFILE_FILE_TYPES_LABEL} />
             </Paper>
           )}
         </DialogContent>

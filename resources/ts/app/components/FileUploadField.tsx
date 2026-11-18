@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  Box, Typography, Button, Chip, IconButton, Stack, LinearProgress, type ButtonProps,
+  Box, Typography, Button, Chip, IconButton, Stack, LinearProgress, TextField, type ButtonProps,
 } from '@mui/material';
 import {
   UploadFile, InsertDriveFile, PictureAsPdf, Image as ImageIcon,
@@ -17,6 +17,8 @@ interface FileUploadFieldProps {
   maxSizeMB?: number;
   browseButtonSx?: ButtonProps['sx'];
   browseFileLabel?: string;
+  getFileTitle?: (file: File) => string;
+  onFileTitleChange?: (file: File, title: string) => void;
 }
 
 function getFileIcon(file: File) {
@@ -44,6 +46,8 @@ export default function FileUploadField({
   maxSizeMB = 10,
   browseButtonSx,
   browseFileLabel = 'Documents',
+  getFileTitle,
+  onFileTitleChange,
 }: FileUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -209,6 +213,8 @@ export default function FileUploadField({
                 <Typography variant="caption" color="text.secondary">
                   {formatBytes(file.size)}
                 </Typography>
+                {onFileTitleChange && <TextField size="small" fullWidth required label="Document title" placeholder="e.g. Birth Certificate"
+                  value={getFileTitle?.(file) ?? ''} onChange={event => onFileTitleChange(file, event.target.value)} sx={{ mt: 1 }} />}
               </Box>
               <Chip
                 label={file.name.split('.').pop()?.toUpperCase() ?? 'FILE'}

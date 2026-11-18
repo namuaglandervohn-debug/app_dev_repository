@@ -70,11 +70,12 @@ import ActionSnackbar from '../ActionSnackbar';
 
 interface DocFile {
   name: string;
+  title?: string;
   type: string;
   data: string; // base64 data URI
 }
 
-type DocumentItem = { name: string; data?: string; type?: string; isCertificate?: boolean };
+type DocumentItem = { name: string; title?: string; data?: string; type?: string; isCertificate?: boolean };
 
 type AppStatus =
   | 'Submitted'
@@ -600,6 +601,7 @@ const getFileTypeFromName = (name?: string) => {
 const buildDocumentsForApplication = (app: Application | null, submittedDocuments: string[] = []): DocumentItem[] => {
   if (!app) return [];
   const docs = new Map<string, DocumentItem>();
+  const documentTitles = safeJsonParse(app.coverLetter).documentTitles ?? {};
   const certificateNames = new Set([
     ...ensureArray<string>(app.raw?.certifications),
     ...ensureArray<string>(safeJsonParse(app.coverLetter).certifications),
@@ -608,17 +610,25 @@ const buildDocumentsForApplication = (app: Application | null, submittedDocument
   if (app.resumeFileName) {
     docs.set(app.resumeFileName, {
       name: app.resumeFileName,
+      title: documentTitles[app.resumeFileName],
       data: app.resumeFileData,
       type: getFileTypeFromName(app.resumeFileName),
     });
   }
 
   (app.supportingDocumentFiles ?? []).forEach(file => {
-    docs.set(file.name, { name: file.name, data: file.data, type: file.type });
+    const existing = docs.get(file.name);
+    docs.set(file.name, {
+      ...existing,
+      name: file.name,
+      title: file.title || documentTitles[file.name] || existing?.title,
+      data: file.data || existing?.data,
+      type: file.type || existing?.type,
+    });
   });
 
   submittedDocuments.forEach(name => {
-    if (!docs.has(name)) docs.set(name, { name });
+    if (!docs.has(name)) docs.set(name, { name, title: documentTitles[name] });
   });
 
   return [...docs.values()].map(doc => ({
@@ -1697,7 +1707,7 @@ export default function RecruitmentManagement() {
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
                 <Typography fontWeight={600} noWrap sx={{ maxWidth: '100%' }}>
-                  {doc.name}
+                  {doc.title || doc.name}
                 </Typography>
                 {doc.isCertificate && (
                   <Chip label="Certificates" size="small"
@@ -1705,7 +1715,7 @@ export default function RecruitmentManagement() {
                 )}
               </Box>
               <Typography variant="caption" color="text.secondary">
-                {hasData
+                {doc.title && doc.title !== doc.name ? `File: ${doc.name} · ` : ''}{hasData
                   ? 'File ready for preview and download'
                   : documentsLoading
                     ? 'Loading file data automatically…'
@@ -1746,7 +1756,10 @@ export default function RecruitmentManagement() {
     const docs = applicationDocuments.filter(document => !document.isCertificate);
     const submittedDocumentNames = submittedDocuments.filter(name =>
       !applicationDocuments.some(document => document.name === name && document.isCertificate)
-    );
+    ).map(name => {
+      const document = applicationDocuments.find(item => item.name === name);
+      return document?.title && document.title !== name ? `${document.title} (${name})` : name;
+    });
 
     return (
       <>

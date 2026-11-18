@@ -46,7 +46,8 @@ interface Application {
   pagibig?: string; documents?: DocFile[];
 }
 
-interface DocFile { name: string; size: number; uploadedAt: string; dataUrl?: string; }
+interface DocFile { name: string; title?: string; type?: string; size: number; uploadedAt: string; data?: string; dataUrl?: string; }
+const profileFileTitleKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
 
 const salaryFormatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 
@@ -102,7 +103,6 @@ const applicationFieldIcons: Record<string, typeof AccountCircle> = {
   'Declaration Date': CalendarMonth,
 };
 
-const DOCS_KEY = 'my_profile_docs';
 
 const GREEN_UI = {
   pageBg: 'radial-gradient(circle at top left, rgba(220, 246, 219, 0.95), rgba(248, 252, 245, 0.98) 34%, #f7fbf3 100%)',
@@ -154,18 +154,25 @@ const safeJson = (value: unknown): any => {
 
 const normalizeApplicationDocuments = (applicant: any, coverLetter: any): DocFile[] => {
   const docs: DocFile[] = [];
-  const pushDoc = (name: unknown, dataUrl?: unknown) => {
+  const pushDoc = (name: unknown, dataUrl?: unknown, title?: unknown) => {
     const cleanName = String(name ?? '').trim();
-    if (!cleanName || docs.some(doc => doc.name === cleanName)) return;
+    if (!cleanName) return;
+    const existing = docs.find(doc => doc.name === cleanName);
+    if (existing) {
+      if (!existing.title && typeof title === 'string') existing.title = title;
+      if (!existing.dataUrl && typeof dataUrl === 'string') existing.dataUrl = dataUrl;
+      return;
+    }
     docs.push({
       name: cleanName,
+      title: typeof title === 'string' ? title : undefined,
       size: 0,
       uploadedAt: applicant?.created_at ?? new Date().toISOString(),
       dataUrl: typeof dataUrl === 'string' ? dataUrl : undefined,
     });
   };
 
-  pushDoc(applicant?.resume_file_name, applicant?.resume_file_data);
+  pushDoc(applicant?.resume_file_name, applicant?.resume_file_data, coverLetter?.documentTitles?.[applicant?.resume_file_name]);
 
   const fileSources = [
     applicant?.supporting_document_files,
@@ -186,7 +193,7 @@ const normalizeApplicationDocuments = (applicant: any, coverLetter: any): DocFil
       if (typeof item === 'string') {
         pushDoc(item);
       } else {
-        pushDoc(item?.name ?? item?.fileName ?? item?.label, item?.data ?? item?.dataUrl);
+        pushDoc(item?.name ?? item?.fileName ?? item?.label, item?.data ?? item?.dataUrl, item?.title ?? coverLetter?.documentTitles?.[item?.name ?? item?.fileName]);
       }
     });
   });
@@ -207,7 +214,7 @@ const mimeFromFileName = (name: string) => {
 };
 
 const getDocSource = (doc: DocFile) => {
-  const raw = String(doc.dataUrl ?? '').trim();
+  const raw = String(doc.dataUrl ?? doc.data ?? '').trim();
   if (!raw) return '';
   if (raw.startsWith('data:') || raw.startsWith('blob:') || raw.startsWith('http')) return raw;
   return `data:${mimeFromFileName(doc.name)};base64,${raw}`;
@@ -236,6 +243,8 @@ export default function MyProfile() {
   // Document management
   const [docs, setDocs] = useState<DocFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingTitles, setPendingTitles] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const salaryEmployeeId = user?.role === 'employee' && user.employeeId === employee?.id ? employee?.id : undefined;
   const salaryPosition = jobTitleKey(employee?.position ?? '');
@@ -281,6 +290,7 @@ export default function MyProfile() {
             .maybeSingle();
 
           employeeRow = row;
+          setDocs(Array.isArray(row?.documents) ? row.documents : []);
 
           const { data: account } = await supabase
             .from('user_accounts')
@@ -381,18 +391,13 @@ export default function MyProfile() {
         setLoading(false);
       }
     })();
-    // Load local documents
-    try {
-      const stored = localStorage.getItem(`${DOCS_KEY}_${user.id ?? user.email}`);
-      if (stored) setDocs(JSON.parse(stored));
-    } catch (_) {}
   }, [user]);
 
-  const saveDocs = (newDocs: DocFile[]) => {
+  const saveDocs = async (newDocs: DocFile[]) => {
+    if (!user?.employeeId || employee?.id !== user.employeeId) throw new Error('Your employee record could not be verified.');
+    const { error } = await supabase.from('employees').update({ documents: newDocs }).eq('employee_id', user.employeeId);
+    if (error) throw error;
     setDocs(newDocs);
-    try {
-      localStorage.setItem(`${DOCS_KEY}_${user?.id ?? user?.email}`, JSON.stringify(newDocs));
-    } catch (_) {}
   };
 
   const handleSave = async () => {
@@ -430,28 +435,57 @@ export default function MyProfile() {
     setSnackbar({ open: true, message: 'Profile picture updated.', severity: 'success' });
   };
 
-  const handleFileUpload = async (files: FileList | null) => {
+  const handleFileUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    setUploading(true);
-    const newDocs: DocFile[] = [...docs];
-    for (const file of Array.from(files)) {
-      await new Promise<void>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          newDocs.push({
-            name: file.name,
-            size: file.size,
-            uploadedAt: new Date().toISOString(),
-            dataUrl: e.target?.result as string,
-          });
-          resolve();
-        };
-        reader.readAsDataURL(file);
-      });
+    const incoming = Array.from(files);
+    if (incoming.some(file => file.size > 10 * 1024 * 1024)) {
+      setSnackbar({ open: true, message: 'Each file must be 10 MB or smaller.', severity: 'error' });
+      return;
     }
-    saveDocs(newDocs);
-    setUploading(false);
-    setSnackbar({ open: true, message: `✅ ${files.length} document(s) uploaded!`, severity: 'success' });
+    setPendingFiles(current => [...current, ...incoming]);
+  };
+
+  const savePendingFiles = async () => {
+    if (!pendingFiles.length || uploading) return;
+    if (pendingFiles.some(file => !pendingTitles[profileFileTitleKey(file)]?.trim())) {
+      setSnackbar({ open: true, message: 'Add a descriptive title for every selected file.', severity: 'error' });
+      return;
+    }
+    setUploading(true);
+    try {
+      const usedNames = new Set(docs.map(doc => doc.name));
+      const uniqueName = (original: string) => {
+        if (!usedNames.has(original)) { usedNames.add(original); return original; }
+        const dot = original.lastIndexOf('.');
+        const stem = dot > 0 ? original.slice(0, dot) : original;
+        const extension = dot > 0 ? original.slice(dot) : '';
+        let copy = 2;
+        let candidate = `${stem} (${copy})${extension}`;
+        while (usedNames.has(candidate)) candidate = `${stem} (${++copy})${extension}`;
+        usedNames.add(candidate);
+        return candidate;
+      };
+      const encoded = await Promise.all(pendingFiles.map(async file => ({
+        name: uniqueName(file.name),
+        title: pendingTitles[profileFileTitleKey(file)].trim(),
+        type: file.type,
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        data: await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}.`));
+          reader.readAsDataURL(file);
+        }),
+      })));
+      await saveDocs([...docs, ...encoded]);
+      const uploadedCount = pendingFiles.length;
+      setPendingFiles([]);
+      setPendingTitles({});
+      setSnackbar({ open: true, message: `${uploadedCount} document(s) uploaded.`, severity: 'success' });
+    } catch (error) {
+      setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Could not upload documents.', severity: 'error' });
+    } finally { setUploading(false); }
   };
 
   const handleDownload = (doc: DocFile) => {
@@ -468,8 +502,9 @@ export default function MyProfile() {
     setPreviewDoc(doc);
   };
 
-  const handleDeleteDoc = (idx: number) => {
-    saveDocs(docs.filter((_, i) => i !== idx));
+  const handleDeleteDoc = async (idx: number) => {
+    try { await saveDocs(docs.filter((_, i) => i !== idx)); }
+    catch (error) { setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Could not remove document.', severity: 'error' }); }
   };
 
   const initials = (user?.name ?? 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -879,7 +914,7 @@ export default function MyProfile() {
                 multiple
                 hidden
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                onChange={e => handleFileUpload(e.target.files)}
+                onChange={e => { handleFileUpload(e.target.files); e.target.value = ''; }}
               />
               <Box
                 sx={{
@@ -897,12 +932,19 @@ export default function MyProfile() {
                 <CloudUpload />
               </Box>
               <Typography variant="body2" fontWeight={700} sx={{ color: GREEN_UI.text }}>
-                Click to Upload Documents
+                Click to Select Documents
               </Typography>
               <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                PDF, DOC, DOCX, JPG, PNG · Max 10 MB each
+                PDF, DOC, DOCX, JPG, PNG · Max 10 MB each · Give every file a title
               </Typography>
             </Box>
+            {pendingFiles.map(file => <TextField key={profileFileTitleKey(file)} fullWidth required size="small"
+              label={`Title for ${file.name}`} placeholder="e.g. Employment Contract" value={pendingTitles[profileFileTitleKey(file)] ?? ''}
+              onChange={event => setPendingTitles(current => ({ ...current, [profileFileTitleKey(file)]: event.target.value }))} sx={{ mb: 1 }} />)}
+            {pendingFiles.length > 0 && <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+              <Button variant="contained" disabled={uploading} onClick={() => void savePendingFiles()}>{uploading ? 'Uploading…' : 'Upload files'}</Button>
+              <Button variant="outlined" disabled={uploading} onClick={() => { setPendingFiles([]); setPendingTitles({}); }}>Clear selection</Button>
+            </Stack>}
             {uploading && <LinearProgress sx={{ mb: 1.5, bgcolor: GREEN_UI.greenSoft }} />}
 
             {docs.length === 0 ? (
@@ -932,10 +974,10 @@ export default function MyProfile() {
                     </Box>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="caption" fontWeight={700} sx={{ color: GREEN_UI.text, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {doc.name}
+                        {doc.title || doc.name}
                       </Typography>
                       <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                        {formatBytes(doc.size)} · {formatDisplayDate(doc.uploadedAt)}
+                        {doc.name} · {formatBytes(doc.size)} · {formatDisplayDate(doc.uploadedAt)}
                       </Typography>
                     </Box>
                     <Tooltip title={doc.dataUrl ? "View" : "Preview unavailable"}>
@@ -1011,10 +1053,10 @@ export default function MyProfile() {
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography variant="caption" fontWeight={700} sx={{ color: GREEN_UI.text, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {doc.name}
+                            {doc.title || doc.name}
                           </Typography>
                           <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                            Application file
+                            {doc.name} · Application file
                           </Typography>
                         </Box>
                         <Tooltip title={doc.dataUrl ? "View" : "Preview unavailable"}>

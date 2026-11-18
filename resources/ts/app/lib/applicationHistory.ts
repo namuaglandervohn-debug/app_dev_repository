@@ -103,11 +103,13 @@ export function previousApplicationFiles(row: Record<string, unknown>) {
   const resumes: File[] = resume ? [resume] : [];
   const supporting: File[] = [];
   const certificates: File[] = [];
+  const titlesByName: Record<string, string> = { ...(record(details.documentTitles) as Record<string, string>) };
   const missing = new Set([...documentNames, ...certificateNames].filter(Boolean));
   if (resumeName && !resume) missing.add(resumeName);
   for (const item of savedDocuments) {
     const document = record(item);
     const name = text(document.name ?? document.fileName);
+    if (name && typeof document.title === 'string' && document.title.trim()) titlesByName[name] = document.title.trim();
     const file = restoreFile(name, document.data ?? document.dataUrl);
     if (file) {
       if (document.category === 'resume') resumes.push(file);
@@ -117,5 +119,6 @@ export function previousApplicationFiles(row: Record<string, unknown>) {
       missing.add(name);
     }
   }
-  return { resume: resumes, supporting, certificates, missing: [...missing] };
+  if (resume) missing.delete(resumeName);
+  return { resume: resumes, supporting, certificates, titlesByName, missing: [...missing] };
 }

@@ -55,6 +55,7 @@ const requirementFileTypes: Record<string, string> = {
   jpeg: 'image/jpeg',
   png: 'image/png',
 };
+const requirementFileKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
 type ApplicantSubmission = ApplicationHistoryItem & {
   status: string;
   requirements_note: string | null;
@@ -106,6 +107,7 @@ export default function ApplicantPortal() {
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [uploadFor, setUploadFor] = useState<string | null>(null);
   const [requirementFiles, setRequirementFiles] = useState<File[]>([]);
+  const [requirementTitles, setRequirementTitles] = useState<Record<string, string>>({});
   const profileReady = ready && profileOwner === user?.id;
   const requestedNext = params.get('next') ?? '';
   const hasApplicationDestination = /^\/apply(?:\?|$)/.test(requestedNext);
@@ -238,18 +240,23 @@ export default function ApplicantPortal() {
       setError('Upload one to five files, up to 10 MB total.');
       return;
     }
+    if (requirementFiles.some(file => !requirementTitles[requirementFileKey(file)]?.trim())) {
+      setError('Add a descriptive title for every uploaded file.');
+      return;
+    }
     setBusy(true);
     try {
       const documents = await Promise.all(requirementFiles.map(async (file) => {
         const type = requirementFileTypes[file.name.split('.').pop()?.toLowerCase() ?? ''];
         if (!type || !file.size) throw new Error('Use PDF, Word, JPG, or PNG documents.');
-        return { name: file.name, type, data: await fileToDataUrl(new Blob([file], { type })) };
+        return { name: file.name, title: requirementTitles[requirementFileKey(file)].trim(), type, data: await fileToDataUrl(new Blob([file], { type })) };
       }));
       const { error: uploadError } = await supabase.rpc('resubmit_application_requirements', { p_applicant_id: applicantId, p_files: documents });
       if (uploadError) throw uploadError;
       setApplications(current => current.map(app => app.applicant_id === applicantId ? { ...app, status: 'Under Review' } : app));
       setUploadFor(null);
       setRequirementFiles([]);
+      setRequirementTitles({});
       setNotice('Your additional documents were submitted for HR review.');
     } catch (e: any) {
       setError(e.message || 'Could not upload the documents.');
@@ -368,10 +375,12 @@ export default function ApplicantPortal() {
                         {uploadFor === app.applicant_id ? (
                           <>
                             <Typography component="label" variant="body2">
-                              Supporting documents (up to 5 files, 10 MB total)
+                              Supporting documents (up to 5 files, 10 MB total; add a title for each)
                               <Box component="input" type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" disabled={busy}
-                                onChange={event => setRequirementFiles(Array.from(event.currentTarget.files ?? []))} sx={{ display: 'block', maxWidth: '100%', mt: 0.5 }} />
+                                onChange={event => { setRequirementFiles(Array.from(event.currentTarget.files ?? [])); setRequirementTitles({}); }} sx={{ display: 'block', maxWidth: '100%', mt: 0.5 }} />
                             </Typography>
+                            {requirementFiles.map(file => <TextField key={requirementFileKey(file)} fullWidth required size="small" label={`Title for ${file.name}`} placeholder="e.g. Birth Certificate" value={requirementTitles[requirementFileKey(file)] ?? ''}
+                              onChange={event => setRequirementTitles(current => ({ ...current, [requirementFileKey(file)]: event.target.value }))} />)}
                             <Button variant="contained" disabled={busy || refreshing || !requirementFiles.length} onClick={() => void submitRequirements(app.applicant_id)}>
                               {busy ? 'Uploading…' : 'Submit documents'}
                             </Button>
