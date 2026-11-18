@@ -108,6 +108,7 @@ interface EvaluationResult {
   status: EvaluationStatus;
   remarks: string | null;
   scores: Record<string, EvaluationScoreRow>;
+  created_at?: string | null;
 }
 
 interface FormState {
@@ -359,6 +360,7 @@ export default function PerformanceEvaluation() {
 
   const [evalDialogOpen, setEvalDialogOpen] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState("");
   const jobTitleOptions = useJobTitleOptions(evalDialogOpen);
   const [form, setForm] = useState<FormState>(() => buildEmptyForm([]));
   const selectedFormEmployee = form.employee_id
@@ -553,6 +555,7 @@ export default function PerformanceEvaluation() {
         status: row.status || "Draft",
         remarks: row.remarks,
         scores: scoresByEvaluation[row.evaluation_id] || {},
+        created_at: row.created_at || null,
       }))
     );
   };
@@ -609,6 +612,48 @@ export default function PerformanceEvaluation() {
   const visibleEvaluations = pendingOnly ? pendingEvaluations : displayedEvaluations;
   const showEvaluationScores = !isHR || displayedEvaluations.some((evaluation) => evaluation.status !== "Draft");
   const evaluationScoreColumnCount = showEvaluationScores ? criteria.length + 2 : 0;
+  const leaderboardPeriods = useMemo(() => {
+    const periods = new Map<string, EvaluationResult>();
+    evaluations.filter(evaluation => evaluation.status === "Approved").forEach(evaluation => {
+      const key = `${evaluation.evaluation_period_start}|${evaluation.evaluation_period_end}`;
+      if (!periods.has(key)) periods.set(key, evaluation);
+    });
+    return [...periods.entries()]
+      .map(([key, evaluation]) => ({ key, label: evaluation.evaluation_period_label || formatPeriod(evaluation) }))
+      .sort((a, b) => b.key.localeCompare(a.key));
+  }, [evaluations]);
+  const activeLeaderboardPeriod = leaderboardPeriods.some(period => period.key === leaderboardPeriod)
+    ? leaderboardPeriod
+    : leaderboardPeriods[0]?.key || "";
+  const leaderboardOutlets = useMemo(() => {
+    const employeeOutlets = new Map(employees.map(employee => [employee.employee_id, employee.outlet]));
+    const latestPerEmployee = new Map<string, EvaluationResult>();
+    evaluations
+      .filter(evaluation => evaluation.status === "Approved"
+        && `${evaluation.evaluation_period_start}|${evaluation.evaluation_period_end}` === activeLeaderboardPeriod)
+      .forEach(evaluation => {
+        const previous = latestPerEmployee.get(evaluation.employee_id);
+        if (!previous || String(evaluation.created_at || "") > String(previous.created_at || "")) {
+          latestPerEmployee.set(evaluation.employee_id, evaluation);
+        }
+      });
+
+    const grouped = new Map<string, EvaluationResult[]>();
+    [...latestPerEmployee.values()].forEach(evaluation => {
+      const outletName = String(evaluation.outlet || employeeOutlets.get(evaluation.employee_id) || "").trim();
+      if (!outletName) return;
+      const canonicalOutlet = OUTLETS.find(outlet => outlet.toLowerCase() === outletName.toLowerCase()) || outletName;
+      grouped.set(canonicalOutlet, [...(grouped.get(canonicalOutlet) || []), evaluation]);
+    });
+
+    const outletNames = [...new Set([...OUTLETS, ...grouped.keys()])];
+    return outletNames.map(outlet => ({
+      outlet,
+      employees: (grouped.get(outlet) || [])
+        .sort((a, b) => Number(b.final_weighted_score || 0) - Number(a.final_weighted_score || 0))
+        .slice(0, 3),
+    }));
+  }, [activeLeaderboardPeriod, employees, evaluations]);
 
   /* ── Evaluation actions ────────────────────────────────────────────── */
   const openEvaluateForEmployee = (emp?: EmployeeRecord) => {
@@ -1203,6 +1248,72 @@ export default function PerformanceEvaluation() {
           </Box>
         </Box>
       </Paper>
+
+      {(isHR || isGM) && (
+        <Paper elevation={0} sx={{ ...softCardSx, p: { xs: 2, md: 2.5 }, mb: 2.5 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: { xs: "flex-start", md: "center" }, gap: 1.5, flexWrap: "wrap", mb: 2 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+              <Box sx={{ width: 44, height: 44, borderRadius: "16px", display: "grid", placeItems: "center", bgcolor: GREEN_UI.warningSoft, color: GREEN_UI.warningDark }}>
+                <EmojiEvents />
+              </Box>
+              <Box>
+                <Typography variant="h6" fontWeight={800} sx={{ color: GREEN_UI.text }}>Top Employees per Outlet</Typography>
+                <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
+                  Top three employees by approved evaluation score for the selected period.
+                </Typography>
+              </Box>
+            </Box>
+            <TextField
+              select
+              size="small"
+              label="Evaluation Period"
+              value={activeLeaderboardPeriod}
+              onChange={event => setLeaderboardPeriod(event.target.value)}
+              disabled={leaderboardPeriods.length === 0}
+              sx={{ ...softTextFieldSx, minWidth: { xs: "100%", sm: 260 } }}
+            >
+              {leaderboardPeriods.map(period => (
+                <MenuItem key={period.key} value={period.key}>{period.label}</MenuItem>
+              ))}
+            </TextField>
+          </Box>
+
+          <Grid container spacing={1.5}>
+            {leaderboardOutlets.map(({ outlet, employees: topEmployees }) => (
+              <Grid key={outlet} size={{ xs: 12, md: 4 }}>
+                <Paper elevation={0} sx={{ ...innerCardSx, p: 2, height: "100%" }}>
+                  <Typography fontWeight={800} sx={{ color: GREEN_UI.greenDark, mb: 1.25 }}>{outlet}</Typography>
+                  {topEmployees.length ? topEmployees.map((employee, index) => (
+                    <Box key={`${outlet}-${employee.employee_id}`} sx={{ display: "flex", alignItems: "center", gap: 1.25, py: 1, borderTop: `1px solid ${GREEN_UI.border}` }}>
+                      <Chip
+                        size="small"
+                        icon={index === 0 ? <EmojiEvents /> : undefined}
+                        label={`#${index + 1}`}
+                        sx={{ fontWeight: 800, bgcolor: index === 0 ? GREEN_UI.warningSoft : "#fff", color: index === 0 ? GREEN_UI.warningDark : GREEN_UI.greenDark, border: `1px solid ${GREEN_UI.border}` }}
+                      />
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography variant="body2" fontWeight={750} noWrap sx={{ color: GREEN_UI.text }}>{employee.employee_name}</Typography>
+                        <Typography variant="caption" noWrap sx={{ color: GREEN_UI.muted }}>{employee.position || "Position not set"}</Typography>
+                      </Box>
+                      <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+                        <Typography variant="body2" fontWeight={800} sx={{ color: GREEN_UI.greenDark }}>{Number(employee.final_weighted_score || 0).toFixed(2)}%</Typography>
+                        <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>{employee.rating_label || labelForScore(Number(employee.final_weighted_score || 0))}</Typography>
+                      </Box>
+                    </Box>
+                  )) : (
+                    <Typography variant="body2" sx={{ color: GREEN_UI.muted, py: 1, borderTop: `1px solid ${GREEN_UI.border}` }}>
+                      No approved evaluations for this period.
+                    </Typography>
+                  )}
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+          <Typography variant="caption" sx={{ display: "block", color: GREEN_UI.muted, mt: 1.5 }}>
+            Rankings use each employee’s latest approved evaluation in the selected period. Scores come from the evaluation’s saved role-appropriate weighted criteria.
+          </Typography>
+        </Paper>
+      )}
 
       {isSupervisor && (
         <Paper elevation={0} sx={{ ...softCardSx, mb: 2.5, overflow: "hidden" }}>
