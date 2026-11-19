@@ -68,12 +68,13 @@ interface GeneratedReport {
 
 const REPORT_TYPES: ReportType[] = [
   { value: 'employees', label: 'Employee Records', icon: <GridView /> },
-  { value: 'applications', label: 'Recruitment / Applications', icon: <GridView /> },
-  { value: 'schedules', label: 'Weekly Schedules', icon: <GridView /> },
-  { value: 'attendance', label: 'Attendance Summary', icon: <GridView /> },
-  { value: 'attendanceLogs', label: 'Attendance Logs', icon: <GridView /> },
+  { value: 'applications', label: 'Recruitment Report', icon: <GridView /> },
+  { value: 'schedules', label: 'Employee Work Schedule Report', icon: <GridView /> },
+  { value: 'attendance', label: 'Attendance Report', icon: <GridView /> },
+  { value: 'attendanceLogs', label: 'Undertime and Tardiness Report', icon: <GridView /> },
   { value: 'payroll', label: 'Payroll Summary', icon: <GridView /> },
   { value: 'evaluations', label: 'Performance Evaluations', icon: <BarChartIcon /> },
+  { value: 'recognition', label: 'Employee Recognition Report', icon: <Assessment /> },
   { value: 'requests', label: 'Leave / OT / Undertime Requests', icon: <GridView /> },
   { value: 'criteria', label: 'Evaluation Criteria & Weights', icon: <BarChartIcon /> },
   { value: 'systemLogs', label: 'System Logs', icon: <GridView /> },
@@ -127,6 +128,7 @@ const COLUMNS: Record<string, string[]> = {
     'status',
   ],
   evaluations: ['id', 'employee', 'position', 'outlet', 'period', 'rawScore', 'finalScore', 'rating', 'status'],
+  recognition: ['rank', 'employee', 'position', 'outlet', 'period', 'finalScore', 'rating', 'status'],
   requests: ['id', 'employee', 'outlet', 'type', 'leaveType', 'date', 'time', 'reason', 'status', 'reviewerRemarks'],
   criteria: ['id', 'criteriaName', 'category', 'weight', 'maxScore', 'active', 'description'],
   systemLogs: ['id', 'userName', 'userRole', 'action', 'module', 'recordId', 'recordTable', 'description', 'dateTime'],
@@ -154,7 +156,7 @@ const getPeriodRange = (period: PeriodMode, today = new Date()) => {
   return { start: toIsoDate(new Date(year, month, 1)), end: toIsoDate(new Date(year, month + 1, 0)) };
 };
 
-const REPORT_SUMMARY_MODULES = ['employees', 'applications', 'schedules', 'attendance', 'attendanceLogs', 'payroll', 'evaluations', 'requests'];
+const REPORT_SUMMARY_MODULES = ['employees', 'applications', 'schedules', 'attendance', 'attendanceLogs', 'payroll', 'evaluations', 'recognition', 'requests'];
 const REPORTS_WITHOUT_OUTLET = new Set(['criteria', 'systemLogs']);
 
 const reportDateColumns = new Set(['date', 'dateHired', 'dateApplied', 'createdAt', 'submittedDate', 'periodStart', 'periodEnd']);
@@ -350,6 +352,20 @@ const summarizeReport = (type: string, rows: any[]) => {
       findings = [completedRows.length
         ? `The average final score is ${avg.toFixed(2)}% across ${completedRows.length} completed evaluations.`
         : `No completed evaluations are available among the ${count} matching records.`, `${count - approved} evaluation records are still in progress or otherwise not completed.`];
+      break;
+    }
+    case 'recognition': {
+      const ranked = [...rows].sort((left, right) => Number(right.finalScore || 0) - Number(left.finalScore || 0));
+      const topScore = ranked.length ? Number(ranked[0].finalScore || 0) : null;
+      metrics = [
+        { metric: 'Employees recognized', value: count.toLocaleString() },
+        { metric: 'Top final score', value: topScore === null ? 'No completed evaluations' : `${topScore.toFixed(2)}%` },
+        { metric: 'Outlets represented', value: new Set(rows.map(row => row.outlet).filter(value => value && value !== '—')).size.toLocaleString() },
+      ];
+      findings = [ranked.length
+        ? `${ranked[0].employee} has the highest final evaluation score at ${topScore!.toFixed(2)}%.`
+        : 'No approved or completed evaluations are available for recognition in this period.',
+      'Recognition rankings use saved final evaluation scores for the selected outlet and period.'];
       break;
     }
     case 'requests': {
@@ -715,6 +731,10 @@ export default function Reports() {
         })),
       };
 
+      map.recognition = map.evaluations
+        .filter((row: any) => ['approved', 'reviewed', 'completed'].includes(String(row.status ?? '').trim().toLowerCase()))
+        .sort((left: any, right: any) => Number(right.finalScore || 0) - Number(left.finalScore || 0));
+
       setAllData(map);
       if (warnings.length > 0) {
         setWarning(`Some report sources could not be loaded: ${warnings.join(' | ')}`);
@@ -756,7 +776,7 @@ export default function Reports() {
     Object.values(allData).flatMap(rows => rows.map(row => String(row?.outlet ?? '').trim()).filter(value => value && value !== '—')),
   )].sort((left, right) => left.localeCompare(right)), [allData]);
 
-  const getFilteredRowsForType = (type: string) => {
+  const getFilteredRowsForType = (type: string): any[] => {
     if (type === 'consolidated') return consolidatedRows;
     const rows = allData[type] ?? [];
     const withinRange = rows.filter(row => {
@@ -767,14 +787,21 @@ export default function Reports() {
       }
       return type === 'employees' || isWithinReportRange(row, dateFrom, dateTo);
     });
-    if (selectedOutlet === 'All Outlets' || REPORTS_WITHOUT_OUTLET.has(type)) return withinRange;
-    return withinRange.filter(row => String(row.outlet ?? '').trim().toLowerCase() === selectedOutlet.toLowerCase());
+    const outletFiltered = selectedOutlet === 'All Outlets' || REPORTS_WITHOUT_OUTLET.has(type)
+      ? withinRange
+      : withinRange.filter(row => String(row.outlet ?? '').trim().toLowerCase() === selectedOutlet.toLowerCase());
+    if (type === 'recognition') {
+      return [...outletFiltered]
+        .sort((left, right) => Number(right.finalScore || 0) - Number(left.finalScore || 0))
+        .map((row, index) => ({ ...row, rank: index + 1 }));
+    }
+    return outletFiltered;
   };
 
-  const filteredByType = useMemo(() => Object.fromEntries(
+  const filteredByType: Record<string, any[]> = useMemo(() => Object.fromEntries(
     REPORT_SUMMARY_MODULES.map(type => [type, getFilteredRowsForType(type)]),
   ) as Record<string, any[]>, [allData, dateFrom, dateTo, logDate, logModule, logUser, selectedOutlet]);
-  const consolidatedSummary = useMemo(() => REPORT_SUMMARY_MODULES.map(type => {
+  const consolidatedSummary: Array<{ type: string; label: string; rows: any[]; count: number; metrics: Array<{ metric: string; value: string }>; findings: string[] }> = useMemo(() => REPORT_SUMMARY_MODULES.map(type => {
     const summary = summarizeReport(type, filteredByType[type] ?? []);
     const typeLabel = REPORT_TYPES.find(item => item.value === type)?.label ?? type;
     return {
@@ -784,7 +811,7 @@ export default function Reports() {
       ...summary,
     };
   }), [filteredByType]);
-  const consolidatedRows = useMemo(() => consolidatedSummary.flatMap(section => section.metrics.map(metric => ({
+  const consolidatedRows: any[] = useMemo(() => consolidatedSummary.flatMap(section => section.metrics.map(metric => ({
     module: section.label,
     metric: metric.metric,
     value: metric.value,
