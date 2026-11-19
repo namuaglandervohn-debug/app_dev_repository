@@ -235,7 +235,7 @@ const resolveLiveDashboardStats = async (): Promise<{
     lastPayrollGenerated,
     topPerformer,
   ] = await Promise.all([
-    safe("Active Employees", 0, fetchActiveEmployeesCount),
+    safe("Employees", 0, fetchActiveEmployeesCount),
     safe("Pending Applications", 0, fetchPendingApplicationsCount),
     safe("For Interview", 0, fetchForInterviewCount),
     safe("Pending Requests", 0, fetchPendingRequestsCount),
@@ -405,7 +405,7 @@ export default function HRDashboard() {
   const statCards = useMemo(
     () => [
       {
-        title: "Active Employees",
+        title: "Employees",
         value: loading ? "…" : String(stats.activeEmployees),
         icon: <PeopleAlt />,
         iconColor: "#2F9E5E",
