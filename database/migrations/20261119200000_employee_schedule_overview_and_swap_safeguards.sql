@@ -144,7 +144,7 @@ begin
     else null end;
   if day_offset is null then return null; end if;
 
-  date_text := pg_catalog.substring(base_week from '([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})');
+  date_text := pg_catalog.substring(base_week, '([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})');
   if date_text is not null then
     start_date := pg_catalog.to_date(date_text, 'MM/DD/YYYY');
   else
