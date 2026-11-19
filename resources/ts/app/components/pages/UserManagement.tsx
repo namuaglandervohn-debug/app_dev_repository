@@ -44,6 +44,7 @@ interface EmployeeAccountRequest {
   employee_id: string;
   full_name: string;
   submitted_full_name?: string | null;
+  requested_outlet?: string | null;
   email: string;
   created_at: string;
 }
@@ -237,9 +238,9 @@ export default function UserManagement() {
     setRequestsLoading(true);
     setRequestsError(null);
     let { data, error } = await supabase.from('employee_account_requests')
-      .select('id,employee_id,full_name,submitted_full_name,email,created_at').eq('status', 'Pending')
+      .select('id,employee_id,full_name,submitted_full_name,requested_outlet,email,created_at').eq('status', 'Pending')
       .order('created_at', { ascending: true });
-    if (error?.message.includes('submitted_full_name')) {
+    if (error && /submitted_full_name|requested_outlet/i.test(error.message)) {
       const legacyResult = await supabase.from('employee_account_requests')
         .select('id,employee_id,full_name,email,created_at').eq('status', 'Pending')
         .order('created_at', { ascending: true });
@@ -270,7 +271,9 @@ export default function UserManagement() {
       setEmployeeAccountRequests(current => current.filter(item => item.id !== request.id));
       if (action === 'approve') await fetchUsers();
       setSnackbar({ open: true, message: action === 'approve'
-        ? `${request.full_name}'s account is approved and linked to ${request.employee_id}.`
+        ? data?.employee_created
+          ? `Employee record created and account activated for ${request.employee_id}.`
+          : `Account approved and activated for ${request.employee_id}.`
         : `Registration request for ${request.employee_id} was rejected.`, severity: 'success' });
     } catch (cause) {
       setSnackbar({ open: true, message: cause instanceof Error ? cause.message : 'Could not review the registration.', severity: 'error' });

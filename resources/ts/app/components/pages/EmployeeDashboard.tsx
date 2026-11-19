@@ -22,6 +22,7 @@ import {
   AccessTimeRounded,
   WalletRounded,
   FactCheckRounded,
+  EmojiEventsRounded,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -111,6 +112,13 @@ export default function EmployeeDashboard() {
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [myAttendance, setMyAttendance] = useState<any[]>([]);
   const [myPayslips, setMyPayslips] = useState<any[]>([]);
+  const [performanceHighlight, setPerformanceHighlight] = useState<{
+    evaluated: boolean;
+    is_top_performer: boolean;
+    score?: number;
+    period_label?: string;
+    outlet?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -120,6 +128,7 @@ export default function EmployeeDashboard() {
         setMyRequests([]);
         setMyPayslips([]);
         setMyAttendance([]);
+        setPerformanceHighlight(null);
         setLoading(false);
         return;
       }
@@ -181,6 +190,15 @@ export default function EmployeeDashboard() {
             status: row.is_absent ? 'Absent' : row.is_late ? 'Late' : 'Present',
           }))
         );
+        try {
+          const { data: highlight, error: highlightError } = await supabase.rpc('get_my_performance_highlight');
+          if (highlightError) throw highlightError;
+          setPerformanceHighlight(highlight as typeof performanceHighlight);
+        } catch (highlightError) {
+          // Keep the rest of the dashboard usable if the highlight migration is not yet installed.
+          console.warn('Could not load performance highlight:', highlightError);
+          setPerformanceHighlight(null);
+        }
       } catch (e) {
         console.error('Employee dashboard error:', e);
       } finally {
@@ -231,6 +249,39 @@ export default function EmployeeDashboard() {
       {loading && <LinearProgress aria-label="Loading employee dashboard" sx={{ mb: 2 }} />}
 
       <DashboardOverview metrics={statCards} />
+
+      {performanceHighlight?.evaluated && performanceHighlight.is_top_performer && (
+        <Paper
+          elevation={0}
+          sx={{
+            ...softCardSx,
+            mt: 2.5,
+            mb: 2.5,
+            p: { xs: 2, sm: 2.75 },
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            background: 'linear-gradient(115deg, #e5f8e9 0%, rgba(255,255,255,.96) 70%)',
+          }}
+        >
+          <Box sx={{
+            width: 54, height: 54, borderRadius: '18px', flexShrink: 0,
+            display: 'grid', placeItems: 'center', bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark,
+          }}>
+            <EmojiEventsRounded fontSize="large" />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" fontWeight={800} sx={{ color: GREEN_UI.greenDark }}>
+              Top Performer{performanceHighlight.outlet ? ` · ${performanceHighlight.outlet}` : ''}
+            </Typography>
+            <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>
+              Congratulations! Your approved evaluation ranked highest in your outlet
+              {performanceHighlight.period_label ? ` for ${performanceHighlight.period_label}` : ''}.
+              {Number.isFinite(Number(performanceHighlight.score)) ? ` Final score: ${Number(performanceHighlight.score).toFixed(1)}%.` : ''}
+            </Typography>
+          </Box>
+        </Paper>
+      )}
 
       <Grid container spacing={{ xs: 2, md: 2.5 }}>
         {myAttendance.length > 0 && (

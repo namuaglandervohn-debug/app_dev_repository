@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router';
-import { Alert, Box, Button, CircularProgress, Container, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Container, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { ArrowBackRounded, Badge } from '@mui/icons-material';
 import AuthBackground from '../AuthBackground';
 import BrandLogo from '../BrandLogo';
-import { COMPANY } from '../../lib/constants';
+import { COMPANY, OUTLETS } from '../../lib/constants';
 import { supabase } from '../../lib/supabaseClient';
 import { employeeConfirmationRedirect } from '../../lib/applicantConfirmationRedirect';
 
@@ -13,6 +13,7 @@ export default function EmployeeSelfRegistration() {
   const [fullName, setFullName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [email, setEmail] = useState('');
+  const [outlet, setOutlet] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState('');
@@ -27,8 +28,8 @@ export default function EmployeeSelfRegistration() {
     const cleanFullName = fullName.trim().replace(/\s+/g, ' ');
     const cleanEmployeeId = employeeId.trim();
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanFullName || !cleanEmployeeId || !cleanEmail || !password) {
-      setError('Enter your full name, employee ID, email, and password.');
+    if (!cleanFullName || cleanFullName.split(' ').length < 2 || !cleanEmployeeId || !cleanEmail || !outlet || !password) {
+      setError('Enter your full name, employee ID, email, assigned outlet, and password.');
       return;
     }
     if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
@@ -47,7 +48,7 @@ export default function EmployeeSelfRegistration() {
         password,
         options: {
           emailRedirectTo: employeeConfirmationRedirect(window.location.origin),
-          data: { registration_kind: 'employee', full_name: cleanFullName, employee_id: cleanEmployeeId },
+          data: { registration_kind: 'employee', full_name: cleanFullName, employee_id: cleanEmployeeId, outlet },
         },
       });
       if (signupError) throw signupError;
@@ -56,7 +57,7 @@ export default function EmployeeSelfRegistration() {
       if (data.session) await supabase.auth.signOut({ scope: 'local' });
       setPassword('');
       setConfirmation('');
-      setNotice('Registration submitted. Confirm your email, then wait for HR to approve your account before signing in.');
+      setNotice('Registration submitted for HR approval. Confirm your email and wait for HR to approve your account before signing in.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not submit your registration.');
     } finally {
@@ -72,7 +73,7 @@ export default function EmployeeSelfRegistration() {
             <BrandLogo size={76} />
             <Typography variant="h4" component="h1" textAlign="center" fontWeight={750} sx={{ color: '#193c27', letterSpacing: '-.04em' }}>Employee account registration</Typography>
             <Typography variant="body2" textAlign="center" sx={{ color: '#607366' }}>
-              Use your existing employee ID. HR will review your request and link the account to your employee record.
+              Enter your Employee ID and information. HR will verify them and approve your account before you can sign in.
             </Typography>
           </Stack>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -85,6 +86,10 @@ export default function EmployeeSelfRegistration() {
               InputProps={{ startAdornment: <Badge sx={{ mr: 1, color: '#087443' }} /> }} />
             <TextField fullWidth required label="Email address" type="email" autoComplete="email" value={email}
               onChange={event => setEmail(event.target.value)} margin="normal" />
+            <TextField fullWidth required select label="Assigned Outlet" value={outlet}
+              onChange={event => setOutlet(event.target.value)} margin="normal">
+              {OUTLETS.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+            </TextField>
             <TextField fullWidth required label="New password" type="password" autoComplete="new-password" value={password}
               onChange={event => setPassword(event.target.value)} margin="normal" helperText="At least 8 characters." />
             <TextField fullWidth required label="Confirm password" type="password" autoComplete="new-password" value={confirmation}
