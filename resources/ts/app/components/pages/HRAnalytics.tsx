@@ -97,10 +97,10 @@ export default function HRAnalytics() {
       setLoading(true);
       const sources: Array<[keyof AnalyticsData, PromiseLike<any>]> = [
         ['employees', supabase.from('employees').select('employee_id,outlet,status,department,position')],
-        ['attendance', supabase.from('attendance_logs').select('employee_id,outlet,attendance_date,is_absent,is_late,late_minutes')],
+        ['attendance', supabase.from('attendance_logs').select('employee_id,attendance_date,is_absent,is_late,late_minutes')],
         ['evaluations', supabase.from('employee_evaluations').select('employee_id,outlet,evaluation_period_end,final_weighted_score,status')],
         ['requests', supabase.from('employee_requests').select('employee_id,request_type,status,created_at,start_date')],
-        ['applicants', supabase.from('applicants').select('applicant_id,outlet,status,hiring_decision,created_at')],
+        ['applicants', supabase.from('applicants').select('applicant_id,status,hiring_decision,created_at')],
         ['userAccounts', supabase.from('user_accounts').select('employee_id,applicant_id,outlet')],
       ];
       const results = await Promise.allSettled(sources.map(([, query]) => query));
