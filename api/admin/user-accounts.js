@@ -147,11 +147,12 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
       const password = typeof body?.password === 'string' ? body.password : '';
       const role = roles.get(body?.role);
       const employeeId = role === 'employee' ? clean(body?.employee_id) : '';
+      const position = role === 'employee' ? clean(body?.position) : '';
       const outlet = clean(body?.outlet);
       if (!name || name.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
         || email.length > 160 || password.length < 8 || password.length > 120 || !role
-        || outlet.length > 160 || (role === 'employee' && (!employeeId || employeeId.length > 40))) {
-        return send(422, { message: 'Enter a valid name, email, role, and password of at least 8 characters. Employee accounts require an employee ID.' });
+        || outlet.length > 160 || (role === 'employee' && (!employeeId || employeeId.length > 40 || !position || position.length > 160))) {
+        return send(422, { message: 'Enter a valid name, email, role, position, and password of at least 8 characters. Employee accounts require an employee ID and position.' });
       }
 
       const duplicate = unwrap(await admin.from('user_accounts').select('user_id').eq('email', email).maybeSingle());
@@ -159,7 +160,7 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
 
       let employee = null;
       if (employeeId) {
-        employee = unwrap(await admin.from('employees').select('employee_id,email,applicant_id').eq('employee_id', employeeId).maybeSingle());
+        employee = unwrap(await admin.from('employees').select('employee_id,email,applicant_id,position').eq('employee_id', employeeId).maybeSingle());
         if (employee && (emailKey(employee.email) !== email || employee.applicant_id
           || unwrap(await admin.from('user_accounts').select('user_id').eq('employee_id', employeeId).limit(1).maybeSingle()))) {
           return send(409, { message: 'This employee ID is already in use. Reopen Create Account to get a new ID.' });
@@ -183,6 +184,7 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
       if (!authUserId) return send(502, { message: 'The authentication service did not return an account ID.' });
 
       let profile;
+      let employeePositionUpdated = false;
       try {
         if (employeeId && !employee) {
           const [firstName, ...lastName] = name.split(/\s+/);
@@ -192,9 +194,13 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
             last_name: lastName.join(' ') || firstName,
             email,
             outlet: outlet || null,
+            position,
             status: 'Active',
             hire_date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
           }));
+        } else if (employeeId && employee && employee.position !== position) {
+          unwrap(await admin.from('employees').update({ position }).eq('employee_id', employeeId));
+          employeePositionUpdated = true;
         }
         profile = unwrap(await admin.from('user_accounts').insert({
           auth_user_id: authUserId,
@@ -211,6 +217,10 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         // The insert can succeed even if its response is lost. Check before removing the new login.
         profile = unwrap(await admin.from('user_accounts').select(publicAccountFields).eq('auth_user_id', authUserId).maybeSingle());
         if (!profile) {
+          if (employeePositionUpdated) {
+            const restore = await admin.from('employees').update({ position: employee.position ?? null }).eq('employee_id', employeeId);
+            if (restore.error) console.warn('Could not restore the employee position after an incomplete staff login.');
+          }
           const cleanup = await admin.auth.admin.deleteUser(authUserId);
           if (cleanup.error) console.warn('Could not roll back an incomplete staff login.');
           if (error.code === '23505') return send(409, { message: 'The employee ID or email is already in use. Refresh User Accounts before retrying.' });

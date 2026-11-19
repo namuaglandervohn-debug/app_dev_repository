@@ -14,6 +14,7 @@ import {
 } from '@mui/icons-material';
 import { supabase } from "../../lib/supabaseClient";
 import { NO_OUTLET, OUTLETS } from '../../lib/constants';
+import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import ActionSnackbar from '../ActionSnackbar';
 
 type UserRole = 'hr' | 'employee' | 'supervisor' | 'gm' | 'accounting';
@@ -51,6 +52,7 @@ const EMPTY_FORM = {
   name: '',
   email: '',
   role: 'employee' as UserRole,
+  position: '',
   employeeId: '',
   outlet: '',
   password: '',
@@ -179,6 +181,7 @@ export default function UserManagement() {
   const [form, setForm]             = useState(EMPTY_FORM);
   const [editForm, setEditForm]     = useState<Partial<UserAccount>>({});
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+  const jobTitleOptions = useJobTitleOptions();
   const [employeeAccountRequests, setEmployeeAccountRequests] = useState<EmployeeAccountRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requestsError, setRequestsError] = useState<string | null>(null);
@@ -349,10 +352,12 @@ export default function UserManagement() {
 
   /* ── Handlers ───────────────────────────────────────────────────────── */
   const handleCreate = async () => {
-  if (!form.name || !form.email || !form.password) {
+  if (!form.name || !form.email || !form.password || (form.role === 'employee' && !form.position)) {
     setSnackbar({
       open: true,
-      message: "Name, email, and initial password are required.",
+      message: form.role === 'employee' && !form.position
+        ? "Select a position for the employee account."
+        : "Name, email, and initial password are required.",
       severity: "error",
     });
     return;
@@ -379,6 +384,7 @@ export default function UserManagement() {
         password: form.password,
         role: form.role,
         employee_id: form.role === 'employee' ? form.employeeId : null,
+        position: form.role === 'employee' ? form.position : null,
         outlet: form.outlet === NO_OUTLET ? '' : form.outlet,
       }),
     });
@@ -409,6 +415,7 @@ export default function UserManagement() {
       createdAt: userData.created_at,
     };
 
+    await fetchEmployeeOptions();
     setUsers((prev) => [...prev, newUser]);
 
     setOpenAdd(false);
@@ -1162,7 +1169,7 @@ export default function UserManagement() {
             </Grid>
 
             {renderDialogSectionTitle('II. ROLE ACCESS')}
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <TextField
                 fullWidth
                 select
@@ -1175,7 +1182,24 @@ export default function UserManagement() {
                 {ROLES.map(r => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
               </TextField>
             </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            {form.role === 'employee' && (
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label="Position"
+                  value={form.position}
+                  onChange={e => setForm({ ...form, position: e.target.value })}
+                  InputLabelProps={{ shrink: true }}
+                  sx={softTextFieldSx}
+                >
+                  <MenuItem value="">Select Position…</MenuItem>
+                  {jobTitleOptions.map(position => <MenuItem key={position} value={position}>{position}</MenuItem>)}
+                </TextField>
+              </Grid>
+            )}
+            <Grid size={{ xs: 12, md: 4 }}>
               <TextField
                 fullWidth
                 select
