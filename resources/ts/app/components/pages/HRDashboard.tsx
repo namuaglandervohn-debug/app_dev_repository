@@ -16,7 +16,6 @@ import {
   AccountBalance,
   EmojiEvents,
   EventAvailable,
-  PendingActions,
   PeopleAlt,
   PersonAddAlt1,
   QueryStats,
@@ -30,10 +29,8 @@ interface Stats {
   pendingApplications: number;
   forInterviewCount: number;
   pendingRequests: number;
-  supervisorApprovedRequests: number;
   attendanceIssues: number;
   lastPayrollGenerated: string | null;
-  onDutyOrOnCall: number;
   topEvaluee: string | null;
   topScore: number | null;
 }
@@ -45,10 +42,8 @@ const DEFAULT_STATS: Stats = {
   pendingApplications: 0,
   forInterviewCount: 0,
   pendingRequests: 0,
-  supervisorApprovedRequests: 0,
   attendanceIssues: 0,
   lastPayrollGenerated: null,
-  onDutyOrOnCall: 0,
   topEvaluee: null,
   topScore: null,
 };
@@ -93,24 +88,6 @@ const isForInterviewStatus = (status: unknown): boolean => {
     !normalized.includes("cancelled") &&
     !normalized.includes("rejected")
   );
-};
-
-const isPendingHrValidationRequest = (request: StatusRecord): boolean => {
-  const overallStatus = normalizeText(request.status);
-  const supervisorStatus = normalizeText(request.supervisor_status);
-  const hrStatus = normalizeText(request.hr_status);
-
-  const alreadyClosed = [
-    "approved",
-    "disapproved",
-    "rejected",
-    "cancelled",
-  ].includes(overallStatus);
-  const supervisorApproved =
-    overallStatus === "supervisor approved" || supervisorStatus === "approved";
-  const waitingForHr = !hrStatus || hrStatus === "pending";
-
-  return supervisorApproved && waitingForHr && !alreadyClosed;
 };
 
 const isAttendanceIssue = (row: StatusRecord): boolean => {
@@ -170,15 +147,6 @@ const fetchPendingRequestsCount = async (): Promise<number> => {
   return rows.filter((row) => normalizeText(row.status) === "pending").length;
 };
 
-const fetchPendingHrValidationCount = async (): Promise<number> => {
-  const rows = await fetchRows(
-    "employee_requests",
-    "id, request_id, status, supervisor_status, hr_status",
-  );
-
-  return rows.filter(isPendingHrValidationRequest).length;
-};
-
 const fetchAttendanceIssuesCount = async (): Promise<number> => {
   const rows = await fetchRows(
     "attendance_logs",
@@ -203,34 +171,6 @@ const fetchLastPayrollGenerated = async (): Promise<string | null> => {
   const start = String(latest.period_start ?? "").slice(0, 10);
   const end = String(latest.period_end ?? "").slice(0, 10);
   return [start, end].filter(Boolean).join(" to ") || String(latest.payroll_id ?? "");
-};
-
-const fetchOnDutyOrOnCallCount = async (): Promise<number> => {
-  const today = new Date().toISOString().slice(0, 10);
-  const dayKey = new Date(`${today}T00:00:00`).toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
-  const [attendanceRows, scheduleRows] = await Promise.all([
-    fetchRows("attendance_logs", "id, employee_id, attendance_date, is_absent, remarks"),
-    fetchRows("schedule", `schedule_id, employee_id, status, ${dayKey}`),
-  ]);
-  const employeeIds = new Set<string>();
-
-  attendanceRows
-    .filter(row => String(row.attendance_date ?? "").slice(0, 10) === today)
-    .filter(row => !toBoolean(row.is_absent) && !normalizeText(row.remarks).includes("leave"))
-    .forEach(row => {
-      const employeeId = String(row.employee_id ?? "").trim();
-      if (employeeId) employeeIds.add(employeeId);
-    });
-
-  scheduleRows
-    .filter(row => ["published", "active", "on call", "on-call"].includes(normalizeText(row.status)))
-    .filter(row => toBoolean(row[dayKey]) || normalizeText(row[dayKey]).includes("on call"))
-    .forEach(row => {
-      const employeeId = String(row.employee_id ?? "").trim();
-      if (employeeId) employeeIds.add(employeeId);
-    });
-
-  return employeeIds.size;
 };
 
 const fetchTopPerformer = async (): Promise<
@@ -291,20 +231,16 @@ const resolveLiveDashboardStats = async (): Promise<{
     pendingApplications,
     forInterviewCount,
     pendingRequests,
-    supervisorApprovedRequests,
     attendanceIssues,
     lastPayrollGenerated,
-    onDutyOrOnCall,
     topPerformer,
   ] = await Promise.all([
     safe("Active Employees", 0, fetchActiveEmployeesCount),
     safe("Pending Applications", 0, fetchPendingApplicationsCount),
     safe("For Interview", 0, fetchForInterviewCount),
     safe("Pending Requests", 0, fetchPendingRequestsCount),
-    safe("Pending HR Validation", 0, fetchPendingHrValidationCount),
     safe("Attendance Issues", 0, fetchAttendanceIssuesCount),
     safe("Last Payroll Generated", null, fetchLastPayrollGenerated),
-    safe("On Duty / On-Call", 0, fetchOnDutyOrOnCallCount),
     safe(
       "Top Performer",
       { topEvaluee: null, topScore: null },
@@ -318,10 +254,8 @@ const resolveLiveDashboardStats = async (): Promise<{
       pendingApplications,
       forInterviewCount,
       pendingRequests,
-      supervisorApprovedRequests,
       attendanceIssues,
       lastPayrollGenerated,
-      onDutyOrOnCall,
       topEvaluee: topPerformer.topEvaluee,
       topScore: topPerformer.topScore,
     },
@@ -487,20 +421,6 @@ export default function HRDashboard() {
       {
         title: "For Interview",
         value: loading ? "…" : String(stats.forInterviewCount),
-        icon: <EventAvailable />,
-        iconColor: "#2B9C95",
-        iconBackground: "#DFF7F5",
-      },
-      {
-        title: "Pending HR Validation",
-        value: loading ? "…" : String(stats.supervisorApprovedRequests),
-        icon: <PendingActions />,
-        iconColor: "#8B5AD8",
-        iconBackground: "#F0E9FF",
-      },
-      {
-        title: "On Duty / On-Call",
-        value: loading ? "..." : String(stats.onDutyOrOnCall),
         icon: <EventAvailable />,
         iconColor: "#2B9C95",
         iconBackground: "#DFF7F5",
