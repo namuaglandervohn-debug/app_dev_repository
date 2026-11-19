@@ -18,13 +18,14 @@ type AnalyticsData = {
   requests: Row[];
   applicants: Row[];
   userAccounts: Row[];
+  demoRecords: Row[];
 };
 
 const GREEN = '#197a49';
 const MUTED = '#718176';
 const BORDER = '#e3eee4';
 const COLORS = ['#197a49', '#37a66b', '#e3ad45', '#c95c54', '#5b8cbd', '#83c996'];
-const EMPTY: AnalyticsData = { employees: [], attendance: [], evaluations: [], requests: [], applicants: [], userAccounts: [] };
+const EMPTY: AnalyticsData = { employees: [], attendance: [], evaluations: [], requests: [], applicants: [], userAccounts: [], demoRecords: [] };
 const normalized = (value: unknown) => String(value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
 const truthy = (value: unknown) => value === true || ['true', 'yes', '1'].includes(normalized(value));
 const number = (value: unknown) => {
@@ -92,6 +93,20 @@ export default function HRAnalytics() {
 
   useEffect(() => {
     let active = true;
+    const loadDemoRows = async () => {
+      const rows: Row[] = [];
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const result = await supabase.from('hr_analytics_demo_records')
+          .select('seed_key,record_type,employee_id,outlet,record_date,status,score,is_late,is_absent,late_minutes,request_type')
+          .order('seed_key')
+          .range(from, from + pageSize - 1);
+        if (result.error) throw result.error;
+        rows.push(...(result.data ?? []));
+        if ((result.data ?? []).length < pageSize) break;
+      }
+      return { data: rows, error: null };
+    };
     const load = async () => {
       setLoading(true);
       const sources: Array<[keyof AnalyticsData, PromiseLike<any>]> = [
@@ -101,6 +116,7 @@ export default function HRAnalytics() {
         ['requests', supabase.from('employee_requests').select('employee_id,request_type,status,created_at,start_date')],
         ['applicants', supabase.from('applicants').select('applicant_id,status,hiring_decision,created_at')],
         ['userAccounts', supabase.from('user_accounts').select('employee_id,applicant_id,outlet')],
+        ['demoRecords', loadDemoRows()],
       ];
       const results = await Promise.allSettled(sources.map(([, query]) => query));
       if (!active) return;
@@ -109,7 +125,7 @@ export default function HRAnalytics() {
       results.forEach((result, index) => {
         const key = sources[index][0];
         if (result.status === 'rejected' || result.value.error) {
-          failures.push({ employees: 'Employees', attendance: 'Attendance', evaluations: 'Performance', requests: 'Requests', applicants: 'Recruitment', userAccounts: 'Outlet assignments' }[key]);
+          failures.push({ employees: 'Employees', attendance: 'Attendance', evaluations: 'Performance', requests: 'Requests', applicants: 'Recruitment', userAccounts: 'Outlet assignments', demoRecords: 'Analytics demo data' }[key]);
           return;
         }
         next[key] = result.value.data ?? [];
@@ -119,7 +135,18 @@ export default function HRAnalytics() {
       setLoading(false);
     };
     void load();
-    return () => { active = false; };
+    const channel = supabase.channel('hr-analytics-live-data');
+    ['employees', 'attendance_logs', 'employee_evaluations', 'employee_requests', 'applicants', 'user_accounts', 'hr_analytics_demo_records'].forEach(table => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { void load(); });
+    });
+    channel.subscribe();
+    const refresh = () => { void load(); };
+    window.addEventListener('focus', refresh);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refresh);
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   const employeeOutlets = useMemo(() => {
@@ -129,12 +156,33 @@ export default function HRAnalytics() {
     });
     return map;
   }, [data.employees, data.userAccounts]);
+  const analyticsEmployeeOutlets = useMemo(() => {
+    const map = new Map(employeeOutlets);
+    data.demoRecords.filter(row => row.record_type === 'employee_outlet' && row.employee_id && row.outlet)
+      .forEach(row => map.set(String(row.employee_id), String(row.outlet)));
+    return map;
+  }, [employeeOutlets, data.demoRecords]);
   const applicantOutlets = useMemo(() => new Map(data.userAccounts.filter(row => row.applicant_id && row.outlet).map(row => [String(row.applicant_id), String(row.outlet)])), [data.userAccounts]);
   const inOutlet = (row: Row) => outlet === 'All Outlets' || outletOf(row, employeeOutlets).toLowerCase() === outlet.toLowerCase();
-  const monthAttendance = data.attendance.filter(row => sameMonth(row.attendance_date, month) && inOutlet(row));
-  const monthEvaluations = data.evaluations.filter(row => sameMonth(row.evaluation_period_end, month) && validEvaluation(row) && inOutlet(row));
-  const monthRequests = data.requests.filter(row => sameMonth(row.created_at || row.start_date, month) && normalized(row.request_type).includes('leave') && inOutlet(row));
-  const monthApplicants = data.applicants.filter(row => sameMonth(row.created_at, month) && (outlet === 'All Outlets' || String(row.outlet || applicantOutlets.get(String(row.applicant_id ?? '')) || '').toLowerCase() === outlet.toLowerCase()));
+  const demoAttendance = data.demoRecords.filter(row => row.record_type === 'attendance').map(row => ({
+    employee_id: row.employee_id, outlet: row.outlet, attendance_date: row.record_date,
+    is_late: row.is_late, is_absent: row.is_absent, late_minutes: row.late_minutes,
+  }));
+  const demoEvaluations = data.demoRecords.filter(row => row.record_type === 'performance').map(row => ({
+    employee_id: row.employee_id, outlet: row.outlet, evaluation_period_end: row.record_date,
+    final_weighted_score: row.score, status: row.status,
+  }));
+  const demoRequests = data.demoRecords.filter(row => row.record_type === 'leave_request').map(row => ({
+    employee_id: row.employee_id, outlet: row.outlet, request_type: row.request_type,
+    status: row.status, created_at: row.record_date,
+  }));
+  const demoApplicants = data.demoRecords.filter(row => row.record_type === 'recruitment').map(row => ({
+    applicant_id: row.seed_key, outlet: row.outlet, status: row.status, created_at: row.record_date,
+  }));
+  const monthAttendance = [...data.attendance, ...demoAttendance].filter(row => sameMonth(row.attendance_date, month) && inOutlet(row));
+  const monthEvaluations = [...data.evaluations, ...demoEvaluations].filter(row => sameMonth(row.evaluation_period_end, month) && validEvaluation(row) && inOutlet(row));
+  const monthRequests = [...data.requests, ...demoRequests].filter(row => sameMonth(row.created_at || row.start_date, month) && normalized(row.request_type).includes('leave') && inOutlet(row));
+  const monthApplicants = [...data.applicants, ...demoApplicants].filter(row => sameMonth(row.created_at, month) && (outlet === 'All Outlets' || String(row.outlet || applicantOutlets.get(String(row.applicant_id ?? '')) || '').toLowerCase() === outlet.toLowerCase()));
 
   const attendanceTrend = useMemo(() => {
     const [year, monthNumber] = month.split('-').map(Number);
@@ -191,12 +239,12 @@ export default function HRAnalytics() {
 
   const employeeDistribution = useMemo(() => {
     const counts = new Map<string, number>();
-    data.employees.filter(row => normalized(row.status) === 'active' && (outlet === 'All Outlets' || outletOf(row, employeeOutlets).toLowerCase() === outlet.toLowerCase())).forEach(row => {
-      const name = outletOf(row, employeeOutlets);
+    data.employees.filter(row => normalized(row.status) === 'active' && (outlet === 'All Outlets' || outletOf(row, analyticsEmployeeOutlets).toLowerCase() === outlet.toLowerCase())).forEach(row => {
+      const name = outletOf(row, analyticsEmployeeOutlets);
       counts.set(name, (counts.get(name) ?? 0) + 1);
     });
     return Array.from(counts, ([name, employees]) => ({ name, employees })).sort((a, b) => b.employees - a.employees);
-  }, [data.employees, employeeOutlets, outlet]);
+  }, [data.employees, analyticsEmployeeOutlets, outlet]);
 
   const averagePerformance = monthEvaluations.length ? monthEvaluations.reduce((sum, row) => sum + number(row.final_weighted_score), 0) / monthEvaluations.length : null;
   const tooltip = { contentStyle: { borderRadius: 12, borderColor: BORDER }, labelStyle: { color: '#1e2d24', fontWeight: 700 } };
@@ -227,9 +275,10 @@ export default function HRAnalytics() {
       </Stack>
 
       {loading && <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 1.5, borderRadius: '14px' }}>Loading HR analytics…</Alert>}
+      {!loading && data.demoRecords.length > 0 && <Alert severity="info" sx={{ mb: 1.5, borderRadius: '14px' }}>Charts include clearly marked demo data linked to employee records. Demo records are separate and do not affect attendance, payroll, requests, or employee files.</Alert>}
 
       <Grid container spacing={1.5} sx={{ mb: 2 }}>
-        <Grid size={{ xs: 6, md: 3 }}><MetricCard label="Employees" value={loading ? '…' : data.employees.filter(row => outlet === 'All Outlets' || outletOf(row, employeeOutlets).toLowerCase() === outlet.toLowerCase()).length.toLocaleString()} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><MetricCard label="Employees" value={loading ? '…' : data.employees.filter(row => outlet === 'All Outlets' || outletOf(row, analyticsEmployeeOutlets).toLowerCase() === outlet.toLowerCase()).length.toLocaleString()} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><MetricCard label="Average performance" value={loading ? '…' : averagePerformance === null ? '—' : `${averagePerformance.toFixed(1)}%`} color="#5b8cbd" /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><MetricCard label="Applicants this month" value={loading ? '…' : monthApplicants.length.toLocaleString()} color="#bd8120" /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><MetricCard label="Leave requests this month" value={loading ? '…' : monthRequests.length.toLocaleString()} color="#8b5ad8" /></Grid>
