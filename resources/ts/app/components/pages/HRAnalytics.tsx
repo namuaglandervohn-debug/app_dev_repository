@@ -84,16 +84,11 @@ function MetricCard({ label, value, color = GREEN }: { label: string; value: str
   );
 }
 
-type AttendanceDayTrend = { day: number; present: number; late: number; absent: number };
-const ATTENDANCE_MONTHS = Array.from({ length: 12 }, (_, index) => ({
-  value: index + 1,
-  label: new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(2000, index, 1)),
-}));
+type AttendanceMonthTrend = { month: string; present: number; late: number; absent: number };
 
 export default function HRAnalytics() {
   const monthOptions = useMemo(getMonthOptions, []);
   const [month, setMonth] = useState(monthKey(new Date()));
-  const [attendanceMonth, setAttendanceMonth] = useState(() => Number(monthKey(new Date()).slice(5, 7)));
   const [outlet, setOutlet] = useState('All Outlets');
   const [data, setData] = useState<AnalyticsData>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -190,11 +185,10 @@ export default function HRAnalytics() {
   const monthRequests = [...data.requests, ...demoRequests].filter(row => sameMonth(row.created_at || row.start_date, month) && normalized(row.request_type).includes('leave') && inOutlet(row));
   const monthApplicants = [...data.applicants, ...demoApplicants].filter(row => sameMonth(row.created_at, month) && (outlet === 'All Outlets' || String(row.outlet || applicantOutlets.get(String(row.applicant_id ?? '')) || '').toLowerCase() === outlet.toLowerCase()));
 
-  const attendanceByDay = useMemo((): AttendanceDayTrend[] => {
+  const attendanceByMonth = useMemo((): AttendanceMonthTrend[] => {
     const [year] = month.split('-').map(Number);
-    const monthKeyForChart = `${year}-${String(attendanceMonth).padStart(2, '0')}`;
-    const days = Array.from({ length: new Date(year, attendanceMonth, 0).getDate() }, (_, index) => ({
-      day: index + 1,
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: new Intl.DateTimeFormat('en', { month: 'short' }).format(new Date(year, index, 1)),
       present: 0,
       late: 0,
       absent: 0,
@@ -202,16 +196,16 @@ export default function HRAnalytics() {
     [...data.attendance, ...demoAttendance].forEach(row => {
       if (!inOutlet(row)) return;
       const date = dateOnly(row.attendance_date);
-      if (date.slice(0, 7) !== monthKeyForChart) return;
-      const dayNumber = Number(date.slice(8, 10));
-      const current = days[dayNumber - 1];
+      if (Number(date.slice(0, 4)) !== year) return;
+      const monthIndex = Number(date.slice(5, 7)) - 1;
+      const current = months[monthIndex];
       if (!current) return;
       if (truthy(row.is_absent)) current.absent += 1;
       else if (truthy(row.is_late) || number(row.late_minutes) > 0) current.late += 1;
       else current.present += 1;
     });
-    return days;
-  }, [month, attendanceMonth, data.attendance, demoAttendance, outlet, employeeOutlets]);
+    return months;
+  }, [month, data.attendance, demoAttendance, outlet, employeeOutlets]);
 
   const performanceByOutlet = useMemo(() => {
     const grouped = new Map<string, { total: number; count: number }>();
@@ -294,18 +288,12 @@ export default function HRAnalytics() {
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Attendance Trends by Day" height={300}>
-            <FormControl size="small" sx={{ minWidth: 155, mb: 1, bgcolor: 'white' }}>
-              <InputLabel id="attendance-chart-month-label">Month</InputLabel>
-              <Select labelId="attendance-chart-month-label" value={attendanceMonth} label="Month" onChange={event => setAttendanceMonth(Number(event.target.value))}>
-                {ATTENDANCE_MONTHS.map(option => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
-              </Select>
-            </FormControl>
-            {!loading && <EmptyChart show={!attendanceByDay.some(day => day.present + day.late + day.absent > 0)} />}
-            <ResponsiveContainer width="100%" height="80%"><LineChart data={attendanceByDay} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
+          <ChartCard title="Attendance Trends by Month">
+            {!loading && <EmptyChart show={!attendanceByMonth.some(item => item.present + item.late + item.absent > 0)} />}
+            <ResponsiveContainer width="100%" height="100%"><LineChart data={attendanceByMonth} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-              <XAxis dataKey="day" tick={{ fill: MUTED, fontSize: 10 }} interval="preserveStartEnd" />
-              <YAxis allowDecimals={false} tick={{ fill: MUTED, fontSize: 11 }} />
+              <XAxis dataKey="month" tick={{ fill: MUTED, fontSize: 11 }} />
+              <YAxis allowDecimals={false} tick={false} axisLine={false} tickLine={false} />
               <Tooltip {...tooltip} />
               <Legend />
               <Line type="monotone" dataKey="present" name="On time" stroke="#37a66b" strokeWidth={2.5} dot={false} />
