@@ -667,14 +667,16 @@ function WeeklySchedule({ schedules, onRequestSwap, showSwapRequest = false }: {
           {options.length > 1 && (
             <TextField select size="small" label="Schedule week" value={activeWeek}
               onChange={event => setSelectedWeek(event.target.value)}
-              sx={{ ...softTextFieldSx, minWidth: 230, '& .MuiInputLabel-root': { color: '#fff' } }}>
+              InputLabelProps={{ shrink: true }}
+              sx={{ ...softTextFieldSx, minWidth: 230, mt: 1, '& .MuiInputLabel-root': { color: '#fff' } }}>
               {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
             </TextField>
           )}
           {outletOptions.length > 2 && (
             <TextField select size="small" label="Filter outlet" value={activeOutlet}
               onChange={event => setSelectedOutlet(event.target.value)}
-              sx={{ ...softTextFieldSx, minWidth: 190, '& .MuiInputLabel-root': { color: '#fff' } }}>
+              InputLabelProps={{ shrink: true }}
+              sx={{ ...softTextFieldSx, minWidth: 190, mt: 1, '& .MuiInputLabel-root': { color: '#fff' } }}>
               {outletOptions.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
             </TextField>
           )}
