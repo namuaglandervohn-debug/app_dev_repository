@@ -258,9 +258,19 @@ export default function HRAnalytics() {
         <Grid size={{ xs: 12, md: 6 }}>
           <ChartCard title="Recruitment Status">
             {!loading && <EmptyChart show={!recruitment.length} />}
-            <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={recruitment} dataKey="value" nameKey="name" cx="50%" cy="48%" outerRadius={92} innerRadius={48} paddingAngle={3} label={({ name, value }) => `${name}: ${value}`}>
+            <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={recruitment} dataKey="value" nameKey="name" cx="50%" cy="46%" outerRadius={78} innerRadius={44} paddingAngle={3}>
               {recruitment.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
-            </Pie><Tooltip {...tooltip} /><Legend /></PieChart></ResponsiveContainer>
+            </Pie><Tooltip {...tooltip} /><Legend verticalAlign="bottom" content={({ payload }) => (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: .75, px: 1, pt: .5 }}>
+                {(payload ?? []).map((item: any) => {
+                  const name = String(item.value ?? '');
+                  const count = recruitment.find(row => row.name === name)?.value ?? 0;
+                  return <Box key={name} sx={{ display: 'inline-flex', alignItems: 'center', gap: .5, px: .8, py: .3, borderRadius: 1, bgcolor: '#f5faf4', color: '#4f6254', fontSize: 11, whiteSpace: 'nowrap' }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: item.color, flexShrink: 0 }} />{name}: {count}
+                  </Box>;
+                })}
+              </Box>
+            )} /></PieChart></ResponsiveContainer>
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
