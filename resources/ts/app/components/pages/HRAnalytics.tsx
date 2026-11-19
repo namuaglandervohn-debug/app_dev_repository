@@ -34,13 +34,13 @@ const number = (value: unknown) => {
 };
 const dateOnly = (value: unknown) => String(value ?? '').slice(0, 10);
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-const getMonthOptions = () => Array.from({ length: 18 }, (_, index) => {
-  const date = new Date();
-  date.setDate(1);
-  date.setMonth(date.getMonth() - index);
-  const value = monthKey(date);
-  return { value, label: new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(date) };
-});
+const getMonthOptions = () => {
+  const year = new Date().getFullYear();
+  return Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(year, index, 1);
+    return { value: monthKey(date), label: new Intl.DateTimeFormat('en', { month: 'long' }).format(date) };
+  });
+};
 const sameMonth = (value: unknown, month: string) => dateOnly(value).slice(0, 7) === month;
 const outletOf = (row: Row, employeeOutlets: Map<string, string>) =>
   String(row.outlet || employeeOutlets.get(String(row.employee_id ?? '')) || 'Unassigned').trim() || 'Unassigned';
@@ -188,7 +188,7 @@ export default function HRAnalytics() {
   const attendanceByMonth = useMemo((): AttendanceMonthTrend[] => {
     const [year] = month.split('-').map(Number);
     const months = Array.from({ length: 12 }, (_, index) => ({
-      month: new Intl.DateTimeFormat('en', { month: 'short' }).format(new Date(year, index, 1)),
+      month: new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(year, index, 1)),
       present: 0,
       late: 0,
       absent: 0,
