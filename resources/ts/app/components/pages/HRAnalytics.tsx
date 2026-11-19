@@ -275,7 +275,6 @@ export default function HRAnalytics() {
       </Stack>
 
       {loading && <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 1.5, borderRadius: '14px' }}>Loading HR analytics…</Alert>}
-      {!loading && data.demoRecords.length > 0 && <Alert severity="info" sx={{ mb: 1.5, borderRadius: '14px' }}>Charts include clearly marked demo data linked to employee records. Demo records are separate and do not affect attendance, payroll, requests, or employee files.</Alert>}
 
       <Grid container spacing={1.5} sx={{ mb: 2 }}>
         <Grid size={{ xs: 6, md: 3 }}><MetricCard label="Employees" value={loading ? '…' : data.employees.filter(row => outlet === 'All Outlets' || outletOf(row, analyticsEmployeeOutlets).toLowerCase() === outlet.toLowerCase()).length.toLocaleString()} /></Grid>
