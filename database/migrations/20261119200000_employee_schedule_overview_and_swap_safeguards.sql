@@ -7,7 +7,7 @@ returns table (
   schedule_id text,
   employee_id text,
   employee_name text,
-  position text,
+  "position" text,
   outlet text,
   week text,
   time_in text,
