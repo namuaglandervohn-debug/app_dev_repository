@@ -179,30 +179,35 @@ export default function HRAnalytics() {
   const demoApplicants = data.demoRecords.filter(row => row.record_type === 'recruitment').map(row => ({
     applicant_id: row.seed_key, outlet: row.outlet, status: row.status, created_at: row.record_date,
   }));
-  const monthAttendance = [...data.attendance, ...demoAttendance].filter(row => sameMonth(row.attendance_date, month) && inOutlet(row));
   const monthEvaluations = [...data.evaluations, ...demoEvaluations].filter(row => sameMonth(row.evaluation_period_end, month) && validEvaluation(row) && inOutlet(row));
   const monthRequests = [...data.requests, ...demoRequests].filter(row => sameMonth(row.created_at || row.start_date, month) && normalized(row.request_type).includes('leave') && inOutlet(row));
   const monthApplicants = [...data.applicants, ...demoApplicants].filter(row => sameMonth(row.created_at, month) && (outlet === 'All Outlets' || String(row.outlet || applicantOutlets.get(String(row.applicant_id ?? '')) || '').toLowerCase() === outlet.toLowerCase()));
 
   const attendanceTrend = useMemo(() => {
     const [year, monthNumber] = month.split('-').map(Number);
-    const days = new Date(year, monthNumber, 0).getDate();
+    const trendMonths = Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(year, monthNumber - 12 + index, 1);
+      return {
+        key: monthKey(date),
+        label: new Intl.DateTimeFormat('en', { month: 'short', year: '2-digit' }).format(date),
+        present: 0,
+        late: 0,
+        absent: 0,
+      };
+    });
     const grouped = new Map<string, { present: number; late: number; absent: number }>();
-    monthAttendance.forEach(row => {
-      const day = dateOnly(row.attendance_date).slice(8, 10);
-      if (!day) return;
-      const current = grouped.get(day) ?? { present: 0, late: 0, absent: 0 };
+    const visibleMonths = new Set(trendMonths.map(item => item.key));
+    [...data.attendance, ...demoAttendance].forEach(row => {
+      const rowMonth = dateOnly(row.attendance_date).slice(0, 7);
+      if (!visibleMonths.has(rowMonth) || !inOutlet(row)) return;
+      const current = grouped.get(rowMonth) ?? { present: 0, late: 0, absent: 0 };
       if (truthy(row.is_absent)) current.absent += 1;
       else if (truthy(row.is_late) || number(row.late_minutes) > 0) current.late += 1;
       else current.present += 1;
-      grouped.set(day, current);
+      grouped.set(rowMonth, current);
     });
-    return Array.from({ length: days }, (_, index) => {
-      const label = String(index + 1).padStart(2, '0');
-      const values = grouped.get(label) ?? { present: 0, late: 0, absent: 0 };
-      return { label, ...values };
-    });
-  }, [month, monthAttendance]);
+    return trendMonths.map(({ key, ...item }) => ({ ...item, ...(grouped.get(key) ?? {}) }));
+  }, [month, data.attendance, demoAttendance, outlet, employeeOutlets]);
 
   const performanceByOutlet = useMemo(() => {
     const grouped = new Map<string, { total: number; count: number }>();
@@ -285,8 +290,8 @@ export default function HRAnalytics() {
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Attendance Trends by Day">
-            {!loading && <EmptyChart show={!monthAttendance.length} />}
+          <ChartCard title="Attendance Trends by Month">
+            {!loading && <EmptyChart show={!attendanceTrend.some(item => item.present + item.late + item.absent > 0)} />}
             <ResponsiveContainer width="100%" height="100%"><LineChart data={attendanceTrend} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} interval="preserveStartEnd" /><YAxis allowDecimals={false} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} /><Legend />
               <Line type="monotone" dataKey="present" name="On time" stroke="#37a66b" strokeWidth={2.5} dot={false} />
