@@ -3,8 +3,8 @@ import MobileNumberField from '../MobileNumberField';
 import { formatMobileNumber, isPhilippineMobileNumber } from '../../lib/mobileNumber';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { Alert, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, IconButton, InputAdornment, MenuItem, Paper, Stack, Typography } from '@mui/material';
-import { AccountCircle, ArrowBackRounded, Assignment, BadgeOutlined, CakeOutlined, Close, EditNote, EmailOutlined, FavoriteBorder, HomeOutlined, LockOutlined, LocationCityOutlined, MapOutlined, PersonOutline, PhoneOutlined, PlaceOutlined, Public, Save, TrackChanges, Visibility, VisibilityOff, WcOutlined } from '@mui/icons-material';
+import { Alert, Box, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, IconButton, InputAdornment, MenuItem, Paper, Stack, Tooltip, Typography } from '@mui/material';
+import { AccountCircle, ArrowBackRounded, Assignment, BadgeOutlined, CakeOutlined, Close, DeleteOutline, EditNote, EmailOutlined, FileDownload, FavoriteBorder, HomeOutlined, LockOutlined, LocationCityOutlined, MapOutlined, PersonOutline, PhoneOutlined, PlaceOutlined, Public, Save, TrackChanges, Visibility, VisibilityOff, WcOutlined } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import { applicantConfirmationRedirect } from '../../lib/applicantConfirmationRedirect';
@@ -56,6 +56,34 @@ const requirementFileTypes: Record<string, string> = {
   png: 'image/png',
 };
 const requirementFileKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
+
+function RequirementFilePreview({ file, onClose }: { file: File; onClose: () => void }) {
+  const [url, setUrl] = useState('');
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const type = requirementFileTypes[extension];
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file.slice(0, file.size, type));
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file, type]);
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="md" aria-labelledby="requirement-file-preview-title">
+      <DialogTitle id="requirement-file-preview-title" sx={{ overflowWrap: 'anywhere' }}>{file.name}</DialogTitle>
+      <DialogContent dividers>
+        {url && type === 'application/pdf' ? (
+          <Box component="iframe" title={file.name} src={url} sx={{ display: 'block', width: '100%', height: '65vh', border: 0 }} />
+        ) : url && type?.startsWith('image/') ? (
+          <Box component="img" src={url} alt={file.name} sx={{ display: 'block', mx: 'auto', maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }} />
+        ) : <Typography>Download this file to open it on your device.</Typography>}
+      </DialogContent>
+      <DialogActions>
+        {url && <Button component="a" href={url} download={file.name} startIcon={<FileDownload />}>Download</Button>}
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 type ApplicantSubmission = ApplicationHistoryItem & {
   status: string;
   requirements_note: string | null;
@@ -108,6 +136,7 @@ export default function ApplicantPortal() {
   const [uploadFor, setUploadFor] = useState<string | null>(null);
   const [requirementFiles, setRequirementFiles] = useState<File[]>([]);
   const [requirementTitles, setRequirementTitles] = useState<Record<string, string>>({});
+  const [requirementPreviewFile, setRequirementPreviewFile] = useState<File | null>(null);
   const profileReady = ready && profileOwner === user?.id;
   const requestedNext = params.get('next') ?? '';
   const hasApplicationDestination = /^\/apply(?:\?|$)/.test(requestedNext);
@@ -377,10 +406,26 @@ export default function ApplicantPortal() {
                             <Typography component="label" variant="body2">
                               Supporting documents (up to 5 files, 10 MB total; add a title for each)
                               <Box component="input" type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" disabled={busy}
-                                onChange={event => { setRequirementFiles(Array.from(event.currentTarget.files ?? [])); setRequirementTitles({}); }} sx={{ display: 'block', maxWidth: '100%', mt: 0.5 }} />
+                                onChange={event => {
+                                  const selected = Array.from(event.currentTarget.files ?? []);
+                                  setRequirementFiles(current => [...current, ...selected.filter(file => !current.some(existing => requirementFileKey(existing) === requirementFileKey(file)))]);
+                                  event.currentTarget.value = '';
+                                }} sx={{ display: 'block', maxWidth: '100%', mt: 0.5 }} />
                             </Typography>
-                            {requirementFiles.map(file => <TextField key={requirementFileKey(file)} fullWidth required size="small" label={`Title for ${file.name}`} placeholder="e.g. Birth Certificate" value={requirementTitles[requirementFileKey(file)] ?? ''}
-                              onChange={event => setRequirementTitles(current => ({ ...current, [requirementFileKey(file)]: event.target.value }))} />)}
+                            {requirementFiles.map((file, index) => <Paper key={requirementFileKey(file)} variant="outlined" sx={{ p: 1.25, display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2 }}>
+                              <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Typography variant="body2" fontWeight={700} sx={{ overflowWrap: 'anywhere' }}>{file.name}</Typography>
+                              </Box>
+                              <TextField required size="small" label="Document title" placeholder={index === 0 ? 'e.g. Front page' : 'e.g. Back page'} value={requirementTitles[requirementFileKey(file)] ?? ''}
+                                onChange={event => setRequirementTitles(current => ({ ...current, [requirementFileKey(file)]: event.target.value }))} sx={{ minWidth: { sm: 220 } }} />
+                              <Stack direction="row" alignItems="center" justifyContent="flex-end">
+                                <Tooltip title="Preview file"><IconButton type="button" size="small" aria-label={`Preview ${file.name}`} onClick={() => setRequirementPreviewFile(file)}><Visibility fontSize="small" /></IconButton></Tooltip>
+                                <Tooltip title="Remove file"><IconButton type="button" size="small" color="error" aria-label={`Remove ${file.name}`} onClick={() => {
+                                  setRequirementFiles(current => current.filter((_, fileIndex) => fileIndex !== index));
+                                  setRequirementTitles(current => { const next = { ...current }; delete next[requirementFileKey(file)]; return next; });
+                                }}><DeleteOutline fontSize="small" /></IconButton></Tooltip>
+                              </Stack>
+                            </Paper>)}
                             <Button variant="contained" disabled={busy || refreshing || !requirementFiles.length} onClick={() => void submitRequirements(app.applicant_id)}>
                               {busy ? 'Uploading…' : 'Submit documents'}
                             </Button>
@@ -408,6 +453,7 @@ export default function ApplicantPortal() {
             <Button onClick={() => setTrackingId(null)}>Close</Button>
           </DialogActions>
         </Dialog>
+        {requirementPreviewFile && <RequirementFilePreview file={requirementPreviewFile} onClose={() => setRequirementPreviewFile(null)} />}
       </RootLayout>
     );
   }

@@ -438,11 +438,36 @@ export default function MyProfile() {
   const handleFileUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const incoming = Array.from(files);
+    const supportedExtensions = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']);
+    if (incoming.some(file => !supportedExtensions.has(file.name.split('.').pop()?.toLowerCase() ?? ''))) {
+      setSnackbar({ open: true, message: 'Select PDF, DOC, DOCX, JPG, JPEG, or PNG documents.', severity: 'error' });
+      return;
+    }
     if (incoming.some(file => file.size > 10 * 1024 * 1024)) {
       setSnackbar({ open: true, message: 'Each file must be 10 MB or smaller.', severity: 'error' });
       return;
     }
-    setPendingFiles(current => [...current, ...incoming]);
+    setPendingFiles(current => [...current, ...incoming.filter(file => !current.some(existing => profileFileTitleKey(existing) === profileFileTitleKey(file)))]);
+  };
+
+  const previewPendingFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setPreviewDoc({
+      name: file.name,
+      title: pendingTitles[profileFileTitleKey(file)]?.trim() || file.name,
+      type: file.type || mimeFromFileName(file.name),
+      size: file.size,
+      uploadedAt: '',
+      dataUrl: String(reader.result ?? ''),
+    });
+    reader.onerror = () => setSnackbar({ open: true, message: `Could not preview ${file.name}.`, severity: 'error' });
+    reader.readAsDataURL(file);
+  };
+
+  const removePendingFile = (file: File) => {
+    const key = profileFileTitleKey(file);
+    setPendingFiles(current => current.filter(item => profileFileTitleKey(item) !== key));
+    setPendingTitles(current => { const next = { ...current }; delete next[key]; return next; });
   };
 
   const savePendingFiles = async () => {
@@ -938,9 +963,15 @@ export default function MyProfile() {
                 PDF, DOC, DOCX, JPG, PNG · Max 10 MB each · Give every file a title
               </Typography>
             </Box>
-            {pendingFiles.map(file => <TextField key={profileFileTitleKey(file)} fullWidth required size="small"
-              label={`Title for ${file.name}`} placeholder="e.g. Employment Contract" value={pendingTitles[profileFileTitleKey(file)] ?? ''}
-              onChange={event => setPendingTitles(current => ({ ...current, [profileFileTitleKey(file)]: event.target.value }))} sx={{ mb: 1 }} />)}
+            {pendingFiles.map(file => <Paper key={profileFileTitleKey(file)} elevation={0} sx={{ ...rowCardSx, p: 1.25, mb: 1, display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{file.name}</Typography>
+              <TextField required size="small" label="Document title" placeholder="e.g. Employment Contract" value={pendingTitles[profileFileTitleKey(file)] ?? ''}
+                onChange={event => setPendingTitles(current => ({ ...current, [profileFileTitleKey(file)]: event.target.value }))} sx={{ minWidth: { sm: 240 } }} />
+              <Stack direction="row" alignItems="center" justifyContent="flex-end">
+                <Tooltip title="Preview file"><IconButton size="small" aria-label={`Preview ${file.name}`} onClick={() => previewPendingFile(file)} sx={{ color: GREEN_UI.greenDark }}><Visibility fontSize="small" /></IconButton></Tooltip>
+                <Tooltip title="Remove file"><IconButton size="small" color="error" aria-label={`Remove ${file.name}`} onClick={() => removePendingFile(file)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+              </Stack>
+            </Paper>)}
             {pendingFiles.length > 0 && <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
               <Button variant="contained" disabled={uploading} onClick={() => void savePendingFiles()}>{uploading ? 'Uploading…' : 'Upload files'}</Button>
               <Button variant="outlined" disabled={uploading} onClick={() => { setPendingFiles([]); setPendingTitles({}); }}>Clear selection</Button>
