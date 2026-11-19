@@ -41,7 +41,7 @@ import {
 } from '@mui/icons-material';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import { COMPANY } from '../../lib/constants';
+import { COMPANY, OUTLETS } from '../../lib/constants';
 
 interface ReportData {
   [key: string]: any[];
@@ -77,11 +77,12 @@ const REPORT_TYPES: ReportType[] = [
   { value: 'requests', label: 'Leave / OT / Undertime Requests', icon: <GridView /> },
   { value: 'criteria', label: 'Evaluation Criteria & Weights', icon: <BarChartIcon /> },
   { value: 'systemLogs', label: 'System Logs', icon: <GridView /> },
+  { value: 'consolidated', label: 'Consolidated HR Summary', icon: <Assessment /> },
 ];
 
 const COLUMNS: Record<string, string[]> = {
   employees: ['id', 'name', 'position', 'department', 'outlet', 'status', 'contact', 'email', 'dateHired'],
-  applications: ['id', 'name', 'position', 'email', 'phone', 'dateApplied', 'status', 'hiringDecision'],
+  applications: ['id', 'name', 'position', 'outlet', 'email', 'phone', 'dateApplied', 'status', 'hiringDecision'],
   schedules: ['id', 'employee', 'week', 'position', 'outlet', 'timeIn', 'timeOut', 'finalized', 'status'],
   attendance: [
     'id',
@@ -101,6 +102,7 @@ const COLUMNS: Record<string, string[]> = {
   attendanceLogs: [
     'id',
     'employee',
+    'outlet',
     'date',
     'timeIn',
     'timeOut',
@@ -125,10 +127,35 @@ const COLUMNS: Record<string, string[]> = {
     'status',
   ],
   evaluations: ['id', 'employee', 'position', 'outlet', 'period', 'rawScore', 'finalScore', 'rating', 'status'],
-  requests: ['id', 'employee', 'type', 'leaveType', 'date', 'time', 'reason', 'status', 'reviewerRemarks'],
+  requests: ['id', 'employee', 'outlet', 'type', 'leaveType', 'date', 'time', 'reason', 'status', 'reviewerRemarks'],
   criteria: ['id', 'criteriaName', 'category', 'weight', 'maxScore', 'active', 'description'],
   systemLogs: ['id', 'userName', 'userRole', 'action', 'module', 'recordId', 'recordTable', 'description', 'dateTime'],
+  consolidated: ['module', 'metric', 'value'],
 };
+
+const PERIOD_OPTIONS = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'annual', label: 'Annual' },
+  { value: 'custom', label: 'Custom range' },
+] as const;
+type PeriodMode = (typeof PERIOD_OPTIONS)[number]['value'];
+
+const toIsoDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const getPeriodRange = (period: PeriodMode, today = new Date()) => {
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  if (period === 'annual') return { start: `${year}-01-01`, end: `${year}-12-31` };
+  if (period === 'quarterly') {
+    const quarterStart = Math.floor(month / 3) * 3;
+    return { start: toIsoDate(new Date(year, quarterStart, 1)), end: toIsoDate(new Date(year, quarterStart + 3, 0)) };
+  }
+  if (period === 'custom') return { start: '', end: '' };
+  return { start: toIsoDate(new Date(year, month, 1)), end: toIsoDate(new Date(year, month + 1, 0)) };
+};
+
+const REPORT_SUMMARY_MODULES = ['employees', 'applications', 'schedules', 'attendance', 'attendanceLogs', 'payroll', 'evaluations', 'requests'];
+const REPORTS_WITHOUT_OUTLET = new Set(['criteria', 'systemLogs']);
 
 const reportDateColumns = new Set(['date', 'dateHired', 'dateApplied', 'createdAt', 'submittedDate', 'periodStart', 'periodEnd']);
 const currencyColumns = new Set(['salary', 'grossPay', 'deductions', 'netPay']);
@@ -220,6 +247,132 @@ const money = (value: any) => {
   return `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+const numericTotal = (rows: any[], key: string) => rows.reduce((sum, row) => sum + (Number(row?.[key]) || 0), 0);
+const countMatching = (rows: any[], key: string, expected: string) => rows.filter(row =>
+  String(row?.[key] ?? '').toLowerCase().includes(expected.toLowerCase()),
+).length;
+
+const summarizeReport = (type: string, rows: any[]) => {
+  const count = rows.length;
+  let metrics: Array<{ metric: string; value: string }> = [{ metric: 'Records in period', value: count.toLocaleString() }];
+  let findings: string[] = [];
+
+  switch (type) {
+    case 'employees': {
+      const active = rows.filter(row => String(row.status ?? '').trim().toLowerCase() === 'active').length;
+      const onLeave = countMatching(rows, 'status', 'leave');
+      metrics = [
+        { metric: 'Employee records', value: count.toLocaleString() },
+        { metric: 'Active employees', value: active.toLocaleString() },
+        { metric: 'Employees on leave', value: onLeave.toLocaleString() },
+      ];
+      findings = [`${active} of ${count} employee records are currently active.`, `${new Set(rows.map(row => row.position).filter(value => value && value !== '—')).size} distinct positions are represented. Current employee records are a live snapshot, so they are not removed by the selected hire-date range.`];
+      break;
+    }
+    case 'applications': {
+      const hired = rows.filter(row => {
+        const decision = String(row.hiringDecision || row.status).trim().toLowerCase();
+        return decision.includes('hired') && !decision.includes('not hired');
+      }).length;
+      const interview = rows.filter(row => String(row.status).toLowerCase().includes('interview')).length;
+      const outletAssigned = rows.filter(row => String(row.outlet ?? '').trim() && row.outlet !== '—').length;
+      metrics = [
+        { metric: 'Applications received', value: count.toLocaleString() },
+        { metric: 'Hired', value: hired.toLocaleString() },
+        { metric: 'For interview', value: interview.toLocaleString() },
+      ];
+      findings = [`${hired} of ${count} applications have a hired decision.`, outletAssigned === 0
+        ? 'Applications do not have outlet assignments in the source records; outlet-specific views exclude unassigned applications.'
+        : `${outletAssigned} application records have an outlet assignment.`];
+      break;
+    }
+    case 'schedules': {
+      const published = rows.filter(row => ['published', 'confirmed'].includes(String(row.status).toLowerCase())).length;
+      metrics = [
+        { metric: 'Schedule records', value: count.toLocaleString() },
+        { metric: 'Published or confirmed', value: published.toLocaleString() },
+        { metric: 'Outlets represented', value: new Set(rows.map(row => row.outlet).filter(value => value && value !== '—')).size.toLocaleString() },
+      ];
+      findings = [`${published} of ${count} schedule records are published or confirmed.`];
+      break;
+    }
+    case 'attendance': {
+      const presentDays = numericTotal(rows, 'presentDays');
+      const absentDays = numericTotal(rows, 'absentDays');
+      const late = numericTotal(rows, 'lateMinutes');
+      const overtime = numericTotal(rows, 'overtimeMinutes');
+      metrics = [
+        { metric: 'Attendance summaries', value: count.toLocaleString() },
+        { metric: 'Present days', value: presentDays.toLocaleString() },
+        { metric: 'Absent days', value: absentDays.toLocaleString() },
+        { metric: 'Late minutes', value: late.toLocaleString() },
+        { metric: 'Overtime minutes', value: overtime.toLocaleString() },
+        { metric: 'Work hours', value: numericTotal(rows, 'workHours').toFixed(2) },
+      ];
+      findings = [`${late} late minutes and ${absentDays} absent days were recorded across the selected summaries.`, `Total recorded work time was ${numericTotal(rows, 'workHours').toFixed(2)} hours.`];
+      break;
+    }
+    case 'attendanceLogs': {
+      const late = numericTotal(rows, 'lateMinutes');
+      const overtime = numericTotal(rows, 'overtimeMinutes');
+      metrics = [
+        { metric: 'Attendance records', value: count.toLocaleString() },
+        { metric: 'Total work hours', value: numericTotal(rows, 'totalHours').toFixed(2) },
+        { metric: 'Late minutes', value: late.toLocaleString() },
+        { metric: 'Undertime minutes', value: numericTotal(rows, 'undertimeMinutes').toLocaleString() },
+        { metric: 'Overtime minutes', value: overtime.toLocaleString() },
+      ];
+      findings = [`The selected records contain ${late} late minutes and ${overtime} overtime minutes.`, `${countMatching(rows, 'validationStatus', 'validated')} records are marked validated.`];
+      break;
+    }
+    case 'payroll': {
+      const gross = numericTotal(rows, 'grossPay');
+      const net = numericTotal(rows, 'netPay');
+      const deductions = numericTotal(rows, 'deductions');
+      metrics = [
+        { metric: 'Payroll items', value: count.toLocaleString() },
+        { metric: 'Gross pay total', value: money(gross) },
+        { metric: 'Deductions total', value: money(deductions) },
+        { metric: 'Net pay total', value: money(net) },
+      ];
+      findings = [`Gross pay totals ${money(gross)} and net pay totals ${money(net)} for the selected payroll items.`, `${countMatching(rows, 'status', 'endorsed') + countMatching(rows, 'status', 'exported')} payroll items are in an endorsed or exported payroll.`];
+      break;
+    }
+    case 'evaluations': {
+      const completedRows = rows.filter(row => ['approved', 'completed'].includes(String(row.status ?? '').trim().toLowerCase()));
+      const avg = completedRows.length ? numericTotal(completedRows, 'finalScore') / completedRows.length : 0;
+      const approved = completedRows.length;
+      metrics = [
+        { metric: 'Evaluation records', value: count.toLocaleString() },
+        { metric: 'Average final score (completed)', value: completedRows.length ? `${avg.toFixed(2)}%` : 'No completed evaluations' },
+        { metric: 'Completed evaluations', value: approved.toLocaleString() },
+      ];
+      findings = [completedRows.length
+        ? `The average final score is ${avg.toFixed(2)}% across ${completedRows.length} completed evaluations.`
+        : `No completed evaluations are available among the ${count} matching records.`, `${count - approved} evaluation records are still in progress or otherwise not completed.`];
+      break;
+    }
+    case 'requests': {
+      const approved = countMatching(rows, 'status', 'approved');
+      const pending = countMatching(rows, 'status', 'pending');
+      metrics = [
+        { metric: 'Employee requests', value: count.toLocaleString() },
+        { metric: 'Approved', value: approved.toLocaleString() },
+        { metric: 'Pending', value: pending.toLocaleString() },
+        { metric: 'Leave requests', value: countMatching(rows, 'type', 'leave').toLocaleString() },
+        { metric: 'Overtime requests', value: countMatching(rows, 'type', 'overtime').toLocaleString() },
+        { metric: 'Undertime requests', value: countMatching(rows, 'type', 'undertime').toLocaleString() },
+      ];
+      findings = [`${approved} requests are approved and ${pending} remain pending.`, `${count} requests were submitted in the selected period.`];
+      break;
+    }
+    default:
+      findings = [`${count} records were included in this report.`];
+  }
+
+  return { count, metrics, findings };
+};
+
 const formatTime = (value: any) => {
   if (!value) return '—';
   return String(value).slice(0, 5);
@@ -267,8 +420,6 @@ const isWithinReportRange = (row: any, dateFrom: string, dateTo: string) => {
   if (!comparableDate) return true;
   return (!dateFrom || comparableDate >= dateFrom) && (!dateTo || comparableDate <= dateTo);
 };
-
-const getReportYear = () => formatDisplayDate(new Date()).slice(-4);
 
 const loadSystemLogs = async () => {
   const pageSize = 500;
@@ -320,11 +471,14 @@ const getStatusColor = (value: any) => {
 export default function Reports() {
   const { user } = useAuth();
   const [reportType, setReportType] = useState('employees');
-  const [dateFrom, setDateFrom] = useState(() => `${getReportYear()}-01-01`);
-  const [dateTo, setDateTo] = useState(() => `${getReportYear()}-12-31`);
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('monthly');
+  const [dateFrom, setDateFrom] = useState(() => getPeriodRange('monthly').start);
+  const [dateTo, setDateTo] = useState(() => getPeriodRange('monthly').end);
+  const [selectedOutlet, setSelectedOutlet] = useState('All Outlets');
   const [logDate, setLogDate] = useState('');
   const [logUser, setLogUser] = useState('');
   const [logModule, setLogModule] = useState('');
+  const [preparedByName, setPreparedByName] = useState('');
   const [allData, setAllData] = useState<ReportData>({});
   const [loadingAll, setLoadingAll] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -399,10 +553,13 @@ export default function Reports() {
         safe('system_logs'),
         safe('user_accounts'),
       ]);
+      setPreparedByName(String(user?.name ?? user?.email ?? '').trim());
 
       const outletByEmployeeId = new Map<string, any>();
+      const outletByApplicantId = new Map<string, any>();
       userAccounts.forEach((u: any) => {
         if (u.employee_id) outletByEmployeeId.set(u.employee_id, u.outlet);
+        if (u.applicant_id) outletByApplicantId.set(u.applicant_id, u.outlet);
       });
 
       const employeeById = new Map<string, any>();
@@ -429,6 +586,7 @@ export default function Reports() {
           id: a.applicant_id,
           name: a.name || getFullName(a) || '—',
           position: a.position_applied || '—',
+          outlet: firstFilled(outletByApplicantId.get(a.applicant_id), a.outlet) || '—',
           email: a.email || '—',
           phone: a.phone_number || '—',
           dateApplied: toDateOnly(a.created_at),
@@ -446,7 +604,7 @@ export default function Reports() {
               : '—',
             week: s.week || '—',
             position: s.position || emp?.position || '—',
-            outlet: firstFilled(emp?.outlet, s.outlet) || '—',
+            outlet: firstFilled(s.outlet, emp?.outlet) || '—',
             timeIn: formatTime(s.time_in),
             timeOut: formatTime(s.time_out),
             finalized: s.is_finalized ? 'Finalized' : 'Draft',
@@ -459,7 +617,7 @@ export default function Reports() {
           id: a.summary_id,
           employee: `${a.employee_id}${a.employee_name || employeeById.get(a.employee_id) ? ` - ${a.employee_name || getFullName(employeeById.get(a.employee_id))}` : ''}`,
           position: a.position || employeeById.get(a.employee_id)?.position || '—',
-          outlet: firstFilled(employeeById.get(a.employee_id)?.outlet, a.outlet) || '—',
+          outlet: firstFilled(a.outlet, employeeById.get(a.employee_id)?.outlet) || '—',
           period: buildPeriod(a.period_start, a.period_end),
           presentDays: a.total_present_days ?? 0,
           absentDays: a.total_absent_days ?? 0,
@@ -475,6 +633,7 @@ export default function Reports() {
         attendanceLogs: attendanceLogs.map((a: any) => ({
           id: a.log_id,
           employee: `${a.employee_id || a.biometric_user_id || '—'}${a.employee_name ? ` - ${a.employee_name}` : ''}`,
+          outlet: firstFilled(employeeById.get(a.employee_id)?.outlet, a.outlet) || '—',
           date: toDateOnly(a.attendance_date),
           timeIn: formatTime(a.time_in),
           timeOut: formatTime(a.time_out),
@@ -493,7 +652,7 @@ export default function Reports() {
             id: item.payroll_item_id,
             employee: `${item.employee_id}${item.employee_name || emp ? ` - ${item.employee_name || getFullName(emp)}` : ''}`,
             position: item.position || emp?.position || '—',
-            outlet: firstFilled(emp?.outlet, item.outlet) || '—',
+            outlet: firstFilled(item.outlet, emp?.outlet) || '—',
             period: buildPeriod(payroll?.period_start, payroll?.period_end, payroll?.cutoff_label),
             regularHours: item.regular_hours ?? 0,
             overtimeHours: item.overtime_hours ?? 0,
@@ -509,7 +668,7 @@ export default function Reports() {
           id: e.evaluation_id,
           employee: `${e.employee_id}${e.employee_name || employeeById.get(e.employee_id) ? ` - ${e.employee_name || getFullName(employeeById.get(e.employee_id))}` : ''}`,
           position: e.position || employeeById.get(e.employee_id)?.position || '—',
-          outlet: firstFilled(employeeById.get(e.employee_id)?.outlet, e.outlet) || '—',
+          outlet: firstFilled(e.outlet, employeeById.get(e.employee_id)?.outlet) || '—',
           period: buildPeriod(e.evaluation_period_start, e.evaluation_period_end, e.evaluation_period_label),
           rawScore: e.total_raw_score ?? 0,
           finalScore: e.final_weighted_score ?? 0,
@@ -520,6 +679,7 @@ export default function Reports() {
         requests: requests.map((r: any) => ({
           id: r.request_id,
           employee: `${r.employee_id || '—'}${employeeById.get(r.employee_id) ? ` - ${getFullName(employeeById.get(r.employee_id))}` : ''}`,
+          outlet: firstFilled(employeeById.get(r.employee_id)?.outlet) || '—',
           type: r.request_type || '—',
           leaveType: r.leave_type || '—',
           date: buildPeriod(r.start_date, r.end_date),
@@ -567,7 +727,7 @@ export default function Reports() {
   };
 
   useEffect(() => {
-    fetchAll();
+    void fetchAll();
   }, []);
 
   const fetchReportHistory = async () => {
@@ -592,23 +752,46 @@ export default function Reports() {
   }, [reportType, dateFrom, dateTo, rowsPerPage, logDate, logUser, logModule]);
 
   const selected = REPORT_TYPES.find(r => r.value === reportType) ?? REPORT_TYPES[0];
-  const currentData: any[] = allData[reportType] ?? [];
-  const cols = COLUMNS[reportType] ?? [];
-
-  const filtered = useMemo(() => {
-    return currentData.filter(row => {
-      if (reportType !== 'systemLogs') return isWithinReportRange(row, dateFrom, dateTo);
-      return (logDate ? row.date === logDate : isWithinReportRange(row, dateFrom, dateTo))
-        && (!logUser || row.userName === logUser)
-        && (!logModule || row.module === logModule);
-    });
-  }, [currentData, reportType, dateFrom, dateTo, logDate, logUser, logModule]);
+  const outletsAvailable = useMemo(() => [...new Set(
+    Object.values(allData).flatMap(rows => rows.map(row => String(row?.outlet ?? '').trim()).filter(value => value && value !== '—')),
+  )].sort((left, right) => left.localeCompare(right)), [allData]);
 
   const getFilteredRowsForType = (type: string) => {
-    if (type === reportType) return filtered;
+    if (type === 'consolidated') return consolidatedRows;
     const rows = allData[type] ?? [];
-    return rows.filter(row => isWithinReportRange(row, dateFrom, dateTo));
+    const withinRange = rows.filter(row => {
+      if (type === 'systemLogs') {
+        return (logDate ? row.date === logDate : isWithinReportRange(row, dateFrom, dateTo))
+          && (!logUser || row.userName === logUser)
+          && (!logModule || row.module === logModule);
+      }
+      return type === 'employees' || isWithinReportRange(row, dateFrom, dateTo);
+    });
+    if (selectedOutlet === 'All Outlets' || REPORTS_WITHOUT_OUTLET.has(type)) return withinRange;
+    return withinRange.filter(row => String(row.outlet ?? '').trim().toLowerCase() === selectedOutlet.toLowerCase());
   };
+
+  const filteredByType = useMemo(() => Object.fromEntries(
+    REPORT_SUMMARY_MODULES.map(type => [type, getFilteredRowsForType(type)]),
+  ) as Record<string, any[]>, [allData, dateFrom, dateTo, logDate, logModule, logUser, selectedOutlet]);
+  const consolidatedSummary = useMemo(() => REPORT_SUMMARY_MODULES.map(type => {
+    const summary = summarizeReport(type, filteredByType[type] ?? []);
+    const typeLabel = REPORT_TYPES.find(item => item.value === type)?.label ?? type;
+    return {
+      type,
+      label: typeLabel,
+      rows: filteredByType[type] ?? [],
+      ...summary,
+    };
+  }), [filteredByType]);
+  const consolidatedRows = useMemo(() => consolidatedSummary.flatMap(section => section.metrics.map(metric => ({
+    module: section.label,
+    metric: metric.metric,
+    value: metric.value,
+  }))), [consolidatedSummary]);
+  const currentData: any[] = reportType === 'consolidated' ? consolidatedRows : (allData[reportType] ?? []);
+  const cols = COLUMNS[reportType] ?? [];
+  const filtered: any[] = reportType === 'consolidated' ? consolidatedRows : (filteredByType[reportType] ?? []);
 
   const paginated = useMemo(() => {
     const start = page * rowsPerPage;
@@ -667,6 +850,14 @@ export default function Reports() {
 
   const downloadPdfReport = async () => {
     if (!filtered.length || generatingPdf) return;
+    if (reportType === 'consolidated' && warning) {
+      setPdfError('A consolidated report needs data from every HR module. Resolve the data-source warning and refresh before creating this PDF.');
+      return;
+    }
+    if (periodMode === 'custom' && (!dateFrom || !dateTo || dateTo < dateFrom)) {
+      setPdfError('Choose a valid custom date range before creating the PDF.');
+      return;
+    }
     setGeneratingPdf(true);
     setPdfError(null);
     setPdfNotice(null);
@@ -679,31 +870,26 @@ export default function Reports() {
       if (!authUserId) throw new Error('Sign in again before generating a report.');
 
       const isLogReport = reportType === 'systemLogs';
+      const isConsolidated = reportType === 'consolidated';
       const reportDates = isLogReport && logDate
         ? formatDisplayDate(logDate)
         : `${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)}`;
       const generatedAt = new Date();
       const slug = reportType.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
-      const fileName = `${slug}_report_${dateFrom}_to_${dateTo}.pdf`;
+      const outletSlug = selectedOutlet === 'All Outlets' ? 'all-outlets' : selectedOutlet.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+      const fileName = `${slug}_${outletSlug}_${dateFrom || 'all'}_to_${dateTo || 'all'}.pdf`;
       const document = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4', compress: true });
       const pageWidth = document.internal.pageSize.getWidth();
+      const pageHeight = document.internal.pageSize.getHeight();
       const margin = 34;
-      const preparedBy = user?.name || sessionData.session?.user.email || 'Authorized HRIS user';
-
-      autoTable(document, {
-        head: [cols.map(labelize)],
-        body: filtered.map(row => cols.map(column => formatValue(column, row[column]))),
-        startY: 94,
-        margin: { top: 94, right: margin, bottom: 38, left: margin },
-        theme: 'grid',
-        styles: { font: 'helvetica', fontSize: 7, cellPadding: 4, overflow: 'linebreak', textColor: [38, 54, 43], lineColor: [220, 232, 221], lineWidth: 0.4 },
-        headStyles: { fillColor: [31, 122, 70], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
-        alternateRowStyles: { fillColor: [246, 251, 244] },
-        horizontalPageBreak: true,
-        horizontalPageBreakRepeat: 0,
-        willDrawPage: () => {
+      const preparedBy = preparedByName || user?.name || sessionData.session?.user.email || 'Authorized HRIS user';
+      const reportRecordCount = isConsolidated
+        ? REPORT_SUMMARY_MODULES.reduce((sum, type) => sum + (filteredByType[type]?.length ?? 0), 0)
+        : filtered.length;
+      const reportTitle = selectedOutlet === 'All Outlets' ? selected.label : `${selected.label} — ${selectedOutlet}`;
+      const header = (detailTitle = selected.label) => {
           document.setFillColor(31, 122, 70);
-          document.rect(0, 0, pageWidth, 80, 'F');
+          document.rect(0, 0, pageWidth, 88, 'F');
           document.setTextColor(255, 255, 255);
           document.setFont('helvetica', 'bold');
           document.setFontSize(16);
@@ -713,35 +899,121 @@ export default function Reports() {
           document.text('HUMAN RESOURCE INFORMATION SYSTEM', margin, 42);
           document.setFont('helvetica', 'bold');
           document.setFontSize(13);
-          document.text(selected.label, margin, 63);
+          document.text(detailTitle, margin, 64);
           document.setFont('helvetica', 'normal');
           document.setFontSize(8);
-          document.text(`Period: ${reportDates}   |   Records: ${filtered.length}`, pageWidth - margin, 26, { align: 'right' });
+          document.text(`Period: ${reportDates}   |   Outlet: ${selectedOutlet}   |   Records: ${reportRecordCount}`, pageWidth - margin, 26, { align: 'right' });
           document.text(`Prepared by: ${preparedBy}`, pageWidth - margin, 42, { align: 'right' });
           document.text(`Generated: ${formatDisplayDateTime(generatedAt)}`, pageWidth - margin, 58, { align: 'right' });
-        },
-        didDrawPage: () => {
-          const height = document.internal.pageSize.getHeight();
+      };
+      const footer = () => {
           document.setDrawColor(169, 223, 182);
-          document.line(margin, height - 27, pageWidth - margin, height - 27);
+          document.line(margin, pageHeight - 27, pageWidth - margin, pageHeight - 27);
           document.setFont('helvetica', 'normal');
           document.setFontSize(8);
           document.setTextColor(103, 121, 108);
-          document.text(`${COMPANY.name}  ·  Confidential HR report`, margin, height - 13);
-        },
+          document.text(`${COMPANY.name}  ·  Confidential HR report`, margin, pageHeight - 13);
+      };
+      const summarySections = isConsolidated
+        ? consolidatedSummary
+        : [{ label: selected.label, ...summarizeReport(reportType, filtered) }];
+      const metricRows = summarySections.flatMap(section => section.metrics.map(metric => [section.label, metric.metric, metric.value]));
+      const findings = summarySections.flatMap(section => section.findings.map(finding => `${section.label}: ${finding}`));
+      const conclusion = isConsolidated
+        ? `${reportRecordCount} actual HRIS records from ${summarySections.length} HR modules were included for ${selectedOutlet} during ${reportDates}. These figures summarize records currently available in the system for the selected filters.`
+        : `${filtered.length} actual ${selected.label.toLowerCase()} record${filtered.length === 1 ? '' : 's'} were included for ${selectedOutlet} during ${reportDates}.`;
+
+      header('Executive Summary');
+      document.setTextColor(38, 54, 43);
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(10);
+      document.text('Executive Summary', margin, 112);
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(9);
+      const summaryText = isConsolidated
+        ? `This consolidated report brings together actual employee, recruitment, schedule, attendance, payroll, performance, and request records available for the selected reporting period and outlet. ${reportRecordCount} source records were reviewed.`
+        : `This report summarizes ${selected.label.toLowerCase()} from the HRIS using the selected reporting period and outlet. It includes ${filtered.length} matching source records.`;
+      const summaryLines = document.splitTextToSize(summaryText, pageWidth - margin * 2);
+      document.text(summaryLines, margin, 128);
+      let summaryY = 128 + summaryLines.length * 12 + 15;
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(10);
+      document.text('Key Figures', margin, summaryY);
+      autoTable(document, {
+        head: [['Module', 'Metric', 'Value']],
+        body: metricRows,
+        startY: summaryY + 8,
+        margin: { left: margin, right: margin, bottom: 38 },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, overflow: 'linebreak', textColor: [38, 54, 43], lineColor: [220, 232, 221], lineWidth: 0.4 },
+        headStyles: { fillColor: [31, 122, 70], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [246, 251, 244] },
+        willDrawPage: () => header('Executive Summary — Key Figures'),
       });
+      summaryY = (document as any).lastAutoTable.finalY + 22;
+      if (summaryY > pageHeight - 165) {
+        document.addPage();
+        header('Executive Summary — Findings');
+        summaryY = 115;
+      }
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(10);
+      document.setTextColor(38, 54, 43);
+      document.text('Key Findings', margin, summaryY);
+      summaryY += 16;
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(9);
+      findings.forEach(finding => {
+        const lines = document.splitTextToSize(`- ${finding}`, pageWidth - margin * 2 - 8);
+        if (summaryY + lines.length * 12 > pageHeight - 75) {
+          document.addPage();
+          header('Executive Summary — Findings');
+          summaryY = 112;
+        }
+        document.text(lines, margin + 4, summaryY);
+        summaryY += lines.length * 12 + 4;
+      });
+      if (summaryY + 45 > pageHeight - 58) {
+        document.addPage();
+        header('Conclusion');
+        summaryY = 116;
+      }
+      document.setFont('helvetica', 'bold');
+      document.text('Conclusion', margin, summaryY + 10);
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(9);
+      document.text(document.splitTextToSize(conclusion, pageWidth - margin * 2), margin, summaryY + 27);
+
+      if (!isConsolidated) {
+        document.addPage();
+        header(`${selected.label} — Record Details`);
+        autoTable(document, {
+          head: [cols.map(labelize)],
+          body: filtered.map(row => cols.map(column => formatValue(column, row[column]))),
+          startY: 102,
+          margin: { top: 102, right: margin, bottom: 38, left: margin },
+          theme: 'grid',
+          styles: { font: 'helvetica', fontSize: 7, cellPadding: 4, overflow: 'linebreak', textColor: [38, 54, 43], lineColor: [220, 232, 221], lineWidth: 0.4 },
+          headStyles: { fillColor: [31, 122, 70], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+          alternateRowStyles: { fillColor: [246, 251, 244] },
+          horizontalPageBreak: true,
+          horizontalPageBreakRepeat: 0,
+          willDrawPage: () => header(`${selected.label} — Record Details`),
+        });
+      }
 
       const pageCount = document.getNumberOfPages();
       for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
         document.setPage(pageIndex);
+        footer();
         document.setFont('helvetica', 'normal');
         document.setFontSize(8);
         document.setTextColor(103, 121, 108);
-        document.text(`Page ${pageIndex} of ${pageCount}`, pageWidth - margin, document.internal.pageSize.getHeight() - 13, { align: 'right' });
+        document.text(`Page ${pageIndex} of ${pageCount}`, pageWidth - margin, pageHeight - 13, { align: 'right' });
       }
 
       const pdfBlob = document.output('blob');
-      const storagePath = `${authUserId}/${Date.now()}_${slug}.pdf`;
+      const storagePath = `${authUserId}/${Date.now()}_${slug}_${outletSlug}.pdf`;
       const { error: uploadError } = await supabase.storage.from('hr-report-pdfs').upload(storagePath, pdfBlob, {
         contentType: 'application/pdf',
         upsert: false,
@@ -753,13 +1025,13 @@ export default function Reports() {
       const periodEnd = isLogReport && logDate ? logDate : dateTo;
       const { data: savedReport, error: historyInsertError } = await supabase.from('generated_report_history')
         .insert({
-          report_title: selected.label,
+          report_title: reportTitle,
           report_type: reportType,
           period_start: periodStart || null,
           period_end: periodEnd || null,
           file_name: fileName,
           storage_path: storagePath,
-          record_count: filtered.length,
+          record_count: reportRecordCount,
           prepared_by: preparedBy,
           created_by: authUserId,
         })
@@ -1107,13 +1379,16 @@ export default function Reports() {
         </Box>
 
         <Grid container spacing={1.5}>
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <TextField
               fullWidth
               select
               label="Report Type"
               value={reportType}
-              onChange={e => setReportType(e.target.value)}
+              onChange={e => {
+                setReportType(e.target.value);
+                if (REPORTS_WITHOUT_OUTLET.has(e.target.value)) setSelectedOutlet('All Outlets');
+              }}
               InputLabelProps={{ shrink: true }}
               sx={fieldSx}
             >
@@ -1125,6 +1400,49 @@ export default function Reports() {
             </TextField>
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField fullWidth select label="Reporting Period" value={periodMode}
+              onChange={event => {
+                const nextPeriod = event.target.value as PeriodMode;
+                setPeriodMode(nextPeriod);
+                const range = getPeriodRange(nextPeriod);
+                setDateFrom(range.start);
+                setDateTo(range.end);
+              }} InputLabelProps={{ shrink: true }} sx={fieldSx}>
+              {PERIOD_OPTIONS.map(option => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField fullWidth select label="Outlet" value={selectedOutlet}
+              onChange={event => setSelectedOutlet(event.target.value)} InputLabelProps={{ shrink: true }} sx={fieldSx}
+              disabled={REPORTS_WITHOUT_OUTLET.has(reportType)}>
+              <MenuItem value="All Outlets">All Outlets</MenuItem>
+              {OUTLETS.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
+              {outletsAvailable.filter(outlet => !OUTLETS.includes(outlet as typeof OUTLETS[number])).map(outlet =>
+                <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, md: 3 }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<RestartAlt />}
+              sx={{ ...pillButtonSx, height: '56px', borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
+              onClick={() => {
+                setPeriodMode('monthly');
+                const range = getPeriodRange('monthly');
+                setDateFrom(range.start);
+                setDateTo(range.end);
+                setSelectedOutlet('All Outlets');
+                setLogDate('');
+                setLogUser('');
+                setLogModule('');
+              }}
+            >
+              Reset
+            </Button>
+          </Grid>
+          {periodMode === 'custom' && <>
+            <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
               label="Date From"
@@ -1134,8 +1452,8 @@ export default function Reports() {
               InputLabelProps={{ shrink: true }}
               sx={fieldSx}
             />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               fullWidth
               label="Date To"
@@ -1145,25 +1463,8 @@ export default function Reports() {
               InputLabelProps={{ shrink: true }}
               sx={fieldSx}
             />
-          </Grid>
-          <Grid size={{ xs: 12, md: 2 }}>
-            <Button
-              fullWidth
-              variant="outlined"
-              startIcon={<RestartAlt />}
-              sx={{ ...pillButtonSx, height: '56px', borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark }}
-              onClick={() => {
-                const year = getReportYear();
-                setDateFrom(`${year}-01-01`);
-                setDateTo(`${year}-12-31`);
-                setLogDate('');
-                setLogUser('');
-                setLogModule('');
-              }}
-            >
-              Reset
-            </Button>
-          </Grid>
+            </Grid>
+          </>}
         </Grid>
 
         {reportType === 'systemLogs' && (
@@ -1309,7 +1610,10 @@ export default function Reports() {
                   transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
                   '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 20px 42px rgba(43, 91, 55, 0.13)' },
                 }}
-                onClick={() => setReportType(rt.value)}
+                onClick={() => {
+                  setReportType(rt.value);
+                  if (REPORTS_WITHOUT_OUTLET.has(rt.value)) setSelectedOutlet('All Outlets');
+                }}
               >
                 <CardContent sx={{ p: 1.75, '&:last-child': { pb: 1.75 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.25 }}>
