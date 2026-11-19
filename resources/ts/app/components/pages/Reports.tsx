@@ -1,6 +1,6 @@
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange, parseDisplayDate } from '../../lib/displayDate';
 import TextField from '../DateTextField';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -508,7 +508,6 @@ export default function Reports() {
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
-  const printRef = useRef<HTMLDivElement>(null);
 
   const loadTable = async (tableName: string, orderColumn?: string) => {
     let query = supabase.from(tableName).select('*');
@@ -843,16 +842,60 @@ export default function Reports() {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-  const hasPrintableValue = (value: any) => {
-    if (value === null || value === undefined) return false;
-    return String(value).trim() !== '' && String(value).trim() !== 'â€”';
+  const getNarrativeSections = (type: string) => {
+    if (type === 'consolidated') return consolidatedSummary;
+    const rows = getFilteredRowsForType(type);
+    const label = REPORT_TYPES.find(item => item.value === type)?.label ?? type;
+    return [{ type, label, rows, ...summarizeReport(type, rows) }];
   };
 
-  const getPrintableColumns = (type: string, rows: any[]) => {
-    const sectionCols = COLUMNS[type] ?? [];
-    if (rows.length === 0) return sectionCols;
-    const filledCols = sectionCols.filter(col => rows.some(row => hasPrintableValue(row[col])));
-    return filledCols.length > 0 ? filledCols : sectionCols;
+  const getNarrativeRecordCount = (type: string, sections = getNarrativeSections(type)) =>
+    type === 'consolidated'
+      ? REPORT_SUMMARY_MODULES.reduce((sum, module) => sum + (filteredByType[module]?.length ?? 0), 0)
+      : (sections[0]?.rows?.length ?? 0);
+
+  const getNarrativeIntro = (type: string, sections = getNarrativeSections(type)) => {
+    const period = type === 'systemLogs' && logDate
+      ? formatDisplayDate(logDate)
+      : `${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)}`;
+    const count = getNarrativeRecordCount(type, sections);
+    if (type === 'consolidated') {
+      return `This consolidated HR summary brings together current employee, recruitment, schedule, attendance, payroll, performance, and employee request information for ${selectedOutlet} during ${period}. It reviews ${count} source records across ${sections.length} HR areas.`;
+    }
+    const label = REPORT_TYPES.find(item => item.value === type)?.label ?? type;
+    return `This report summarizes ${label.toLowerCase()} for ${selectedOutlet} during ${period}. It is based on ${count} matching record${count === 1 ? '' : 's'} currently available in the HRIS.`;
+  };
+
+  const getNarrativeConclusion = (type: string, sections = getNarrativeSections(type)) => {
+    const count = getNarrativeRecordCount(type, sections);
+    if (type === 'consolidated') {
+      return `The selected period contains ${count} source records across ${sections.length} HR areas. These results provide a consolidated view of the records currently available for the selected outlet and reporting period.`;
+    }
+    const label = REPORT_TYPES.find(item => item.value === type)?.label ?? type;
+    return `${count} ${label.toLowerCase()} record${count === 1 ? '' : 's'} were included for ${selectedOutlet} in the selected reporting period. The findings above summarize the saved HRIS data available for review.`;
+  };
+
+  const getMetricNarrative = (metrics: Array<{ metric: string; value: string }>) =>
+    metrics.length
+      ? `The summary figures are: ${metrics.map(item => `${item.metric.toLowerCase()} was ${item.value}`).join('; ')}.`
+      : '';
+
+  const renderNarrativeHtml = (type: string, sections = getNarrativeSections(type)) => {
+    const details = sections.map(section => `
+      ${type === 'consolidated' ? `<h3>${escapeHtml(section.label)}</h3>` : ''}
+      <p>${escapeHtml(getMetricNarrative(section.metrics))}</p>
+      ${section.findings.map(finding => `<p>${escapeHtml(finding)}</p>`).join('')}
+    `).join('');
+    const title = REPORT_TYPES.find(item => item.value === type)?.label ?? 'Consolidated HR Summary';
+    return `
+      <h2>Executive Summary</h2>
+      <p>${escapeHtml(getNarrativeIntro(type, sections))}</p>
+      <h2>Key Findings</h2>
+      ${details}
+      <h2>Conclusion</h2>
+      <p>${escapeHtml(getNarrativeConclusion(type, sections))}</p>
+      <div class="prepared"><span>Prepared by: <strong>${escapeHtml(preparedByName || user?.name || user?.email || 'Authorized HRIS user')}</strong></span><span>Report Type: <strong>${escapeHtml(title)}</strong></span></div>
+    `;
   };
 
   const exportCSV = () => {
@@ -890,7 +933,7 @@ export default function Reports() {
     setPdfNotice(null);
     let uploadedPath: string | null = null;
     try {
-      const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+      const { jsPDF } = await import('jspdf');
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
       const authUserId = sessionData.session?.user.id;
@@ -905,33 +948,30 @@ export default function Reports() {
       const slug = reportType.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
       const outletSlug = selectedOutlet === 'All Outlets' ? 'all-outlets' : selectedOutlet.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
       const fileName = `${slug}_${outletSlug}_${dateFrom || 'all'}_to_${dateTo || 'all'}.pdf`;
-      const document = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4', compress: true });
+      const document = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: true });
       const pageWidth = document.internal.pageSize.getWidth();
       const pageHeight = document.internal.pageSize.getHeight();
-      const margin = 34;
+      const margin = 48;
       const preparedBy = preparedByName || user?.name || sessionData.session?.user.email || 'Authorized HRIS user';
-      const reportRecordCount = isConsolidated
-        ? REPORT_SUMMARY_MODULES.reduce((sum, type) => sum + (filteredByType[type]?.length ?? 0), 0)
-        : filtered.length;
+      const reportSections = getNarrativeSections(reportType);
+      const reportRecordCount = getNarrativeRecordCount(reportType, reportSections);
       const reportTitle = selectedOutlet === 'All Outlets' ? selected.label : `${selected.label} — ${selectedOutlet}`;
-      const header = (detailTitle = selected.label) => {
-          document.setFillColor(31, 122, 70);
-          document.rect(0, 0, pageWidth, 88, 'F');
-          document.setTextColor(255, 255, 255);
-          document.setFont('helvetica', 'bold');
-          document.setFontSize(16);
-          document.text(COMPANY.name.toUpperCase(), margin, 26);
-          document.setFont('helvetica', 'normal');
-          document.setFontSize(9);
-          document.text('HUMAN RESOURCE INFORMATION SYSTEM', margin, 42);
-          document.setFont('helvetica', 'bold');
-          document.setFontSize(13);
-          document.text(detailTitle, margin, 64);
-          document.setFont('helvetica', 'normal');
-          document.setFontSize(8);
-          document.text(`Period: ${reportDates}   |   Outlet: ${selectedOutlet}   |   Records: ${reportRecordCount}`, pageWidth - margin, 26, { align: 'right' });
-          document.text(`Prepared by: ${preparedBy}`, pageWidth - margin, 42, { align: 'right' });
-          document.text(`Generated: ${formatDisplayDateTime(generatedAt)}`, pageWidth - margin, 58, { align: 'right' });
+      const header = () => {
+        document.setFillColor(31, 122, 70);
+        document.rect(0, 0, pageWidth, 86, 'F');
+        document.setTextColor(255, 255, 255);
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(16);
+        document.text(COMPANY.name.toUpperCase(), margin, 26);
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(9);
+        document.text('HUMAN RESOURCE INFORMATION SYSTEM', margin, 42);
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(12);
+        document.text(selected.label, margin, 64);
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(8);
+        document.text(`Generated ${formatDisplayDateTime(generatedAt)}`, pageWidth - margin, 26, { align: 'right' });
       };
       const footer = () => {
           document.setDrawColor(169, 223, 182);
@@ -941,93 +981,70 @@ export default function Reports() {
           document.setTextColor(103, 121, 108);
           document.text(`${COMPANY.name}  ·  Confidential HR report`, margin, pageHeight - 13);
       };
-      const summarySections = isConsolidated
-        ? consolidatedSummary
-        : [{ label: selected.label, ...summarizeReport(reportType, filtered) }];
-      const metricRows = summarySections.flatMap(section => section.metrics.map(metric => [section.label, metric.metric, metric.value]));
-      const findings = summarySections.flatMap(section => section.findings.map(finding => `${section.label}: ${finding}`));
-      const conclusion = isConsolidated
-        ? `${reportRecordCount} actual HRIS records from ${summarySections.length} HR modules were included for ${selectedOutlet} during ${reportDates}. These figures summarize records currently available in the system for the selected filters.`
-        : `${filtered.length} actual ${selected.label.toLowerCase()} record${filtered.length === 1 ? '' : 's'} were included for ${selectedOutlet} during ${reportDates}.`;
-
-      header('Executive Summary');
-      document.setTextColor(38, 54, 43);
-      document.setFont('helvetica', 'bold');
-      document.setFontSize(10);
-      document.text('Executive Summary', margin, 112);
-      document.setFont('helvetica', 'normal');
-      document.setFontSize(9);
-      const summaryText = isConsolidated
-        ? `This consolidated report brings together actual employee, recruitment, schedule, attendance, payroll, performance, and request records available for the selected reporting period and outlet. ${reportRecordCount} source records were reviewed.`
-        : `This report summarizes ${selected.label.toLowerCase()} from the HRIS using the selected reporting period and outlet. It includes ${filtered.length} matching source records.`;
-      const summaryLines = document.splitTextToSize(summaryText, pageWidth - margin * 2);
-      document.text(summaryLines, margin, 128);
-      let summaryY = 128 + summaryLines.length * 12 + 15;
-      document.setFont('helvetica', 'bold');
-      document.setFontSize(10);
-      document.text('Key Figures', margin, summaryY);
-      autoTable(document, {
-        head: [['Module', 'Metric', 'Value']],
-        body: metricRows,
-        startY: summaryY + 8,
-        margin: { left: margin, right: margin, bottom: 38 },
-        theme: 'grid',
-        styles: { font: 'helvetica', fontSize: 9, cellPadding: 5, overflow: 'linebreak', textColor: [38, 54, 43], lineColor: [220, 232, 221], lineWidth: 0.4 },
-        headStyles: { fillColor: [31, 122, 70], textColor: [255, 255, 255], fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [246, 251, 244] },
-        willDrawPage: () => header('Executive Summary — Key Figures'),
-      });
-      summaryY = (document as any).lastAutoTable.finalY + 22;
-      if (summaryY > pageHeight - 165) {
+      let cursorY = 116;
+      const bodyWidth = pageWidth - margin * 2;
+      const drawPage = () => {
         document.addPage();
-        header('Executive Summary — Findings');
-        summaryY = 115;
-      }
-      document.setFont('helvetica', 'bold');
-      document.setFontSize(10);
-      document.setTextColor(38, 54, 43);
-      document.text('Key Findings', margin, summaryY);
-      summaryY += 16;
-      document.setFont('helvetica', 'normal');
-      document.setFontSize(9);
-      findings.forEach(finding => {
-        const lines = document.splitTextToSize(`- ${finding}`, pageWidth - margin * 2 - 8);
-        if (summaryY + lines.length * 12 > pageHeight - 75) {
-          document.addPage();
-          header('Executive Summary — Findings');
-          summaryY = 112;
+        header();
+        cursorY = 116;
+      };
+      const ensureSpace = (height: number) => {
+        if (cursorY + height > pageHeight - 58) drawPage();
+      };
+      const drawHeading = (text: string, subheading = false) => {
+        ensureSpace(subheading ? 24 : 32);
+        document.setTextColor(31, 122, 70);
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(subheading ? 11 : 13);
+        document.text(text, margin, cursorY);
+        cursorY += subheading ? 18 : 23;
+      };
+      const drawParagraph = (text: string) => {
+        if (!text) return;
+        document.setTextColor(38, 54, 43);
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(10);
+        const lines = document.splitTextToSize(text, bodyWidth) as string[];
+        const lineHeight = 15;
+        let offset = 0;
+        while (offset < lines.length) {
+          const availableLines = Math.max(1, Math.floor((pageHeight - 58 - cursorY) / lineHeight));
+          const currentLines = lines.slice(offset, offset + availableLines);
+          document.text(currentLines, margin, cursorY);
+          cursorY += currentLines.length * lineHeight + 10;
+          offset += currentLines.length;
+          if (offset < lines.length) drawPage();
         }
-        document.text(lines, margin + 4, summaryY);
-        summaryY += lines.length * 12 + 4;
+      };
+
+      header();
+      drawHeading('Executive Summary');
+      drawParagraph(getNarrativeIntro(reportType, reportSections));
+      drawHeading('Key Findings');
+      reportSections.forEach(section => {
+        if (isConsolidated) drawHeading(section.label, true);
+        drawParagraph(getMetricNarrative(section.metrics));
+        section.findings.forEach(finding => drawParagraph(finding));
       });
-      if (summaryY + 45 > pageHeight - 58) {
-        document.addPage();
-        header('Conclusion');
-        summaryY = 116;
-      }
-      document.setFont('helvetica', 'bold');
-      document.text('Conclusion', margin, summaryY + 10);
+      drawHeading('Conclusion');
+      drawParagraph(getNarrativeConclusion(reportType, reportSections));
+      ensureSpace(52);
+      document.setDrawColor(220, 232, 221);
+      document.line(margin, cursorY, pageWidth - margin, cursorY);
+      cursorY += 20;
       document.setFont('helvetica', 'normal');
       document.setFontSize(9);
-      document.text(document.splitTextToSize(conclusion, pageWidth - margin * 2), margin, summaryY + 27);
-
-      if (!isConsolidated) {
-        document.addPage();
-        header(`${selected.label} — Record Details`);
-        autoTable(document, {
-          head: [cols.map(labelize)],
-          body: filtered.map(row => cols.map(column => formatValue(column, row[column]))),
-          startY: 102,
-          margin: { top: 102, right: margin, bottom: 38, left: margin },
-          theme: 'grid',
-          styles: { font: 'helvetica', fontSize: 7, cellPadding: 4, overflow: 'linebreak', textColor: [38, 54, 43], lineColor: [220, 232, 221], lineWidth: 0.4 },
-          headStyles: { fillColor: [31, 122, 70], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
-          alternateRowStyles: { fillColor: [246, 251, 244] },
-          horizontalPageBreak: true,
-          horizontalPageBreakRepeat: 0,
-          willDrawPage: () => header(`${selected.label} — Record Details`),
-        });
-      }
+      document.setTextColor(103, 121, 108);
+      document.text('Prepared by:', margin, cursorY);
+      document.setFont('helvetica', 'bold');
+      document.setTextColor(38, 54, 43);
+      document.text(preparedBy, margin, cursorY + 15);
+      document.setFont('helvetica', 'normal');
+      document.setTextColor(103, 121, 108);
+      document.text('Report Type:', pageWidth - margin, cursorY, { align: 'right' });
+      document.setFont('helvetica', 'bold');
+      document.setTextColor(38, 54, 43);
+      document.text(selected.label, pageWidth - margin, cursorY + 15, { align: 'right' });
 
       const pageCount = document.getNumberOfPages();
       for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
@@ -1098,32 +1115,28 @@ export default function Reports() {
   };
 
   const handlePrint = () => {
-    const isLogReport = reportType === 'systemLogs';
-    const reportDates = isLogReport && logDate ? formatDisplayDate(logDate)
-      : `${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)}`;
-    const content = isLogReport ? `<table><thead><tr>${cols.map(col => `<th>${escapeHtml(labelize(col))}</th>`).join('')}</tr></thead>
-      <tbody>${filtered.map(row => `<tr>${cols.map(col => `<td>${escapeHtml(formatValue(col, row[col]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`
-      : printRef.current?.innerHTML ?? '';
+    const generatedAt = formatDisplayDateTime(new Date());
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) return;
 
     win.document.write(`
       <html><head><title>${selected.label} Report</title>
       <style>
-        @media print { @page { size: A4 landscape; margin: 15mm; } body { padding: 0; } }
-        body { font-family: Arial, sans-serif; padding: 24px; font-size: 12px; color: #1b1b1b; }
-        h2 { color: #2e7d32; margin-bottom: 4px; }
-        p { color: #555; margin-top: 0; }
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th { background: #2e7d32; color: white; padding: 8px; text-align: left; font-size: 11px; }
-        td { padding: 6px 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
-        tr:nth-child(even) td { background: #f5f5f5; }
-        .footer { color: #777; font-size: 10px; text-align: center; margin-top: 20px; }
+        @media print { @page { size: A4 portrait; margin: 16mm; } body { padding: 0; } }
+        body { font-family: Arial, sans-serif; padding: 28px; font-size: 12px; line-height: 1.65; color: #26362b; }
+        .header { background: #1f7a46; color: white; padding: 18px 22px; border-radius: 8px 8px 0 0; }
+        .header h1 { font-size: 19px; margin: 0 0 4px; }
+        .header p { color: white; margin: 0; font-size: 10px; }
+        .content { border: 1px solid #dce8dd; border-top: 0; padding: 20px 22px; }
+        h2 { color: #1f7a46; font-size: 14px; margin: 20px 0 7px; }
+        h2:first-child { margin-top: 0; }
+        h3 { color: #2d6843; font-size: 12px; margin: 15px 0 4px; }
+        p { margin: 5px 0 10px; }
+        .prepared { border-top: 1px solid #dce8dd; margin-top: 24px; padding-top: 12px; display: flex; justify-content: space-between; gap: 20px; }
+        .footer { color: #718176; font-size: 10px; margin-top: 22px; border-top: 1px solid #dce8dd; padding-top: 8px; }
       </style></head><body>
-      <h2>Buenaventura Estate HRIS — ${selected.label} Report</h2>
-      <p>Period: ${escapeHtml(reportDates)} &nbsp;|&nbsp; Total records: ${filtered.length} &nbsp;|&nbsp; Generated: ${formatDisplayDateTime(new Date())}</p>
-      ${content}
-      <div class="footer">Buenaventura Estate HRIS &nbsp;·&nbsp; Printed: ${formatDisplayDateTime(new Date())} &nbsp;·&nbsp; Confidential</div>
+      <div class="header"><h1>${escapeHtml(COMPANY.name)}</h1><p>Human Resource Information System · ${escapeHtml(selected.label)}</p></div>
+      <div class="content">${renderNarrativeHtml(reportType)}<div class="footer">Generated: ${escapeHtml(generatedAt)} · Confidential HR report</div></div>
       </body></html>
     `);
 
@@ -1134,30 +1147,7 @@ export default function Reports() {
   const handlePrintAllReports = () => {
     const generatedAt = formatDisplayDateTime(new Date());
     const reportSections = REPORT_TYPES.map(rt => {
-      const rows = getFilteredRowsForType(rt.value);
-      const sectionCols = getPrintableColumns(rt.value, rows);
-      const tableRows = rows.length > 0
-        ? rows.map(row => `
-            <tr>
-              ${sectionCols.map(col => `<td>${escapeHtml(formatValue(col, row[col]))}</td>`).join('')}
-            </tr>
-          `).join('')
-        : `<tr><td colspan="${sectionCols.length || 1}" class="empty">No records in the selected date range.</td></tr>`;
-
-      return `
-        <section class="report-section">
-          <div class="section-title">
-            <h2>${escapeHtml(rt.label)}</h2>
-            <span>${rows.length} record${rows.length === 1 ? '' : 's'}</span>
-          </div>
-          <table>
-            <thead>
-              <tr>${sectionCols.map(col => `<th>${escapeHtml(labelize(col))}</th>`).join('')}</tr>
-            </thead>
-            <tbody>${tableRows}</tbody>
-          </table>
-        </section>
-      `;
+      return `<section class="report-section">${renderNarrativeHtml(rt.value, getNarrativeSections(rt.value))}</section>`;
     }).join('');
 
     const win = window.open('', '_blank', 'width=1100,height=800');
@@ -1167,24 +1157,21 @@ export default function Reports() {
       <html><head><title>All HRIS Reports</title>
       <style>
         @media print {
-          @page { size: A4 landscape; margin: 12mm; }
+          @page { size: A4 portrait; margin: 16mm; }
           body { padding: 0; }
-          .report-section { break-inside: avoid; page-break-inside: avoid; }
         }
-        body { font-family: Arial, sans-serif; padding: 24px; font-size: 10px; color: #1b1b1b; }
-        .cover { border-bottom: 3px solid #2e7d32; margin-bottom: 18px; padding-bottom: 12px; }
-        h1 { color: #1f7a46; margin: 0 0 6px; font-size: 22px; }
-        h2 { color: #1f7a46; margin: 0; font-size: 15px; }
-        p { color: #555; margin: 0; }
-        .report-section { margin: 18px 0 26px; }
-        .section-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
-        .section-title span { color: #1f7a46; font-weight: 700; border: 1px solid #a9dfb6; border-radius: 999px; padding: 3px 8px; }
-        table { width: 100%; border-collapse: collapse; table-layout: auto; }
-        th { background: #2e7d32; color: white; padding: 6px; text-align: left; font-size: 9px; overflow-wrap: anywhere; }
-        td { padding: 5px 6px; border-bottom: 1px solid #ddd; font-size: 9px; vertical-align: top; overflow-wrap: anywhere; }
-        tr:nth-child(even) td { background: #f5f5f5; }
-        .empty { color: #777; text-align: center; font-style: italic; }
-        .footer { color: #777; font-size: 9px; text-align: center; margin-top: 20px; }
+        body { font-family: Arial, sans-serif; padding: 28px; font-size: 12px; line-height: 1.65; color: #26362b; }
+        .cover { background: #1f7a46; color: white; padding: 18px 22px; border-radius: 8px 8px 0 0; }
+        h1 { margin: 0 0 6px; font-size: 21px; }
+        .cover p { margin: 0; color: white; font-size: 10px; }
+        .report-section { border: 1px solid #dce8dd; padding: 18px 22px; page-break-inside: auto; }
+        .report-section + .report-section { border-top: 0; }
+        h2 { color: #1f7a46; font-size: 14px; margin: 18px 0 7px; }
+        h2:first-child { margin-top: 0; }
+        h3 { color: #2d6843; font-size: 12px; margin: 14px 0 4px; }
+        p { margin: 5px 0 10px; }
+        .prepared { border-top: 1px solid #dce8dd; margin-top: 20px; padding-top: 10px; display: flex; justify-content: space-between; gap: 20px; }
+        .footer { color: #718176; font-size: 10px; margin-top: 18px; border-top: 1px solid #dce8dd; padding-top: 8px; }
       </style></head><body>
       <div class="cover">
         <h1>Buenaventura Estate HRIS - All Reports</h1>
@@ -1718,10 +1705,10 @@ export default function Reports() {
             </Box>
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="h6" fontWeight={700} sx={{ color: GREEN_UI.text, lineHeight: 1.1 }}>
-                {selected.label} — Data Preview
+                {selected.label} — Source Records
               </Typography>
               <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
-                Previewed records are the same records used for printing and CSV export.
+                PDF and print reports summarize these records in prose; CSV export keeps the row-by-row data.
               </Typography>
             </Box>
           </Box>
@@ -1764,7 +1751,7 @@ export default function Reports() {
           </Box>
         ) : (
           <>
-            <div ref={printRef}>
+            <div>
               <TableContainer
                 sx={{
                   overflowX: 'auto',
