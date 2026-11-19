@@ -42,6 +42,7 @@ interface EmployeeAccountRequest {
   id: string;
   employee_id: string;
   full_name: string;
+  submitted_full_name?: string | null;
   email: string;
   created_at: string;
 }
@@ -232,9 +233,16 @@ export default function UserManagement() {
   const fetchEmployeeAccountRequests = async () => {
     setRequestsLoading(true);
     setRequestsError(null);
-    const { data, error } = await supabase.from('employee_account_requests')
-      .select('id,employee_id,full_name,email,created_at').eq('status', 'Pending')
+    let { data, error } = await supabase.from('employee_account_requests')
+      .select('id,employee_id,full_name,submitted_full_name,email,created_at').eq('status', 'Pending')
       .order('created_at', { ascending: true });
+    if (error?.message.includes('submitted_full_name')) {
+      const legacyResult = await supabase.from('employee_account_requests')
+        .select('id,employee_id,full_name,email,created_at').eq('status', 'Pending')
+        .order('created_at', { ascending: true });
+      data = legacyResult.data;
+      error = legacyResult.error;
+    }
     if (error) {
       setRequestsError(`Could not load employee registrations: ${error.message}`);
       setEmployeeAccountRequests([]);
@@ -791,7 +799,8 @@ export default function UserManagement() {
             {employeeAccountRequests.map(request => (
               <Box key={request.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap', p: 1.5, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfef9' }}>
                 <Box sx={{ minWidth: 220, flex: '1 1 300px' }}>
-                  <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>{request.full_name || 'Employee'} <Typography component="span" variant="body2" sx={{ color: GREEN_UI.muted }}>· {request.employee_id}</Typography></Typography>
+                  <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>{request.submitted_full_name || request.full_name || 'Employee'}</Typography>
+                  <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>HRIS employee record: {request.full_name || 'Name unavailable'} · {request.employee_id}</Typography>
                   <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>{request.email} · Submitted {new Date(request.created_at).toLocaleDateString()}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>

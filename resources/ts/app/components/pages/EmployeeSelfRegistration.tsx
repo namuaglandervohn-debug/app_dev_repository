@@ -10,6 +10,7 @@ import { employeeConfirmationRedirect } from '../../lib/applicantConfirmationRed
 
 export default function EmployeeSelfRegistration() {
   const navigate = useNavigate();
+  const [fullName, setFullName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,10 +24,11 @@ export default function EmployeeSelfRegistration() {
     if (busy) return;
     setError('');
     setNotice('');
+    const cleanFullName = fullName.trim().replace(/\s+/g, ' ');
     const cleanEmployeeId = employeeId.trim();
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmployeeId || !cleanEmail || !password) {
-      setError('Enter your employee ID, email, and password.');
+    if (!cleanFullName || !cleanEmployeeId || !cleanEmail || !password) {
+      setError('Enter your full name, employee ID, email, and password.');
       return;
     }
     if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
@@ -45,7 +47,7 @@ export default function EmployeeSelfRegistration() {
         password,
         options: {
           emailRedirectTo: employeeConfirmationRedirect(window.location.origin),
-          data: { registration_kind: 'employee', employee_id: cleanEmployeeId },
+          data: { registration_kind: 'employee', full_name: cleanFullName, employee_id: cleanEmployeeId },
         },
       });
       if (signupError) throw signupError;
@@ -76,6 +78,8 @@ export default function EmployeeSelfRegistration() {
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
           <Box component="form" onSubmit={submit} noValidate>
+            <TextField fullWidth required label="Full Name" autoComplete="name" value={fullName}
+              onChange={event => setFullName(event.target.value)} margin="normal" />
             <TextField fullWidth required label="Employee ID" autoComplete="off" value={employeeId}
               onChange={event => setEmployeeId(event.target.value)} margin="normal"
               InputProps={{ startAdornment: <Badge sx={{ mr: 1, color: '#087443' }} /> }} />
