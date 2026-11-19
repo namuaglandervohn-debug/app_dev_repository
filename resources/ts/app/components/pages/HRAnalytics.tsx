@@ -184,11 +184,6 @@ export default function HRAnalytics() {
   const monthEvaluations = [...data.evaluations, ...demoEvaluations].filter(row => sameMonth(row.evaluation_period_end, month) && validEvaluation(row) && inOutlet(row));
   const monthRequests = [...data.requests, ...demoRequests].filter(row => sameMonth(row.created_at || row.start_date, month) && normalized(row.request_type).includes('leave') && inOutlet(row));
   const monthApplicants = [...data.applicants, ...demoApplicants].filter(row => sameMonth(row.created_at, month) && (outlet === 'All Outlets' || String(row.outlet || applicantOutlets.get(String(row.applicant_id ?? '')) || '').toLowerCase() === outlet.toLowerCase()));
-  const [reportingYearNumber, reportingMonthNumber] = month.split('-').map(Number);
-  const reportingPeriodEnd = `${month}-${String(new Date(reportingYearNumber, reportingMonthNumber, 0).getDate()).padStart(2, '0')}`;
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
   const attendanceByMonth = useMemo((): AttendanceMonthTrend[] => {
     const [year, reportingMonthNumber] = month.split('-').map(Number);
     const months = Array.from({ length: 12 }, (_, index) => ({
@@ -249,15 +244,15 @@ export default function HRAnalytics() {
     const counts = new Map<string, number>();
     data.employees.filter(row => {
       const hireDate = dateOnly(row.hire_date);
-      return normalized(row.status) === 'active'
-        && (hireDate ? hireDate <= reportingPeriodEnd : reportingPeriodEnd >= todayKey)
+      return hireDate !== ''
+        && sameMonth(hireDate, month)
         && (outlet === 'All Outlets' || outletOf(row, analyticsEmployeeOutlets).toLowerCase() === outlet.toLowerCase());
     }).forEach(row => {
       const name = outletOf(row, analyticsEmployeeOutlets);
       counts.set(name, (counts.get(name) ?? 0) + 1);
     });
     return Array.from(counts, ([name, employees]) => ({ name, employees })).sort((a, b) => b.employees - a.employees);
-  }, [data.employees, analyticsEmployeeOutlets, outlet, reportingPeriodEnd]);
+  }, [data.employees, analyticsEmployeeOutlets, outlet, month]);
 
   const averagePerformance = monthEvaluations.length ? monthEvaluations.reduce((sum, row) => sum + number(row.final_weighted_score), 0) / monthEvaluations.length : null;
   const tooltip = { contentStyle: { borderRadius: 12, borderColor: BORDER }, labelStyle: { color: '#1e2d24', fontWeight: 700 } };
@@ -355,7 +350,7 @@ export default function HRAnalytics() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12 }}>
-          <ChartCard title="Current Active Employees by Outlet (Hired by Period End)">
+          <ChartCard title="Employees Hired This Month by Outlet">
             {!loading && <EmptyChart show={!employeeDistribution.length} />}
             <ResponsiveContainer width="100%" height="100%"><BarChart data={employeeDistribution} margin={{ top: 8, right: 16, left: -14, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 12 }} /><YAxis allowDecimals={false} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} /><Bar dataKey="employees" name="Active employees" fill={GREEN} radius={[5, 5, 0, 0]}>
