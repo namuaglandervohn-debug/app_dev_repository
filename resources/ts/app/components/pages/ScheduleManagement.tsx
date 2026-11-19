@@ -665,20 +665,26 @@ function WeeklySchedule({ schedules, onRequestSwap, showSwapRequest = false }: {
         </Box>
         <Box sx={{ ml: 'auto', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
           {options.length > 1 && (
-            <TextField select size="small" label="Schedule week" value={activeWeek}
-              onChange={event => setSelectedWeek(event.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ ...softTextFieldSx, minWidth: 230, mt: 1, '& .MuiInputLabel-root': { color: '#fff' } }}>
-              {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
-            </TextField>
+            <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 210 }}>
+              <Typography variant="caption" sx={{ color: '#fff', pl: 0.5, lineHeight: 1.2, mb: 0.35 }}>Schedule week</Typography>
+              <TextField select size="small" value={activeWeek}
+                onChange={event => setSelectedWeek(event.target.value)}
+                inputProps={{ 'aria-label': 'Schedule week' }}
+                sx={{ ...softTextFieldSx, minWidth: 210, '& .MuiInputBase-root': { height: 34 }, '& .MuiSelect-select': { py: 0.75 } }}>
+                {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
+              </TextField>
+            </Box>
           )}
           {outletOptions.length > 2 && (
-            <TextField select size="small" label="Filter outlet" value={activeOutlet}
-              onChange={event => setSelectedOutlet(event.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ ...softTextFieldSx, minWidth: 190, mt: 1, '& .MuiInputLabel-root': { color: '#fff' } }}>
-              {outletOptions.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
-            </TextField>
+            <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 170 }}>
+              <Typography variant="caption" sx={{ color: '#fff', pl: 0.5, lineHeight: 1.2, mb: 0.35 }}>Filter outlet</Typography>
+              <TextField select size="small" value={activeOutlet}
+                onChange={event => setSelectedOutlet(event.target.value)}
+                inputProps={{ 'aria-label': 'Filter outlet' }}
+                sx={{ ...softTextFieldSx, minWidth: 170, '& .MuiInputBase-root': { height: 34 }, '& .MuiSelect-select': { py: 0.75 } }}>
+                {outletOptions.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
+              </TextField>
+            </Box>
           )}
           <Button variant="contained" color="inherit" size="small" startIcon={<Print />} onClick={printSchedule}
             sx={{ background: '#fff', color: GREEN_UI.greenDark, '&:hover': { background: GREEN_UI.greenSoft } }}>
