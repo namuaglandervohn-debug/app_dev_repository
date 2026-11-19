@@ -59,8 +59,17 @@ interface Schedule {
   declinedBy?: string; declinedAt?: string;
 }
 
+interface ScheduleEmployeeOption {
+  employeeId: string;
+  name: string;
+  aliases: string[];
+  position: string;
+  outlet: string;
+}
+
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type ScheduleDay = (typeof DAYS)[number];
+type ImageScheduleDraftRow = { detectedName: string; employeeId: string; shifts: Record<ScheduleDay, string> };
 const DEFAULT_WORKDAYS: ScheduleDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const REST_DAY = 'Rest Day';
@@ -145,177 +154,6 @@ const SHIFT_PRESETS = [
 
 const BREAK_TIME_OPTIONS = ['30 minutes', '1 hour', '1 hour 30 minutes', '2 hours'];
 const SPECIAL_DUTY_SEPARATOR = ' | Special Duty: ';
-const PHOTO_SCHEDULE_WEEK = 'May 11-17, 2026';
-const PHOTO_SCHEDULE_ROWS = [
-  {
-    name: 'Diether Raganit',
-    position: 'Supervisor',
-    outlet: 'Maria Clara Resort',
-    monday: 'RD',
-    tuesday: '9:00 AM - 7:00 PM / 5:00 PM - 9:00 PM',
-    wednesday: 'FLEX',
-    thursday: '9:00 AM - 1:00 PM / 5:00 PM - 9:00 PM',
-    friday: '9:00 AM - 1:00 PM / 5:00 PM - 9:00 PM',
-    saturday: '9:00 AM - 1:00 PM / 5:00 PM - 9:00 PM',
-    sunday: '7:00 AM - 10:00 PM / 5:00 PM - 9:00 PM',
-  },
-  {
-    name: 'Yurine Guanzon',
-    position: 'Leadman',
-    outlet: 'Buenaventura Cafe',
-    monday: '2:00 PM - 5:00 PM / 6:00 PM - 12:00 AM',
-    tuesday: '2:00 PM - 5:00 PM / 6:00 PM - 11:00 PM',
-    wednesday: 'RD',
-    thursday: '1:00 PM - 4:00 PM / 6:00 PM - 11:00 PM',
-    friday: '2:00 PM - 5:00 PM / 6:00 PM - 11:00 PM',
-    saturday: '2:00 PM - 5:00 PM / 6:00 PM - 12:00 AM',
-    sunday: '1:00 PM - 2:00 PM / 6:00 PM - 12:00 AM',
-  },
-  {
-    name: 'Christian Tejadillo',
-    position: 'Server',
-    outlet: 'Buenaventura Cafe',
-    monday: '11:00 AM - 7:00 PM / 2:00 PM - 8:00 PM',
-    tuesday: '1:00 PM - 4:00 PM / 5:00 PM - 10:00 PM',
-    wednesday: '2:00 PM - 5:00 PM / 6:00 PM - 10:00 PM',
-    thursday: 'RD',
-    friday: '9:00 AM - 2:00 PM / 6:00 PM - 9:00 PM',
-    saturday: '11:00 AM - 6:30 PM',
-    sunday: '12:30 PM - 8:30 PM',
-  },
-  {
-    name: 'Jilly John Jardinico',
-    position: 'Server',
-    outlet: 'Buenaventura Cafe',
-    monday: '5:00 AM - 2:00 PM / 5:00 PM - 8:00 PM',
-    tuesday: '5:00 AM - 2:00 PM / 5:00 PM - 8:00 PM',
-    wednesday: '12:00 PM - 8:00 PM',
-    thursday: '9:00 AM - 1:00 PM / 5:00 PM - 9:00 PM',
-    friday: 'RD',
-    saturday: '9:00 AM - 1:00 PM / 6:00 PM - 9:00 PM',
-    sunday: '9:00 AM - 3:00 PM / 5:00 PM - 9:00 PM',
-  },
-  {
-    name: 'Romel Cancio',
-    position: 'Leadman',
-    outlet: 'Maria Clara Restaurant',
-    monday: 'RD',
-    tuesday: '11:00 AM - 2:00 PM / 6:00 PM - 9:00 PM',
-    wednesday: '11:00 AM - 2:00 PM / 4:00 PM - 10:00 PM',
-    thursday: '11:00 AM - 2:00 PM / 6:00 PM - 9:00 PM',
-    friday: '11:00 AM - 2:00 PM / 6:00 PM - 9:00 PM',
-    saturday: '11:00 AM - 3:00 PM',
-    sunday: '11:00 AM - 3:00 PM',
-  },
-  {
-    name: 'Christian Dave Baon',
-    position: 'Server',
-    outlet: 'Maria Clara Restaurant',
-    monday: '1:00 PM - 4:00 PM / 5:00 PM - 10:00 PM',
-    tuesday: 'RD',
-    wednesday: '1:00 PM - 4:00 PM / 5:00 PM - 10:00 PM',
-    thursday: '1:00 PM - 4:00 PM / 5:00 PM - 10:00 PM',
-    friday: '1:00 PM - 4:00 PM / 5:00 PM - 10:00 PM',
-    saturday: '1:00 PM - 4:00 PM / 5:00 PM - 10:00 PM',
-    sunday: '1:00 PM - 4:00 PM / 5:00 PM - 10:00 PM',
-  },
-  {
-    name: 'Kio M.',
-    position: 'Server',
-    outlet: 'Maria Clara Restaurant',
-    monday: '6:00 AM - 12:00 PM / 1:00 PM - 3:00 PM',
-    tuesday: '6:00 AM - 12:00 PM / 1:00 PM - 3:00 PM',
-    wednesday: '6:00 AM - 12:00 PM / 1:00 PM - 3:00 PM',
-    thursday: '6:00 AM - 12:00 PM / 1:00 PM - 3:00 PM',
-    friday: 'RD',
-    saturday: 'RD',
-    sunday: '6:00 AM - 12:00 PM / 1:00 PM - 3:00 PM',
-  },
-  {
-    name: 'Cheryl Monil',
-    position: 'Cashier',
-    outlet: 'Maria Clara Restaurant',
-    monday: 'SUSPENDED',
-    tuesday: 'SUSPENDED',
-    wednesday: 'SUSPENDED',
-    thursday: 'SUSPENDED',
-    friday: 'SUSPENDED',
-    saturday: '1:30 PM - 4:00 PM',
-    sunday: '1:30 PM - 12:00 AM',
-  },
-  {
-    name: 'Jhon Lloyd Reyes',
-    position: 'Leadman',
-    outlet: 'Pool Bar',
-    monday: '2:00 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    tuesday: '2:30 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    wednesday: '2:30 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    thursday: 'RD',
-    friday: '2:30 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    saturday: '2:30 PM - 4:00 PM / 6:00 PM - 11:00 PM',
-    sunday: '2:30 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-  },
-  {
-    name: 'Stephen Ker Caliston',
-    position: 'Server',
-    outlet: 'Pool Bar',
-    monday: '11:00 AM - 2:00 PM / 5:00 PM - 9:00 PM',
-    tuesday: '2:00 PM - 6:00 PM / 7:00 PM - 11:00 PM',
-    wednesday: '11:30 AM - 2:00 PM / 3:00 PM - 9:00 PM',
-    thursday: '2:00 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    friday: 'RD',
-    saturday: '2:00 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    sunday: '9:30 PM - 5:00 AM',
-  },
-  {
-    name: 'John Louie Del Gako',
-    position: 'Server',
-    outlet: 'Pool Bar',
-    monday: '2:00 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    tuesday: '1:00 PM - 4:00 PM / 5:00 PM - 11:00 PM',
-    wednesday: '3:00 PM - 4:00 PM / 5:00 PM - 11:00 PM',
-    thursday: '2:00 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-    friday: '11:00 AM - 2:00 PM / 4:00 PM - 8:00 PM',
-    saturday: '7:30 PM - 3:00 AM',
-    sunday: 'RD',
-  },
-  {
-    name: 'Rogie Lopez',
-    position: 'Events Head',
-    outlet: 'Pool Bar',
-    monday: 'SUSPENDED',
-    tuesday: 'SUSPENDED',
-    wednesday: 'SUSPENDED',
-    thursday: 'RD',
-    friday: '2:00 PM - 4:00 PM / 5:00 PM - 11:00 PM',
-    saturday: '2:00 PM - 4:00 PM / 6:00 PM - 11:00 PM',
-    sunday: '2:00 PM - 4:00 PM / 5:00 PM - 11:00 PM',
-  },
-  {
-    name: 'Cristen Albert',
-    position: 'Cashier',
-    outlet: 'Pool Bar',
-    monday: 'RD',
-    tuesday: '1:30 PM - 4:00 PM / 4:00 PM - 10:00 PM',
-    wednesday: '8:30 PM - 4:00 AM / 4:00 PM - 11:00 PM',
-    thursday: '2:00 PM - 5:00 PM / 6:00 PM - 11:00 PM',
-    friday: '3:00 PM - 4:00 PM / 5:00 PM - 11:00 PM',
-    saturday: 'RD',
-    sunday: '1:30 PM - 6:00 PM / 6:00 PM - 11:00 PM',
-  },
-  {
-    name: 'Jayson Onrubia',
-    position: 'Reliever',
-    outlet: 'Pool Bar',
-    monday: '2:00 PM - 6:00 PM / 6:00 PM - 12:00 AM',
-    tuesday: 'RD',
-    wednesday: '9:00 AM - 3:00 PM / 5:00 PM - 9:00 PM',
-    thursday: '11:30 AM - 2:00 PM',
-    friday: '6:00 PM - 12:00 AM / 1:00 AM - 3:00 AM',
-    saturday: '6:00 AM - 12:00 PM / 1:00 PM - 3:00 PM',
-    sunday: 'RD',
-  },
-] as const;
 const ASSIGNED_WORK_AREAS = ['Maria Clara Resort', 'Maria Clara Restaurant', 'Buenaventura Cafe'];
 const normalizeWorkArea = (value?: string | null) => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -337,6 +175,8 @@ const displayWorkArea = (value?: string | null) =>
 
 const normalizePersonName = (value?: string | null) =>
   String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -794,16 +634,15 @@ export default function ScheduleManagement() {
   const [specialDutyForm, setSpecialDutyForm] = useState(EMPTY_SPECIAL_DUTY);
 
   // Employee list with position + outlet for auto-fill
-  const [employeeList, setEmployeeList] = useState<{
-  employeeId: string;
-  name: string;
-  position: string;
-  outlet: string;
-}[]>([]);
+  const [employeeList, setEmployeeList] = useState<ScheduleEmployeeOption[]>([]);
   const excelRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const [importingExcel, setImportingExcel] = useState(false);
   const [importingImage, setImportingImage] = useState(false);
+  const [imageReviewOpen, setImageReviewOpen] = useState(false);
+  const [imageReviewRows, setImageReviewRows] = useState<ImageScheduleDraftRow[]>([]);
+  const [imageReviewWeek, setImageReviewWeek] = useState('');
+  const [imageReviewError, setImageReviewError] = useState('');
 
   const currentRole = String((user as any)?.role ?? '').toLowerCase();
   const currentEmployeeId = String((user as any)?.employee_id ?? (user as any)?.employeeId ?? '');
@@ -958,50 +797,48 @@ export default function ScheduleManagement() {
     return () => { void supabase.removeChannel(channel); };
   }, []);
 
-   // Fetch employee list — includes position AND outlet for auto-fill
-  useEffect(() => {
-  const fetchEmployees = async () => {
+  const loadScheduleEmployees = async () => {
     const { data, error } = await supabase
       .from("employees")
-      .select("employee_id, first_name, middle_name, last_name, position, outlet, status")
+      .select("employee_id, first_name, middle_name, last_name, suffix, position, outlet, status")
       .neq("status", "Resigned")
       .order("first_name", { ascending: true });
 
-    if (error) {
-      console.error("Failed to fetch employees:", error);
-      return;
-    }
+    if (error) throw error;
 
     const { data: userAccountsData, error: userAccountsError } = await supabase
       .from("user_accounts")
-      .select("employee_id, outlet");
+      .select("employee_id, full_name, outlet");
 
-    if (userAccountsError) {
-      console.error("Failed to fetch user account outlets:", userAccountsError);
-      return;
-    }
+    if (userAccountsError) throw userAccountsError;
 
-    const outletMap = new Map(
-      (userAccountsData ?? []).map((u: any) => [
-        u.employee_id,
-        u.outlet,
-      ])
-    );
+    const accountsByEmployee = new Map<string, any[]>();
+    (userAccountsData ?? []).forEach((account: any) => {
+      const rows = accountsByEmployee.get(String(account.employee_id ?? '')) ?? [];
+      rows.push(account);
+      accountsByEmployee.set(String(account.employee_id ?? ''), rows);
+    });
 
-    const list = (data ?? []).map((e: any) => ({
-      employeeId: e.employee_id,
-      name: `${e.first_name ?? ""} ${e.middle_name ?? ""} ${e.last_name ?? ""}`
+    return (data ?? []).map((e: any): ScheduleEmployeeOption => {
+      const employeeId = String(e.employee_id ?? '');
+      const name = `${e.first_name ?? ""} ${e.middle_name ?? ""} ${e.last_name ?? ""} ${e.suffix ?? ""}`
         .replace(/\s+/g, " ")
-        .trim(),
-      position: e.position ?? "",
-      outlet: outletMap.get(e.employee_id) || e.outlet || "",
-    }));
-
-    setEmployeeList(list);
+        .trim();
+      const accounts = accountsByEmployee.get(employeeId) ?? [];
+      return {
+        employeeId,
+        name,
+        aliases: Array.from(new Set([name, ...accounts.map((account: any) => String(account.full_name ?? '').trim())].filter(Boolean))),
+        position: e.position ?? "",
+        outlet: accounts.find((account: any) => account.outlet)?.outlet || e.outlet || "",
+      };
+    });
   };
 
-  fetchEmployees();
-}, []);
+  // Fetch employee list — includes names, aliases, position, and outlet.
+  useEffect(() => {
+    void loadScheduleEmployees().then(setEmployeeList).catch(error => console.error("Failed to fetch schedule employees:", error));
+  }, []);
 
   const getEmployeeById = (employeeId: string) =>
     employeeList.find(emp => emp.employeeId === employeeId);
@@ -1671,17 +1508,40 @@ export default function ScheduleManagement() {
     }
   };
 
-  const findEmployeeForPhotoRow = (name: string) => {
+  const findEmployeeForPhotoRow = (name: string, employees = employeeList) => {
     const target = normalizePersonName(name);
     const targetParts = target.split(' ').filter(Boolean);
-
-    return employeeList.find(emp => {
-      const employeeName = normalizePersonName(emp.name);
-      if (!employeeName) return false;
-      if (employeeName === target) return true;
-      if (employeeName.includes(target) || target.includes(employeeName)) return true;
-      return targetParts.length >= 2 && targetParts.every(part => employeeName.includes(part));
-    });
+    if (!target || !targetParts.length) return undefined;
+    const distance = (left: string, right: string) => {
+      const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+      for (let i = 1; i <= left.length; i += 1) {
+        let diagonal = previous[0];
+        previous[0] = i;
+        for (let j = 1; j <= right.length; j += 1) {
+          const above = previous[j];
+          previous[j] = Math.min(previous[j] + 1, previous[j - 1] + 1, diagonal + (left[i - 1] === right[j - 1] ? 0 : 1));
+          diagonal = above;
+        }
+      }
+      return previous[right.length];
+    };
+    const ranked = employees.map(employee => {
+      const aliases = employee.aliases?.length ? employee.aliases : [employee.name];
+      const score = Math.max(0, ...aliases.map(aliasValue => {
+        const alias = normalizePersonName(aliasValue);
+        const aliasParts = alias.split(' ').filter(Boolean);
+        if (!alias) return 0;
+        if (alias === target) return 1;
+        if (alias.length >= 5 && (target.includes(alias) || alias.includes(target))) return 0.97;
+        const overlap = aliasParts.filter(part => targetParts.some(word => word === part || (word.length >= 3 && part.startsWith(word)))).length;
+        if (overlap >= 2 && overlap / Math.min(aliasParts.length, targetParts.length) >= 0.75) return 0.88 + Math.min(.08, overlap / aliasParts.length * .08);
+        return 1 - distance(alias.replace(/ /g, ''), target.replace(/ /g, '')) / Math.max(alias.length, target.length);
+      }));
+      return { employee, score };
+    }).sort((a, b) => b.score - a.score);
+    if (!ranked[0] || ranked[0].score < 0.82) return undefined;
+    if (ranked[1] && ranked[0].score - ranked[1].score < 0.06 && ranked[0].score < 0.97) return undefined;
+    return ranked[0].employee;
   };
 
   const handleImageScheduleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1689,59 +1549,172 @@ export default function ScheduleManagement() {
     if (!file) return;
     e.target.value = '';
 
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith('image/') && !/\.(png|jpe?g|webp|bmp|tiff?)$/i.test(file.name)) {
       setSnackbar({ open: true, message: 'Please upload a schedule image file.', severity: 'error' });
       return;
     }
 
     setImportingImage(true);
     try {
-      const matchedRows = PHOTO_SCHEDULE_ROWS.map(row => ({
-        row,
-        employee: findEmployeeForPhotoRow(row.name),
-      }));
-      const missingNames = matchedRows
-        .filter(item => !item.employee)
-        .map(item => item.row.name);
-
-      if (missingNames.length > 0) {
-        throw new Error(`These employees were not found: ${missingNames.join(', ')}. Add or correct their employee records first.`);
+      if (file.size > 20 * 1024 * 1024) throw new Error('Choose an image smaller than 20 MB.');
+      const currentEmployees = await loadScheduleEmployees();
+      setEmployeeList(currentEmployees);
+      const { createWorker, PSM } = await import('tesseract.js');
+      const assets = new URL(`${import.meta.env.BASE_URL}ocr/`, window.location.origin).href;
+      const worker = await createWorker('eng', 1, {
+        workerPath: `${assets}worker.min.js`, corePath: assets, langPath: assets.replace(/\/$/, ''),
+        workerBlobURL: false,
+      });
+      let recognized: any;
+      try {
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+        recognized = (await worker.recognize(file)).data;
+      } finally {
+        await worker.terminate();
       }
 
-      const ids = await nextScheduleIds(matchedRows.length);
-      const payloads = matchedRows.map((item, index) => ({
-        schedule_id: ids[index],
-        employee_id: item.employee!.employeeId,
-        position: item.employee!.position || item.row.position,
-        outlet: item.employee!.outlet || item.row.outlet,
-        week: PHOTO_SCHEDULE_WEEK,
-        time_in: null,
-        time_out: null,
-        break_time: '1 hour',
-        monday: item.row.monday,
-        tuesday: item.row.tuesday,
-        wednesday: item.row.wednesday,
-        thursday: item.row.thursday,
-        friday: item.row.friday,
-        saturday: item.row.saturday,
-        sunday: item.row.sunday,
-        status: 'Draft',
-        is_finalized: false,
-      }));
+      const lines = (recognized.lines ?? []).filter((line: any) => line.words?.length);
+      const dayIndexForWord = (value: string) => {
+        const word = normalizePersonName(value).replace(/\s/g, '');
+        return DAYS.findIndex(day => word.startsWith(day.slice(0, 3)) || word.startsWith(day));
+      };
+      const headers = lines.map((line: any) => ({
+        line,
+        matches: line.words.map((word: any) => ({ word, day: dayIndexForWord(word.text) })).filter((item: any) => item.day >= 0),
+      })).sort((a: any, b: any) => b.matches.length - a.matches.length);
+      const header = headers.find((item: any) => item.matches.length >= 4);
+      if (!header) throw new Error('Could not read a weekday header. Use a clear image of a weekly table with Monday through Sunday columns.');
 
-      const { error: insertError } = await supabase.from('schedule').insert(payloads);
-      if (insertError) throw insertError;
-
-      await fetchSchedules();
-      setSnackbar({
-        open: true,
-        message: `Image schedule import complete - ${payloads.length} schedule(s) saved as Draft.`,
-        severity: 'success',
+      const centers: Array<number | null> = Array(7).fill(null);
+      header.matches.forEach(({ word, day }: any) => { centers[day] = (word.bbox.x0 + word.bbox.x1) / 2; });
+      const known = centers.map((value, index) => value === null ? null : { index, value }).filter(Boolean) as { index: number; value: number }[];
+      if (known.length < 4) throw new Error('Could not identify enough weekday columns in the image.');
+      const gaps = known.slice(1).map((point, index) => (point.value - known[index].value) / (point.index - known[index].index)).filter(value => value > 0);
+      const averageGap = gaps.reduce((sum, value) => sum + value, 0) / Math.max(1, gaps.length);
+      for (let index = 0; index < centers.length; index += 1) {
+        if (centers[index] !== null) continue;
+        const before = [...known].reverse().find(point => point.index < index);
+        const after = known.find(point => point.index > index);
+        centers[index] = before && after
+          ? before.value + ((after.value - before.value) * (index - before.index)) / (after.index - before.index)
+          : before ? before.value + averageGap * (index - before.index) : after!.value - averageGap * (after!.index - index);
+      }
+      const dayCenters = centers as number[];
+      const weekdayGap = (dayCenters[1] - dayCenters[0]) || averageGap;
+      const firstDayBoundary = dayCenters[0] - weekdayGap / 2;
+      const rowCandidates = lines.filter((line: any) => line.bbox.y0 > header.line.bbox.y1 + 2).map((line: any) => {
+        const leftWords = line.words.filter((word: any) => (word.bbox.x0 + word.bbox.x1) / 2 < firstDayBoundary);
+        const detectedName = leftWords.map((word: any) => word.text).join(' ').replace(/\s+/g, ' ').trim();
+        return { line, leftWords, detectedName, employee: findEmployeeForPhotoRow(detectedName, currentEmployees) };
+      }).filter((item: any) => (item.leftWords.length >= 2 || item.employee) && item.detectedName.length >= 3);
+      const rowAnchors: typeof rowCandidates = [];
+      rowCandidates.sort((a: any, b: any) => a.line.bbox.y0 - b.line.bbox.y0).forEach((candidate: any) => {
+        const previous = rowAnchors[rowAnchors.length - 1];
+        const centerY = (candidate.line.bbox.y0 + candidate.line.bbox.y1) / 2;
+        const previousCenterY = previous ? (previous.line.bbox.y0 + previous.line.bbox.y1) / 2 : -Infinity;
+        if (previous && Math.abs(centerY - previousCenterY) < Math.max(12, candidate.line.bbox.y1 - candidate.line.bbox.y0)) {
+          previous.leftWords.push(...candidate.leftWords);
+          previous.detectedName = previous.leftWords.map((word: any) => word.text).join(' ').replace(/\s+/g, ' ').trim();
+          previous.employee = findEmployeeForPhotoRow(previous.detectedName, currentEmployees) || previous.employee;
+        } else rowAnchors.push(candidate);
       });
+      if (!rowAnchors.length) throw new Error('No employee rows were detected. Use a clear image with employee names in the first column.');
+
+      const allWords = lines.flatMap((line: any) => line.words);
+      const emptyShifts = (): Record<ScheduleDay, string> => ({ monday: '', tuesday: '', wednesday: '', thursday: '', friday: '', saturday: '', sunday: '' });
+      const reviewRows: ImageScheduleDraftRow[] = rowAnchors.map((anchor: any, index: number) => {
+        const centerY = (anchor.line.bbox.y0 + anchor.line.bbox.y1) / 2;
+        const previousCenterY = index ? (rowAnchors[index - 1].line.bbox.y0 + rowAnchors[index - 1].line.bbox.y1) / 2 : header.line.bbox.y1;
+        const nextCenterY = index + 1 < rowAnchors.length ? (rowAnchors[index + 1].line.bbox.y0 + rowAnchors[index + 1].line.bbox.y1) / 2 : Infinity;
+        const top = index ? (previousCenterY + centerY) / 2 : previousCenterY;
+        const bottom = index + 1 < rowAnchors.length ? (centerY + nextCenterY) / 2 : Infinity;
+        const shifts = emptyShifts();
+        const valuesByDay: string[][] = Array.from({ length: 7 }, () => []);
+        allWords.filter((word: any) => {
+          const y = (word.bbox.y0 + word.bbox.y1) / 2;
+          const x = (word.bbox.x0 + word.bbox.x1) / 2;
+          return y >= top && y < bottom && x >= firstDayBoundary;
+        }).sort((a: any, b: any) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0).forEach((word: any) => {
+          const x = (word.bbox.x0 + word.bbox.x1) / 2;
+          const day = dayCenters.reduce((best, value, dayNumber) => Math.abs(value - x) < Math.abs(dayCenters[best] - x) ? dayNumber : best, 0);
+          valuesByDay[day].push(word.text);
+        });
+        valuesByDay.forEach((words, day) => {
+          let value = words.join(' ').replace(/\s+/g, ' ').trim().replace(/\s*[-–—]\s*/g, ' - ').replace(/\s*\/\s*/g, ' / ');
+          const normalizedValue = normalizePersonName(value).replace(/\s/g, '');
+          if (/^(rd|restday|off|flex|suspended|leave)$/.test(normalizedValue)) {
+            value = normalizedValue === 'restday' ? REST_DAY : normalizedValue === 'rd' ? 'RD' : normalizedValue.charAt(0).toUpperCase() + normalizedValue.slice(1);
+          }
+          shifts[DAYS[day]] = value;
+        });
+        return { detectedName: anchor.detectedName, employeeId: anchor.employee?.employeeId ?? '', shifts };
+      });
+      const weekMatch = String(recognized.text ?? '').match(/([A-Za-z]{3,9}\s+\d{1,2}\s*[-–]\s*\d{1,2},?\s+\d{4})/);
+      setImageReviewRows(reviewRows);
+      setImageReviewWeek(weekMatch?.[1]?.replace(/\s*[-–]\s*/, '–') ?? getWeekRange(0));
+      setImageReviewError('');
+      setImageReviewOpen(true);
     } catch (err: any) {
       setSnackbar({ open: true, message: `Image import failed: ${err.message}`, severity: 'error' });
     } finally {
       setImportingImage(false);
+    }
+  };
+
+  const confirmImageScheduleImport = async () => {
+    setImageReviewError('');
+    if (!imageReviewWeek.trim()) {
+      setImageReviewError('Enter the week for these schedules.');
+      return;
+    }
+    const employeeById = new Map(employeeList.map(employee => [employee.employeeId, employee]));
+    const unmatched = imageReviewRows.filter(row => !employeeById.has(row.employeeId));
+    if (unmatched.length) {
+      setImageReviewError(`Choose an employee for each unmatched row: ${unmatched.map(row => row.detectedName).join(', ')}.`);
+      return;
+    }
+    if (new Set(imageReviewRows.map(row => row.employeeId)).size !== imageReviewRows.length) {
+      setImageReviewError('An employee appears more than once. Correct the employee selections before importing.');
+      return;
+    }
+    if (imageReviewRows.some(row => !DAYS.some(day => row.shifts[day].trim()))) {
+      setImageReviewError('Each schedule needs at least one day or shift.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const normalizedRows = imageReviewRows.map(row => ({ employee: employeeById.get(row.employeeId)!, shifts: scheduleDays(row.shifts) }));
+      const ids = await nextScheduleIds(normalizedRows.length);
+      const payloads = normalizedRows.map(({ employee, shifts }, index) => ({
+        schedule_id: ids[index],
+        employee_id: employee.employeeId,
+        position: employee.position,
+        outlet: employee.outlet,
+        week: imageReviewWeek.trim(),
+        time_in: null,
+        time_out: null,
+        break_time: '1 hour',
+        monday: shifts.monday,
+        tuesday: shifts.tuesday,
+        wednesday: shifts.wednesday,
+        thursday: shifts.thursday,
+        friday: shifts.friday,
+        saturday: shifts.saturday,
+        sunday: shifts.sunday,
+        status: 'Draft',
+        is_finalized: false,
+      }));
+      const { error: insertError } = await supabase.from('schedule').insert(payloads);
+      if (insertError) throw insertError;
+      await fetchSchedules();
+      setImageReviewOpen(false);
+      setImageReviewRows([]);
+      setSnackbar({ open: true, message: `Image import complete — ${payloads.length} schedule(s) saved as Draft.`, severity: 'success' });
+    } catch (err: any) {
+      setImageReviewError(err.message ?? 'Could not save the imported schedules.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -3111,6 +3084,68 @@ export default function ScheduleManagement() {
             sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, '&:hover': { bgcolor: GREEN_UI.greenDark } }}
           >
             {saving ? 'Saving…' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={imageReviewOpen} onClose={() => !saving && setImageReviewOpen(false)} maxWidth="xl" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#f3fbf2', color: GREEN_UI.text, fontWeight: 800 }}>Review imported schedule image</DialogTitle>
+        <DialogContent sx={{ bgcolor: '#fbfff9', pt: 2.5 }}>
+          <Typography variant="body2" sx={{ color: GREEN_UI.muted, mb: 2 }}>
+            Check the employee match and recognized shifts before saving. Unmatched names can be linked to an employee here.
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            label="Schedule week"
+            value={imageReviewWeek}
+            onChange={event => setImageReviewWeek(event.target.value)}
+            sx={{ ...softTextFieldSx, mb: 2 }}
+          />
+          {imageReviewError && <Alert severity="error" sx={{ mb: 2 }}>{imageReviewError}</Alert>}
+          <TableContainer sx={{ maxHeight: '58vh', border: `1px solid ${GREEN_UI.border}`, borderRadius: 2 }}>
+            <Table stickyHeader size="small" sx={{ minWidth: 1500 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ minWidth: 180 }}>Name read from image</TableCell>
+                  <TableCell sx={{ minWidth: 260 }}>Match employee record</TableCell>
+                  {DAYS.map((day, index) => <TableCell key={day} sx={{ minWidth: 150 }}>{DAY_NAMES[day]}</TableCell>)}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {imageReviewRows.map((row, rowIndex) => (
+                  <TableRow key={`${row.detectedName}-${rowIndex}`}>
+                    <TableCell sx={{ verticalAlign: 'top', fontWeight: 650 }}>{row.detectedName || 'Name not clear'}</TableCell>
+                    <TableCell sx={{ verticalAlign: 'top' }}>
+                      <Autocomplete
+                        size="small"
+                        options={employeeList}
+                        value={employeeList.find(employee => employee.employeeId === row.employeeId) ?? null}
+                        getOptionLabel={employee => `${employee.name} (${employee.employeeId})`}
+                        isOptionEqualToValue={(option, value) => option.employeeId === value.employeeId}
+                        onChange={(_, value) => setImageReviewRows(current => current.map((item, index) => index === rowIndex ? { ...item, employeeId: value?.employeeId ?? '' } : item))}
+                        renderInput={params => <TextField {...params} label="Employee" sx={softTextFieldSx} />}
+                      />
+                    </TableCell>
+                    {DAYS.map(day => <TableCell key={day} sx={{ verticalAlign: 'top' }}>
+                      <TextField
+                        size="small"
+                        value={row.shifts[day]}
+                        placeholder="Shift, RD, or Off"
+                        onChange={event => setImageReviewRows(current => current.map((item, index) => index === rowIndex ? { ...item, shifts: { ...item.shifts, [day]: event.target.value } } : item))}
+                        sx={softTextFieldSx}
+                      />
+                    </TableCell>)}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, bgcolor: '#fbfff9', borderTop: `1px solid ${GREEN_UI.border}` }}>
+          <Button onClick={() => setImageReviewOpen(false)} disabled={saving} sx={{ ...pillButtonSx, color: GREEN_UI.muted }}>Cancel</Button>
+          <Button variant="contained" onClick={() => void confirmImageScheduleImport()} disabled={saving || !imageReviewRows.length} startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <TaskAlt />} sx={{ ...pillButtonSx, bgcolor: GREEN_UI.green, '&:hover': { bgcolor: GREEN_UI.greenDark } }}>
+            {saving ? 'Saving…' : 'Save as Draft'}
           </Button>
         </DialogActions>
       </Dialog>

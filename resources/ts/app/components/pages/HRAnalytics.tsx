@@ -60,11 +60,11 @@ const recruitmentStatus = (row: Row) => {
   return 'Pending review';
 };
 
-function ChartCard({ title, children }: { title: string; children: ReactNode }) {
+function ChartCard({ title, children, height = 270 }: { title: string; children: ReactNode; height?: number }) {
   return (
     <Paper elevation={0} sx={{ height: '100%', p: { xs: 1.75, sm: 2.25 }, borderRadius: '22px', border: `1px solid ${BORDER}`, bgcolor: 'rgba(255,255,255,.94)', boxShadow: '0 12px 30px rgba(43,91,55,.07)' }}>
       <Typography variant="subtitle1" fontWeight={750} sx={{ color: '#1e2d24' }}>{title}</Typography>
-      <Box sx={{ width: '100%', height: 270, mt: 1.5, position: 'relative' }}>{children}</Box>
+      <Box sx={{ width: '100%', height, mt: 1.5, position: 'relative' }}>{children}</Box>
     </Paper>
   );
 }
@@ -81,6 +81,43 @@ function MetricCard({ label, value, color = GREEN }: { label: string; value: str
         <Typography variant="h4" fontWeight={800} sx={{ color, mt: .5 }}>{value}</Typography>
       </CardContent>
     </Card>
+  );
+}
+
+type AttendanceDayCell = { day: number; present: number; late: number; absent: number; exists: boolean };
+type AttendanceMonthRow = { key: string; label: string; days: AttendanceDayCell[] };
+
+function AttendanceMonthDayGrid({ rows }: { rows: AttendanceMonthRow[] }) {
+  const peak = Math.max(1, ...rows.flatMap(row => row.days.map(day => day.present + day.late + day.absent)));
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <Box role="img" aria-label="Daily attendance counts, with days along the horizontal axis and months along the vertical axis" sx={{ flex: 1, overflowX: 'auto', overflowY: 'auto', pb: 1 }}>
+        <Box sx={{ minWidth: 740, display: 'grid', gridTemplateColumns: '64px repeat(31, minmax(16px, 1fr))', rowGap: .5, alignItems: 'center' }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary">Month</Typography>
+          {Array.from({ length: 31 }, (_, index) => <Typography key={index} variant="caption" align="center" color="text.secondary">{String(index + 1).padStart(2, '0')}</Typography>)}
+          {rows.flatMap(row => [
+            <Typography key={`${row.key}-label`} variant="caption" fontWeight={650} sx={{ whiteSpace: 'nowrap', color: '#435348' }}>{row.label}</Typography>,
+            ...row.days.map(cell => {
+              const total = cell.present + cell.late + cell.absent;
+              const width = total ? `${Math.max(8, (total / peak) * 100)}%` : '0%';
+              const title = `${row.label}, day ${cell.day}: On time ${cell.present}, Late ${cell.late}, Absent ${cell.absent}`;
+              return <Box key={`${row.key}-${cell.day}`} title={cell.exists ? title : `${row.label}, day ${cell.day}: Not in this month`} sx={{ height: 22, px: .2, display: 'flex', alignItems: 'center', borderRadius: .5, bgcolor: cell.exists ? (total ? '#f3f8f3' : '#f8faf8') : 'transparent' }}>
+                {total > 0 && <Box sx={{ width, height: 8, display: 'flex', overflow: 'hidden', borderRadius: 4 }}>
+                  {cell.present > 0 && <Box sx={{ flex: cell.present, bgcolor: '#37a66b' }} />}
+                  {cell.late > 0 && <Box sx={{ flex: cell.late, bgcolor: '#e3ad45' }} />}
+                  {cell.absent > 0 && <Box sx={{ flex: cell.absent, bgcolor: '#c95c54' }} />}
+                </Box>}
+              </Box>;
+            }),
+          ])}
+        </Box>
+      </Box>
+      <Stack direction="row" spacing={1.75} justifyContent="center" sx={{ pt: .5, flexWrap: 'wrap' }}>
+        {[["#37a66b", 'On time'], ["#e3ad45", 'Late'], ["#c95c54", 'Absent']].map(([color, label]) => <Box key={label} sx={{ display: 'inline-flex', alignItems: 'center', gap: .6, color: MUTED, fontSize: 12 }}>
+          <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: color }} />{label}
+        </Box>)}
+      </Stack>
+    </Box>
   );
 }
 
@@ -183,30 +220,35 @@ export default function HRAnalytics() {
   const monthRequests = [...data.requests, ...demoRequests].filter(row => sameMonth(row.created_at || row.start_date, month) && normalized(row.request_type).includes('leave') && inOutlet(row));
   const monthApplicants = [...data.applicants, ...demoApplicants].filter(row => sameMonth(row.created_at, month) && (outlet === 'All Outlets' || String(row.outlet || applicantOutlets.get(String(row.applicant_id ?? '')) || '').toLowerCase() === outlet.toLowerCase()));
 
-  const attendanceTrend = useMemo(() => {
+  const attendanceByMonthDay = useMemo((): AttendanceMonthRow[] => {
     const [year, monthNumber] = month.split('-').map(Number);
-    const trendMonths = Array.from({ length: 12 }, (_, index) => {
+    const monthRows = Array.from({ length: 12 }, (_, index) => {
       const date = new Date(year, monthNumber - 12 + index, 1);
       return {
         key: monthKey(date),
         label: new Intl.DateTimeFormat('en', { month: 'short', year: '2-digit' }).format(date),
-        present: 0,
-        late: 0,
-        absent: 0,
+        days: Array.from({ length: 31 }, (_, day) => ({
+          day: day + 1,
+          present: 0,
+          late: 0,
+          absent: 0,
+          exists: day + 1 <= new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate(),
+        })),
       };
     });
-    const grouped = new Map<string, { present: number; late: number; absent: number }>();
-    const visibleMonths = new Set(trendMonths.map(item => item.key));
+    const grouped = new Map(monthRows.map(item => [item.key, item]));
     [...data.attendance, ...demoAttendance].forEach(row => {
-      const rowMonth = dateOnly(row.attendance_date).slice(0, 7);
-      if (!visibleMonths.has(rowMonth) || !inOutlet(row)) return;
-      const current = grouped.get(rowMonth) ?? { present: 0, late: 0, absent: 0 };
+      if (!inOutlet(row)) return;
+      const date = dateOnly(row.attendance_date);
+      const monthRow = grouped.get(date.slice(0, 7));
+      const dayNumber = Number(date.slice(8, 10));
+      const current = monthRow?.days[dayNumber - 1];
+      if (!current?.exists) return;
       if (truthy(row.is_absent)) current.absent += 1;
       else if (truthy(row.is_late) || number(row.late_minutes) > 0) current.late += 1;
       else current.present += 1;
-      grouped.set(rowMonth, current);
     });
-    return trendMonths.map(({ key, ...item }) => ({ ...item, ...(grouped.get(key) ?? {}) }));
+    return monthRows;
   }, [month, data.attendance, demoAttendance, outlet, employeeOutlets]);
 
   const performanceByOutlet = useMemo(() => {
@@ -290,14 +332,9 @@ export default function HRAnalytics() {
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Attendance Trends by Month">
-            {!loading && <EmptyChart show={!attendanceTrend.some(item => item.present + item.late + item.absent > 0)} />}
-            <ResponsiveContainer width="100%" height="100%"><LineChart data={attendanceTrend} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} interval="preserveStartEnd" /><YAxis allowDecimals={false} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} /><Legend />
-              <Line type="monotone" dataKey="present" name="On time" stroke="#37a66b" strokeWidth={2.5} dot={false} />
-              <Line type="monotone" dataKey="late" name="Late" stroke="#e3ad45" strokeWidth={2.5} dot={false} />
-              <Line type="monotone" dataKey="absent" name="Absent" stroke="#c95c54" strokeWidth={2.5} dot={false} />
-            </LineChart></ResponsiveContainer>
+          <ChartCard title="Attendance Trends by Day" height={405}>
+            {!loading && <EmptyChart show={!attendanceByMonthDay.some(row => row.days.some(day => day.present + day.late + day.absent > 0))} />}
+            <AttendanceMonthDayGrid rows={attendanceByMonthDay} />
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
