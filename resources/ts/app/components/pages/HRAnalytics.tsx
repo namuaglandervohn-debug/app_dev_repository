@@ -89,32 +89,51 @@ type AttendanceMonthRow = { key: string; label: string; days: AttendanceDayCell[
 
 function AttendanceMonthDayGrid({ rows }: { rows: AttendanceMonthRow[] }) {
   const peak = Math.max(1, ...rows.flatMap(row => row.days.map(day => day.present + day.late + day.absent)));
+  const width = 1000;
+  const left = 94;
+  const right = 990;
+  const rowHeight = 24;
+  const plotTop = 4;
+  const plotBottom = plotTop + rows.length * rowHeight;
+  const chartHeight = plotBottom + 24;
+  const xForDay = (day: number) => left + ((day - 1) / 30) * (right - left);
+  const yForCount = (rowIndex: number, value: number) => rowIndex * rowHeight + plotTop + rowHeight - 3 - (value / peak) * (rowHeight - 7);
+  const series = [
+    { key: 'present' as const, label: 'On time', color: '#37a66b' },
+    { key: 'late' as const, label: 'Late', color: '#e3ad45' },
+    { key: 'absent' as const, label: 'Absent', color: '#c95c54' },
+  ];
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Box role="img" aria-label="Attendance by day for each month, with months along the vertical axis and days along the bottom" sx={{ flex: 1, overflow: 'auto', pb: 1 }}>
-        <Box sx={{ minWidth: 740, display: 'grid', gridTemplateColumns: '86px repeat(31, minmax(16px, 1fr))', rowGap: .5, alignItems: 'center' }}>
-          {rows.flatMap(row => [
-            <Typography key={`${row.key}-label`} variant="caption" fontWeight={650} sx={{ whiteSpace: 'nowrap', color: '#435348' }}>{row.label}</Typography>,
-            ...row.days.map(cell => {
-              const total = cell.present + cell.late + cell.absent;
-              const width = total ? `${Math.max(8, (total / peak) * 100)}%` : '0%';
-              const title = `${row.label}, day ${cell.day}: On time ${cell.present}, Late ${cell.late}, Absent ${cell.absent}`;
-              return <Box key={`${row.key}-${cell.day}`} title={cell.exists ? title : `${row.label}, day ${cell.day}: Not in this month`} sx={{ height: 22, px: .2, display: 'flex', alignItems: 'center', borderRadius: .5, bgcolor: cell.exists ? (total ? '#f3f8f3' : '#f8faf8') : 'transparent' }}>
-                {total > 0 && <Box sx={{ width, height: 8, display: 'flex', overflow: 'hidden', borderRadius: 4 }}>
-                  {cell.present > 0 && <Box sx={{ flex: cell.present, bgcolor: '#37a66b' }} />}
-                  {cell.late > 0 && <Box sx={{ flex: cell.late, bgcolor: '#e3ad45' }} />}
-                  {cell.absent > 0 && <Box sx={{ flex: cell.absent, bgcolor: '#c95c54' }} />}
-                </Box>}
-              </Box>;
-            }),
-          ])}
-          <Box />
-          {Array.from({ length: 31 }, (_, index) => <Typography key={`day-${index + 1}`} variant="caption" align="center" color="text.secondary">{String(index + 1).padStart(2, '0')}</Typography>)}
+      <Box role="img" aria-label="Attendance line chart by month and day" sx={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', pb: 1 }}>
+        <Box component="svg" viewBox={`0 0 ${width} ${chartHeight}`} preserveAspectRatio="none" sx={{ width: '100%', minWidth: 740, height: '100%', display: 'block' }}>
+          {Array.from({ length: 31 }, (_, index) => {
+            const day = index + 1;
+            const x = xForDay(day);
+            return <g key={`axis-day-${day}`}>
+              <line x1={x} x2={x} y1={plotTop} y2={plotBottom} stroke="#e6eee7" strokeDasharray="3 4" />
+              <text x={x} y={chartHeight - 4} textAnchor="middle" fill={MUTED} fontSize="12">{String(day).padStart(2, '0')}</text>
+            </g>;
+          })}
+          {rows.map((row, rowIndex) => <g key={row.key}>
+            <text x="0" y={rowIndex * rowHeight + plotTop + rowHeight * .68} fill="#435348" fontSize="13" fontWeight="600">{row.label}</text>
+            <line x1={left} x2={right} y1={plotTop + (rowIndex + 1) * rowHeight} y2={plotTop + (rowIndex + 1) * rowHeight} stroke="#edf2ed" />
+            {series.map(item => {
+              const points = row.days.filter(day => day.exists).map(day => `${xForDay(day.day)},${yForCount(rowIndex, day[item.key])}`);
+              const title = row.days.filter(day => day.exists).map(day => `${row.label} ${day.day}: ${item.label} ${day[item.key]}`).join('\n');
+              return <g key={item.key}>
+                <polyline points={points.join(' ')} fill="none" stroke={item.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round">
+                  <title>{title}</title>
+                </polyline>
+                {row.days.filter(day => day.exists).map(day => <circle key={day.day} cx={xForDay(day.day)} cy={yForCount(rowIndex, day[item.key])} r="1.5" fill={item.color} />)}
+              </g>;
+            })}
+          </g>)}
         </Box>
       </Box>
       <Stack direction="row" spacing={1.75} justifyContent="center" sx={{ pt: .5, flexWrap: 'wrap' }}>
-        {[['#37a66b', 'On time'], ['#e3ad45', 'Late'], ['#c95c54', 'Absent']].map(([color, label]) => <Box key={label} sx={{ display: 'inline-flex', alignItems: 'center', gap: .6, color: MUTED, fontSize: 12 }}>
-          <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: color }} />{label}
+        {series.map(({ color, label }) => <Box key={label} sx={{ display: 'inline-flex', alignItems: 'center', gap: .6, color: MUTED, fontSize: 12 }}>
+          <Box sx={{ width: 15, height: 2, bgcolor: color }} />{label}
         </Box>)}
       </Stack>
     </Box>
