@@ -34,13 +34,10 @@ const number = (value: unknown) => {
 };
 const dateOnly = (value: unknown) => String(value ?? '').slice(0, 10);
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-const getMonthOptions = () => {
-  const year = new Date().getFullYear();
-  return Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(year, index, 1);
-    return { value: monthKey(date), label: new Intl.DateTimeFormat('en', { month: 'long' }).format(date) };
-  });
-};
+const getMonthOptions = () => Array.from({ length: 12 }, (_, index) => ({
+  value: index + 1,
+  label: new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(2000, index, 1)),
+}));
 const sameMonth = (value: unknown, month: string) => dateOnly(value).slice(0, 7) === month;
 const outletOf = (row: Row, employeeOutlets: Map<string, string>) =>
   String(row.outlet || employeeOutlets.get(String(row.employee_id ?? '')) || 'Unassigned').trim() || 'Unassigned';
@@ -88,7 +85,10 @@ type AttendanceMonthTrend = { month: string; present: number; late: number; abse
 
 export default function HRAnalytics() {
   const monthOptions = useMemo(getMonthOptions, []);
-  const [month, setMonth] = useState(monthKey(new Date()));
+  const currentYear = new Date().getFullYear();
+  const [reportingYear, setReportingYear] = useState(currentYear);
+  const [reportingMonth, setReportingMonth] = useState(new Date().getMonth() + 1);
+  const month = `${reportingYear}-${String(reportingMonth).padStart(2, '0')}`;
   const [outlet, setOutlet] = useState('All Outlets');
   const [data, setData] = useState<AnalyticsData>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -251,7 +251,8 @@ export default function HRAnalytics() {
 
   const averagePerformance = monthEvaluations.length ? monthEvaluations.reduce((sum, row) => sum + number(row.final_weighted_score), 0) / monthEvaluations.length : null;
   const tooltip = { contentStyle: { borderRadius: 12, borderColor: BORDER }, labelStyle: { color: '#1e2d24', fontWeight: 700 } };
-  const monthLabel = monthOptions.find(option => option.value === month)?.label ?? month;
+  const monthLabel = `${monthOptions.find(option => option.value === reportingMonth)?.label ?? ''} ${reportingYear}`.trim();
+  const yearOptions = Array.from({ length: currentYear - 1990 + 1 }, (_, index) => currentYear - index);
 
   return (
     <Box sx={{ mt: 2.5, mb: 2.5 }}>
@@ -268,10 +269,16 @@ export default function HRAnalytics() {
               {OUTLETS.map(item => <MenuItem key={item} value={item}>{item}</MenuItem>)}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 190, bgcolor: 'white' }}>
+          <FormControl size="small" sx={{ minWidth: 155, bgcolor: 'white' }}>
             <InputLabel id="analytics-month-label">Reporting month</InputLabel>
-            <Select labelId="analytics-month-label" value={month} label="Reporting month" onChange={event => setMonth(event.target.value)}>
+            <Select labelId="analytics-month-label" value={reportingMonth} label="Reporting month" onChange={event => setReportingMonth(Number(event.target.value))}>
               {monthOptions.map(option => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 115, bgcolor: 'white' }}>
+            <InputLabel id="analytics-year-label">Year</InputLabel>
+            <Select labelId="analytics-year-label" value={reportingYear} label="Year" onChange={event => setReportingYear(Number(event.target.value))}>
+              {yearOptions.map(year => <MenuItem key={year} value={year}>{year}</MenuItem>)}
             </Select>
           </FormControl>
         </Stack>
