@@ -244,7 +244,7 @@ export default function UserManagement() {
       const legacyResult = await supabase.from('employee_account_requests')
         .select('id,employee_id,full_name,email,created_at').eq('status', 'Pending')
         .order('created_at', { ascending: true });
-      data = legacyResult.data;
+      data = (legacyResult.data ?? []).map(row => ({ ...row, submitted_full_name: null, requested_outlet: null }));
       error = legacyResult.error;
     }
     if (error) {
@@ -810,12 +810,14 @@ export default function UserManagement() {
               <Box key={request.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap', p: 1.5, borderRadius: '16px', border: `1px solid ${GREEN_UI.border}`, bgcolor: '#fbfef9' }}>
                 <Box sx={{ minWidth: 220, flex: '1 1 300px' }}>
                   <Typography fontWeight={700} sx={{ color: GREEN_UI.text }}>{request.submitted_full_name || request.full_name || 'Employee'}</Typography>
-                  <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>HRIS employee record: {request.full_name || 'Name unavailable'} · {request.employee_id}</Typography>
+                  <Typography variant="caption" sx={{ color: GREEN_UI.muted }}>
+                    Employee ID: {request.employee_id}{request.requested_outlet ? ` · Assigned outlet: ${request.requested_outlet}` : ''}
+                  </Typography>
                   <Typography variant="body2" sx={{ color: GREEN_UI.muted }}>{request.email} · Submitted {new Date(request.created_at).toLocaleDateString()}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button size="small" variant="outlined" color="error" startIcon={<HighlightOff />} disabled={Boolean(reviewingRequestId)} onClick={() => void reviewEmployeeAccountRequest(request, 'reject')}>Reject</Button>
-                  <Button size="small" variant="contained" startIcon={reviewingRequestId === request.id ? <CircularProgress size={15} color="inherit" /> : <CheckCircleOutline />} disabled={Boolean(reviewingRequestId)} onClick={() => void reviewEmployeeAccountRequest(request, 'approve')}>Approve and link</Button>
+                  <Button size="small" variant="contained" startIcon={reviewingRequestId === request.id ? <CircularProgress size={15} color="inherit" /> : <CheckCircleOutline />} disabled={Boolean(reviewingRequestId)} onClick={() => void reviewEmployeeAccountRequest(request, 'approve')}>Approve and activate</Button>
                 </Box>
               </Box>
             ))}
