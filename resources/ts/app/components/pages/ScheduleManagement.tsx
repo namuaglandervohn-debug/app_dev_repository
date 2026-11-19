@@ -45,6 +45,7 @@ import { includeSelectedJobTitle } from '../../lib/jobTitles';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { parseRegularScheduleShift, splitShiftExample } from '../../lib/regularScheduleShift';
 import ActionSnackbar from '../ActionSnackbar';
+import ScheduleSwapRequests from './ScheduleSwapRequests';
 
 import { useAuth } from '../../context/AuthContext';
 
@@ -529,8 +530,13 @@ const getWeekRange = (offsetWeeks: number = 0): string => {
   return `${MONTHS[mMonth]} ${mDay} – ${MONTHS[sMonth]} ${sDay}, ${year}`;
 };
 
-function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
+function WeeklySchedule({ schedules, onRequestSwap, showSwapRequest = false }: {
+  schedules: Schedule[];
+  onRequestSwap?: () => void;
+  showSwapRequest?: boolean;
+}) {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [selectedOutlet, setSelectedOutlet] = useState('All Outlets');
   const tableRef = useRef<HTMLTableElement>(null);
   const weeks = new Map<string, { label: string; start: Date | undefined; rows: Schedule[] }>();
   for (const schedule of schedules) {
@@ -581,16 +587,22 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
   for (const [, rows] of outletGroups) {
     rows.sort((left, right) => left.employee.localeCompare(right.employee));
   }
+  const outletOptions = ['All Outlets', ...outletGroups.map(([outlet]) => outlet)];
+  const activeOutlet = outletOptions.includes(selectedOutlet) ? selectedOutlet : 'All Outlets';
+  const visibleOutletGroups = activeOutlet === 'All Outlets'
+    ? outletGroups
+    : outletGroups.filter(([outlet]) => outlet === activeOutlet);
 
   const downloadCsv = () => {
     const header = ['Outlet', 'Name', 'Position', ...DAY_LABELS.map((day, index) =>
-      weekDates[index] ? `${day} ${weekDates[index]}` : day), 'Special Duty'];
-    const rows = outletGroups.flatMap(([outlet, schedules]) => schedules.map(schedule => [
+      weekDates[index] ? `${day} ${weekDates[index]}` : day), 'Schedule Status', 'Special Duty'];
+    const rows = visibleOutletGroups.flatMap(([outlet, schedules]) => schedules.map(schedule => [
       outlet, schedule.employee, schedule.position,
       ...DAYS.map(day => {
         const shift = schedule[day].trim();
         return /^(rd|rest day)$/i.test(shift) ? REST_DAY : shift;
       }),
+      schedule.status,
       getSpecialDutyReason(schedule.week),
     ]));
     const csv = [header, ...rows].map(row => row.map(value => {
@@ -659,6 +671,13 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
               {options.map(([key, option]) => <MenuItem key={key} value={key}>{option.label}</MenuItem>)}
             </TextField>
           )}
+          {outletOptions.length > 2 && (
+            <TextField select size="small" label="Filter outlet" value={activeOutlet}
+              onChange={event => setSelectedOutlet(event.target.value)}
+              sx={{ ...softTextFieldSx, minWidth: 190, '& .MuiInputLabel-root': { color: '#fff' } }}>
+              {outletOptions.map(outlet => <MenuItem key={outlet} value={outlet}>{outlet}</MenuItem>)}
+            </TextField>
+          )}
           <Button variant="contained" color="inherit" size="small" startIcon={<Print />} onClick={printSchedule}
             sx={{ background: '#fff', color: GREEN_UI.greenDark, '&:hover': { background: GREEN_UI.greenSoft } }}>
             Print
@@ -667,13 +686,19 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
             sx={{ color: '#fff', borderColor: 'currentColor', '&:hover': { borderColor: 'currentColor', bgcolor: 'rgba(255,255,255,0.12)' } }}>
             Download CSV
           </Button>
+          {showSwapRequest && onRequestSwap && (
+            <Button variant="contained" color="inherit" size="small" startIcon={<Sync />} onClick={onRequestSwap}
+              sx={{ background: '#fff', color: GREEN_UI.greenDark, '&:hover': { background: GREEN_UI.greenSoft } }}>
+              Request Schedule Swap
+            </Button>
+          )}
         </Box>
       </Box>
       <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
         <TableContainer tabIndex={0} role="region" aria-label="Weekly roster"
           sx={{ border: `1px solid ${GREEN_UI.borderStrong}`, borderRadius: 2 }}>
           <Table ref={tableRef} size="small" aria-label="Employee shifts by outlet and weekday" sx={{
-            minWidth: 990,
+            minWidth: 1080,
             tableLayout: 'fixed',
             '& .MuiTableCell-root': { py: 1, px: 1.25, borderBottom: `1px solid ${GREEN_UI.border}`, borderRight: `1px solid ${GREEN_UI.border}` },
             '& .MuiTableCell-head': { bgcolor: GREEN_UI.greenSoft, color: GREEN_UI.greenDark, fontWeight: 800 },
@@ -690,10 +715,10 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
                 ))}
               </TableRow>
             </TableHead>
-            {outletGroups.map(([outlet, rows]) => (
+            {visibleOutletGroups.map(([outlet, rows]) => (
               <TableBody key={outlet}>
                 <TableRow>
-                  <TableCell component="th" scope="rowgroup" colSpan={9}
+                  <TableCell component="th" scope="rowgroup" colSpan={10}
                     sx={{ bgcolor: GREEN_UI.greenDark, color: '#fff', fontWeight: 800 }}>{outlet}</TableCell>
                 </TableRow>
                 {rows.map(schedule => {
@@ -720,6 +745,10 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
                           </TableCell>
                         );
                       })}
+                  <TableCell>
+                    <Chip size="small" variant="outlined" label={schedule.status}
+                      color={schedule.status === 'Confirmed' ? 'success' : 'info'} />
+                  </TableCell>
                     </TableRow>
                   );
                 })}
@@ -735,6 +764,8 @@ function WeeklySchedule({ schedules }: { schedules: Schedule[] }) {
 export default function ScheduleManagement() {
   const { user } = useAuth();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [overviewSchedules, setOverviewSchedules] = useState<Schedule[]>([]);
+  const [openSwapRequest, setOpenSwapRequest] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
@@ -820,6 +851,13 @@ export default function ScheduleManagement() {
 
     if (userAccountsError) throw userAccountsError;
 
+    let employeeOverviewRows: any[] = [];
+    if (canConfirm) {
+      const { data, error } = await supabase.rpc('get_employee_schedule_overview');
+      if (error) throw error;
+      employeeOverviewRows = data ?? [];
+    }
+
     const outletMap = new Map(
       (userAccountsData ?? []).map((u: any) => [
         u.employee_id,
@@ -871,6 +909,30 @@ export default function ScheduleManagement() {
     }));
 
     setSchedules(sortSchedulesByEmployeeName(mappedSchedules));
+    if (canConfirm) {
+      const mappedOverview: Schedule[] = employeeOverviewRows.map((row: any) => ({
+        id: String(row.schedule_id ?? ''),
+        employeeId: String(row.employee_id ?? ''),
+        employee: String(row.employee_name ?? '—'),
+        position: String(row.position ?? ''),
+        outlet: displayWorkArea(String(row.outlet ?? '')),
+        week: String(row.week ?? ''),
+        timeIn: String(row.time_in ?? ''),
+        timeOut: String(row.time_out ?? ''),
+        breakTime: String(row.break_time ?? ''),
+        monday: String(row.monday ?? ''),
+        tuesday: String(row.tuesday ?? ''),
+        wednesday: String(row.wednesday ?? ''),
+        thursday: String(row.thursday ?? ''),
+        friday: String(row.friday ?? ''),
+        saturday: String(row.saturday ?? ''),
+        sunday: String(row.sunday ?? ''),
+        status: row.status === 'Confirmed' ? 'Confirmed' : 'Published',
+      }));
+      setOverviewSchedules(sortSchedulesByEmployeeName(mappedOverview));
+    } else {
+      setOverviewSchedules([]);
+    }
   } catch (e: any) {
     setError(`Could not load schedules: ${e.message}`);
   } finally {
@@ -878,7 +940,15 @@ export default function ScheduleManagement() {
   }
 };
 
-  useEffect(() => { fetchSchedules(); }, []);
+  useEffect(() => {
+    void fetchSchedules();
+    const channel = supabase.channel('schedule-management-live-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, () => {
+        void fetchSchedules();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, []);
 
    // Fetch employee list — includes position AND outlet for auto-fill
   useEffect(() => {
@@ -2341,7 +2411,21 @@ export default function ScheduleManagement() {
       </TableContainer>
 
       {!loading && canSeeScheduleRoster && (
-        <WeeklySchedule schedules={canConfirm ? filtered.filter(schedule => ['Published', 'Confirmed'].includes(schedule.status)) : filtered} />
+        <WeeklySchedule
+          schedules={canConfirm
+            ? overviewSchedules
+            : filtered}
+          showSwapRequest={canConfirm}
+          onRequestSwap={() => setOpenSwapRequest(true)}
+        />
+      )}
+      {(canConfirm || canValidateSchedule) && (
+        <ScheduleSwapRequests
+          embedded
+          openRequestDialog={openSwapRequest}
+          onRequestDialogOpened={() => setOpenSwapRequest(false)}
+          onScheduleChanged={fetchSchedules}
+        />
       )}
 
       <Dialog

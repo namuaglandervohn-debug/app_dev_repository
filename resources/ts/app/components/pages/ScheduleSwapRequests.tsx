@@ -48,8 +48,17 @@ type SwapRequest = {
   recipient_note: string | null;
   hr_note: string | null;
   created_at: string;
+  requester_name?: string | null;
+  recipient_name?: string | null;
   requester?: EmployeeRow | EmployeeRow[] | null;
   recipient?: EmployeeRow | EmployeeRow[] | null;
+};
+
+type ScheduleSwapRequestsProps = {
+  embedded?: boolean;
+  openRequestDialog?: boolean;
+  onRequestDialogOpened?: () => void;
+  onScheduleChanged?: () => Promise<void> | void;
 };
 
 const dayLabel = (day: SwapDay) => day.charAt(0).toUpperCase() + day.slice(1);
@@ -69,7 +78,7 @@ const statusColor = (status: SwapRequest['status']) => status === 'Approved' ? '
 const cardSx = { borderRadius: 3, border: '1px solid rgba(76, 150, 89, 0.2)', bgcolor: '#fff', boxShadow: '0 10px 30px rgba(44, 91, 51, 0.06)' } as const;
 const fieldSx = { '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#fbfff9' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(76, 150, 89, 0.32)' } } as const;
 
-export default function ScheduleSwapRequests() {
+export default function ScheduleSwapRequests({ embedded = false, openRequestDialog = false, onRequestDialogOpened, onScheduleChanged }: ScheduleSwapRequestsProps) {
   const { user } = useAuth();
   const role = String(user?.role ?? '').toLowerCase();
   const employeeId = role === 'employee' ? String(user?.employeeId ?? '') : '';
@@ -94,23 +103,48 @@ export default function ScheduleSwapRequests() {
     setError('');
     try {
       if (isEmployee && !employeeId) throw new Error('Your account is not linked to an employee record. Please contact HR.');
-      const [scheduleResult, employeeResult, requestResult] = await Promise.all([
-        supabase.from('schedule')
+      const schedulePromise = isEmployee
+        ? supabase.rpc('get_employee_schedule_overview')
+        : supabase.from('schedule')
           .select('schedule_id,employee_id,week,outlet,status,monday,tuesday,wednesday,thursday,friday,saturday,sunday')
-          .in('status', ['Published', 'Confirmed']),
-        supabase.from('employees')
+          .in('status', ['Published', 'Confirmed']);
+      const employeePromise = isEmployee
+        ? Promise.resolve({ data: null, error: null } as any)
+        : supabase.from('employees')
           .select('employee_id,first_name,middle_name,last_name,suffix')
           .eq('status', 'Active')
-          .order('first_name'),
-        supabase.from('schedule_swap_requests')
-          .select('*, requester:employees!schedule_swap_requests_requester_employee_id_fkey(first_name,middle_name,last_name,suffix), recipient:employees!schedule_swap_requests_recipient_employee_id_fkey(first_name,middle_name,last_name,suffix)')
-          .order('created_at', { ascending: false }),
+          .order('first_name');
+      const [scheduleResult, employeeResult, requestResult] = await Promise.all([
+        schedulePromise,
+        employeePromise,
+        supabase.rpc('list_schedule_swap_requests'),
       ]);
       if (scheduleResult.error) throw scheduleResult.error;
       if (employeeResult.error) throw employeeResult.error;
       if (requestResult.error) throw requestResult.error;
-      setSchedules((scheduleResult.data ?? []) as ScheduleRow[]);
-      setEmployees((employeeResult.data ?? []) as EmployeeRow[]);
+      const scheduleRows = (scheduleResult.data ?? []) as any[];
+      const normalizedSchedules: ScheduleRow[] = scheduleRows.map(row => ({
+        ...row,
+        schedule_id: String(row.schedule_id ?? ''),
+        employee_id: String(row.employee_id ?? ''),
+        week: String(row.week ?? ''),
+        outlet: row.outlet ?? null,
+        status: String(row.status ?? ''),
+      } as ScheduleRow));
+      setSchedules(normalizedSchedules);
+      const rosterEmployees = isEmployee
+        ? scheduleRows.map(row => {
+          const parts = String(row.employee_name ?? '').trim().split(/\s+/);
+          return {
+            employee_id: String(row.employee_id ?? ''),
+            first_name: parts[0] ?? '',
+            middle_name: null,
+            last_name: parts.slice(1).join(' '),
+            suffix: null,
+          } as EmployeeRow;
+        })
+        : (employeeResult.data ?? []) as EmployeeRow[];
+      setEmployees(rosterEmployees);
       setRequests((requestResult.data ?? []) as SwapRequest[]);
     } catch (cause: any) {
       setError(cause?.message ?? 'Could not load schedule swap requests.');
@@ -121,6 +155,21 @@ export default function ScheduleSwapRequests() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    const channel = supabase.channel('schedule-swap-request-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_swap_requests' }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!openRequestDialog || !isEmployee) return;
+    setDialogOpen(true);
+    onRequestDialogOpened?.();
+  }, [isEmployee, onRequestDialogOpened, openRequestDialog]);
+
   const employeeById = useMemo(() => new Map(employees.map(employee => [employee.employee_id, employee])), [employees]);
   const ownSchedules = useMemo(() => schedules.filter(schedule => schedule.employee_id === employeeId), [employeeId, schedules]);
   const selectedOwnSchedule = ownSchedules.find(schedule => schedule.schedule_id === requesterScheduleId);
@@ -129,7 +178,10 @@ export default function ScheduleSwapRequests() {
     if (!schedule) return [] as { employeeId: string; name: string; schedule: ScheduleRow }[];
     const found = new Map<string, { employeeId: string; name: string; schedule: ScheduleRow }>();
     schedules.forEach(candidate => {
-      if (candidate.employee_id === employeeId || candidate.week !== schedule.week || !isWorkingShift(candidate[day])) return;
+      if (candidate.employee_id === employeeId || candidate.week !== schedule.week
+        || candidate.week.includes('Special Duty:')
+        || String(candidate.outlet ?? '').trim().toLowerCase() !== String(schedule.outlet ?? '').trim().toLowerCase()
+        || !isWorkingShift(candidate[day])) return;
       const employee = employeeById.get(candidate.employee_id);
       if (!employee || found.has(candidate.employee_id)) return;
       found.set(candidate.employee_id, { employeeId: candidate.employee_id, name: employeeName(employee), schedule: candidate });
@@ -192,6 +244,7 @@ export default function ScheduleSwapRequests() {
         p_request_id: request.id, p_approve: approve, p_note: '',
       });
       if (reviewError) throw reviewError;
+      if (approve) await onScheduleChanged?.();
       setMessage(approve ? 'HR confirmed the swap and both schedules were updated.' : 'HR rejected the schedule swap.');
       await refresh();
     } catch (cause: any) {
@@ -204,7 +257,7 @@ export default function ScheduleSwapRequests() {
   if (!isEmployee && !isHr) return null;
 
   return (
-    <Paper elevation={0} sx={{ ...cardSx, p: { xs: 1.5, sm: 2.25 }, mb: 2.5 }}>
+    <Paper elevation={0} sx={{ ...cardSx, p: { xs: 1.5, sm: 2.25 }, mb: 2.5, mt: embedded ? 2.5 : 0 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <SwapHoriz sx={{ color: '#1b7546' }} />
@@ -213,7 +266,7 @@ export default function ScheduleSwapRequests() {
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {isEmployee && (
+          {isEmployee && !embedded && (
             <Button variant="contained" startIcon={<SwapHoriz />} onClick={() => setDialogOpen(true)} disabled={loading || ownSchedules.length === 0}
               sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, bgcolor: '#20834f', '&:hover': { bgcolor: '#176a3e' } }}>
               Request a Swap
@@ -239,8 +292,8 @@ export default function ScheduleSwapRequests() {
       ) : (
         <Grid container spacing={1.25}>
           {requests.map(request => {
-            const requester = employeeName(getEmployee(request.requester));
-            const recipient = employeeName(getEmployee(request.recipient));
+            const requester = request.requester_name || employeeName(getEmployee(request.requester));
+            const recipient = request.recipient_name || employeeName(getEmployee(request.recipient));
             const incomingForMe = isEmployee && request.recipient_employee_id === employeeId && request.status === 'Pending Coworker';
             const needsHrReview = isHr && request.status === 'Pending HR';
             return (

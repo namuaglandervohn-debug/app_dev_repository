@@ -55,7 +55,6 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from "../../lib/supabaseClient";
 import ActionSnackbar from '../ActionSnackbar';
 import LeaveTypeUtility, { type LeaveType } from '../LeaveTypeUtility';
-import ScheduleSwapRequests from './ScheduleSwapRequests';
 import { currentLeaveDate, leaveDateError, leaveDaysInYear } from '../../lib/leaveRequestDates';
 
 type RequestType = 'Leave' | 'Overtime' | 'Undertime';
@@ -1625,8 +1624,6 @@ export default function RequestManagement() {
           </Grid>
         ))}
       </Grid>
-
-      {(isEmployee || isHR) && <ScheduleSwapRequests />}
 
       {error && (
         <Alert
