@@ -89,7 +89,6 @@ export default function HRAnalytics() {
   const [outlet, setOutlet] = useState('All Outlets');
   const [data, setData] = useState<AnalyticsData>(EMPTY);
   const [loading, setLoading] = useState(true);
-  const [loadIssues, setLoadIssues] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -116,7 +115,7 @@ export default function HRAnalytics() {
         next[key] = result.value.data ?? [];
       });
       setData(next);
-      setLoadIssues(failures);
+      if (failures.length) console.warn('Some HR analytics sources could not load:', failures);
       setLoading(false);
     };
     void load();
@@ -227,7 +226,6 @@ export default function HRAnalytics() {
         </Stack>
       </Stack>
 
-      {loadIssues.length > 0 && <Alert severity="warning" sx={{ mb: 1.5, borderRadius: '14px' }}>Some analytics data could not load: {loadIssues.join(', ')}. Other sections remain available.</Alert>}
       {loading && <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 1.5, borderRadius: '14px' }}>Loading HR analytics…</Alert>}
 
       <Grid container spacing={1.5} sx={{ mb: 2 }}>
