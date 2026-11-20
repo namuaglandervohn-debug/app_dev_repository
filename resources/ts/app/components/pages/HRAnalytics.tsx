@@ -225,22 +225,29 @@ export default function HRAnalytics() {
   ])), [data.employees]);
 
   const performanceByOutlet = useMemo(() => {
-    const grouped = new Map<string, { total: number; count: number; employees: Map<string, string> }>();
+    type Performer = { name: string; score: number };
+    type OutletPerformance = { total: number; count: number; topPerformer?: Performer };
+    const grouped = new Map<string, OutletPerformance>();
     monthEvaluations.forEach(row => {
       const key = outletOf(row, employeeOutlets);
-      const current = grouped.get(key) ?? { total: 0, count: 0, employees: new Map<string, string>() };
+      const current: OutletPerformance = grouped.get(key) ?? { total: 0, count: 0 };
       const id = String(row.employee_id ?? '');
       const name = employeeNames.get(id) || String(row.employee_name ?? '').trim();
-      if (name) current.employees.set(id || name, name);
-      current.total += number(row.final_weighted_score);
+      const score = number(row.final_weighted_score);
+      const top = current.topPerformer;
+      if (name && row.final_weighted_score != null && (
+        !top || score > top.score || (score === top.score && name.localeCompare(top.name) < 0)
+      )) {
+        current.topPerformer = { name, score };
+      }
+      current.total += score;
       current.count += 1;
       grouped.set(key, current);
     });
     return Array.from(grouped, ([name, result]) => ({
       name,
       average: Number((result.total / result.count).toFixed(1)),
-      employees: Array.from(result.employees, ([id, employeeName]) => ({ id, name: employeeName }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      topPerformer: result.topPerformer,
     })).sort((a, b) => b.average - a.average);
   }, [monthEvaluations, employeeOutlets, employeeNames]);
 
@@ -359,12 +366,10 @@ export default function HRAnalytics() {
                   <Paper elevation={0} sx={{ p: 1.25, border: `1px solid ${BORDER}`, borderRadius: '12px', maxWidth: 240 }}>
                     <Typography variant="body2" fontWeight={700}>{result.name}</Typography>
                     <Typography variant="body2">Average score (%) : {result.average}</Typography>
-                    {result.employees.length > 0 && (
-                      <Box component="ul" aria-label="Employees included in the average" sx={{ mt: .75, mb: 0, pl: 2.25 }}>
-                        {result.employees.map(employee => (
-                          <Typography key={employee.id} component="li" variant="caption">{employee.name}</Typography>
-                        ))}
-                      </Box>
+                    {result.topPerformer && (
+                      <Typography variant="body2" sx={{ mt: .75 }}>
+                        <strong>Top performer:</strong> {result.topPerformer.name} ({result.topPerformer.score}%)
+                      </Typography>
                     )}
                   </Paper>
                 );
