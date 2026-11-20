@@ -4,7 +4,7 @@ import {
   InputLabel, MenuItem, Paper, Select, Stack, Typography,
 } from '@mui/material';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
@@ -63,14 +63,11 @@ const recruitmentStatus = (row: Row) => {
   return 'Pending review';
 };
 
-function ChartCard({ title, children, height = 270, footer }: {
-  title: string; children: ReactNode; height?: number; footer?: ReactNode;
-}) {
+function ChartCard({ title, children, height = 270 }: { title: string; children: ReactNode; height?: number }) {
   return (
     <Paper elevation={0} sx={{ height: '100%', p: { xs: 1.75, sm: 2.25 }, borderRadius: '22px', border: `1px solid ${BORDER}`, bgcolor: 'rgba(255,255,255,.94)', boxShadow: '0 12px 30px rgba(43,91,55,.07)' }}>
       <Typography variant="subtitle1" fontWeight={750} sx={{ color: '#1e2d24' }}>{title}</Typography>
       <Box sx={{ width: '100%', height, mt: 1.5, position: 'relative' }}>{children}</Box>
-      {footer}
     </Paper>
   );
 }
@@ -358,35 +355,41 @@ export default function HRAnalytics() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard
-            title="Average Performance by Outlet"
-            footer={!loading && performanceByOutlet.some(entry => entry.topPerformer) && (
-              <Box sx={{ mt: 1.5 }}>
-                <Typography variant="body2" fontWeight={700}>Top performers this month</Typography>
-                <Box component="ul" sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
-                  gap: 1, mt: .75, mb: 0, p: 0, listStyle: 'none',
-                }}>
-                  {performanceByOutlet.map(({ name, topPerformer }) => topPerformer && (
-                    <Box component="li" key={name} sx={{
-                      px: 1.25, py: .75, borderRadius: 1, bgcolor: '#f5faf4',
-                      borderInlineStart: `3px solid ${outletColor(name)}`,
-                    }}>
-                      <Typography variant="caption" display="block" color="text.secondary">{name}</Typography>
-                      <Typography variant="body2" fontWeight={700}>{topPerformer.name} ({topPerformer.score}%)</Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            )}
-          >
+          <ChartCard title="Average Performance by Outlet">
             {!loading && <EmptyChart show={!performanceByOutlet.length} />}
             <ResponsiveContainer width="100%" height="100%"><BarChart data={performanceByOutlet} margin={{ top: 8, right: 12, left: -14, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 11 }} /><YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 12 }} />
               <Tooltip {...tooltip} />
               <Bar dataKey="average" name="Average score (%)" radius={[5, 5, 0, 0]}>
                 {performanceByOutlet.map(entry => <Cell key={entry.name} fill={outletColor(entry.name)} />)}
+                {!loading && (
+                  <LabelList content={({ index, viewBox }) => {
+                    const performer = index == null ? undefined : performanceByOutlet[index]?.topPerformer;
+                    if (!performer || !viewBox || !('width' in viewBox)) return null;
+                    const { x = 0, y = 0, width = 0, height = 0 } = viewBox;
+                    const labelWidth = Math.min(width, 180);
+                    const labelHeight = 108;
+                    return (
+                      <foreignObject
+                        x={x + (width - labelWidth) / 2}
+                        y={Math.max(8, Math.min(y + 10, y + height - labelHeight))}
+                        width={labelWidth}
+                        height={labelHeight}
+                        pointerEvents="none"
+                      >
+                        <Box sx={{
+                          mx: '3px', py: .5, px: .5, borderRadius: 1, bgcolor: 'rgba(255,255,255,.96)',
+                          color: '#1e2d24', fontSize: '.7rem', lineHeight: 1.25, textAlign: 'center',
+                          overflowWrap: 'anywhere',
+                        }}>
+                          <Box component="span" sx={{ display: 'block', color: '#4f6254' }}>Top performer</Box>
+                          <strong>{performer.name}</strong>
+                          <Box component="span" sx={{ display: 'block' }}>{performer.score}%</Box>
+                        </Box>
+                      </foreignObject>
+                    );
+                  }} />
+                )}
               </Bar>
             </BarChart></ResponsiveContainer>
           </ChartCard>
