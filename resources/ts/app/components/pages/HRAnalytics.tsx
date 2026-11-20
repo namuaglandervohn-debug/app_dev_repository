@@ -26,7 +26,7 @@ const MUTED = '#718176';
 const BORDER = '#e3eee4';
 const COLORS = ['#197a49', '#37a66b', '#e3ad45', '#c95c54', '#5b8cbd', '#83c996'];
 const OUTLET_COLORS = new Map([
-  ['maria clara resort', '#197a49'],
+  ['maria clara resort', '#3b82c4'],
   ['maria clara restaurant', '#37a66b'],
   ['buenaventura café', '#e3ad45'],
 ]);
