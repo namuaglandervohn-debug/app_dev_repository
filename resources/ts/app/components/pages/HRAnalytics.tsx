@@ -98,9 +98,14 @@ export default function HRAnalytics() {
     const loadDemoRows = async () => {
       const rows: Row[] = [];
       const pageSize = 1000;
+      const dateFrom = `${reportingYear}-01-01`;
+      const lastDay = new Date(reportingYear, reportingMonth, 0).getDate();
+      const dateTo = `${reportingYear}-${String(reportingMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       for (let from = 0; ; from += pageSize) {
         const result = await supabase.from('hr_analytics_demo_records')
           .select('seed_key,record_type,employee_id,outlet,record_date,status,score,is_late,is_absent,late_minutes,request_type')
+          .gte('record_date', dateFrom)
+          .lte('record_date', dateTo)
           .order('seed_key')
           .range(from, from + pageSize - 1);
         if (result.error) throw result.error;
@@ -149,7 +154,7 @@ export default function HRAnalytics() {
       window.removeEventListener('focus', refresh);
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [reportingYear, reportingMonth]);
 
   const employeeOutlets = useMemo(() => {
     const map = new Map(data.employees.map(row => [String(row.employee_id ?? ''), String(row.outlet ?? 'Unassigned')]));
@@ -251,8 +256,16 @@ export default function HRAnalytics() {
       const name = outletOf(row, analyticsEmployeeOutlets);
       counts.set(name, (counts.get(name) ?? 0) + 1);
     });
+    demoApplicants.filter(row =>
+      sameMonth(row.created_at, month)
+      && recruitmentStatus(row) === 'Hired'
+      && (outlet === 'All Outlets' || String(row.outlet ?? '').toLowerCase() === outlet.toLowerCase())
+    ).forEach(row => {
+      const name = outletOf(row, analyticsEmployeeOutlets);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    });
     return Array.from(counts, ([name, employees]) => ({ name, employees })).sort((a, b) => b.employees - a.employees);
-  }, [data.employees, analyticsEmployeeOutlets, outlet, month]);
+  }, [data.employees, demoApplicants, analyticsEmployeeOutlets, outlet, month]);
 
   const averagePerformance = monthEvaluations.length ? monthEvaluations.reduce((sum, row) => sum + number(row.final_weighted_score), 0) / monthEvaluations.length : null;
   const tooltip = { contentStyle: { borderRadius: 12, borderColor: BORDER }, labelStyle: { color: '#1e2d24', fontWeight: 700 } };
@@ -353,7 +366,7 @@ export default function HRAnalytics() {
           <ChartCard title="Employees Hired This Month by Outlet">
             {!loading && <EmptyChart show={!employeeDistribution.length} />}
             <ResponsiveContainer width="100%" height="100%"><BarChart data={employeeDistribution} margin={{ top: 8, right: 16, left: -14, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 12 }} /><YAxis allowDecimals={false} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} /><Bar dataKey="employees" name="Active employees" fill={GREEN} radius={[5, 5, 0, 0]}>
+              <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 12 }} /><YAxis allowDecimals={false} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} /><Bar dataKey="employees" name="Hired employees" fill={GREEN} radius={[5, 5, 0, 0]}>
                 {employeeDistribution.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
               </Bar>
             </BarChart></ResponsiveContainer>
