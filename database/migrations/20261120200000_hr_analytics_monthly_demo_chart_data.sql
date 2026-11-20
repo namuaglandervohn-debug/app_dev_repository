@@ -22,7 +22,7 @@ with months as (
 ), samples as (
   select s.month_start, s.outlet, s.sample_number,
          'hr-analytics-demo-v2:performance:' || to_char(s.month_start, 'YYYYMM') || ':' ||
-           regexp_replace(lower(s.outlet), '[^a-z0-9]+', '-', 'g') || ':' || s.sample_number as seed_key,
+           btrim(regexp_replace(lower(s.outlet), '[^a-z0-9]+', '-', 'g'), '-') || ':' || s.sample_number as seed_key,
          employee.employee_id,
          1 + mod(abs(hashtext(s.outlet || s.month_start::text || ':performance:' || s.sample_number)::bigint), 28)::integer as day_offset,
          65 + mod(abs(hashtext(s.outlet || s.month_start::text || ':score:' || s.sample_number)::bigint), 36)::integer as score
@@ -66,7 +66,7 @@ with months as (
 ), samples as (
   select s.month_start, s.outlet, s.sample_number,
          'hr-analytics-demo-v2:leave:' || to_char(s.month_start, 'YYYYMM') || ':' ||
-           regexp_replace(lower(s.outlet), '[^a-z0-9]+', '-', 'g') || ':' || s.sample_number as seed_key,
+           btrim(regexp_replace(lower(s.outlet), '[^a-z0-9]+', '-', 'g'), '-') || ':' || s.sample_number as seed_key,
          employee.employee_id,
          1 + mod(abs(hashtext(s.outlet || s.month_start::text || ':leave:' || s.sample_number)::bigint), 28)::integer as day_offset,
          case mod(abs(hashtext(s.outlet || s.month_start::text || ':leave-status:' || s.sample_number)::bigint), 3)
@@ -111,7 +111,7 @@ with months as (
 ), samples as (
   select s.month_start, s.outlet, s.sample_number,
          'hr-analytics-demo-v2:recruitment:' || to_char(s.month_start, 'YYYYMM') || ':' ||
-           regexp_replace(lower(s.outlet), '[^a-z0-9]+', '-', 'g') || ':' || s.sample_number as seed_key,
+           btrim(regexp_replace(lower(s.outlet), '[^a-z0-9]+', '-', 'g'), '-') || ':' || s.sample_number as seed_key,
          case s.sample_number
            when 1 then 'Hired'
            when 2 then 'For Interview'
