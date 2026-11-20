@@ -463,7 +463,7 @@ function updateLinkedAccountPassword(Request $request, string $idField): JsonRes
     $targetId = trim($data[$idField]);
     $byAccountId = $idField === 'user_id';
     $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, [
-        $idField => 'eq.'.$targetId, 'limit' => 2, 'select' => 'auth_user_id,email,role,is_active,employee_id,applicant_id',
+        $idField => 'eq.'.$targetId, 'limit' => 2, 'select' => 'auth_user_id,email,full_name,role,is_active,employee_id,applicant_id',
     ]);
     $account = count($accounts) === 1 ? $accounts[0] : null;
     $unavailable = fn () => response()->json(['message' => 'This account needs an active, linked staff login with a matching email.'], 409);
@@ -507,9 +507,53 @@ function updateLinkedAccountPassword(Request $request, string $idField): JsonRes
         return response()->json(['message' => 'The password did not meet the account requirements. Choose a different password and try again.'], 422);
     }
 
-    return response()->json($byAccountId
-        ? ['password_updated' => true, 'message' => 'Account password updated.']
-        : ['message' => 'Employee password updated.'])->header('Cache-Control', 'no-store');
+    $passwordEmailSent = sendEmployeePasswordResetEmail(
+        $auth(),
+        $email,
+        $account['full_name'] ?? $user['user_metadata']['full_name'] ?? 'Employee',
+        $user['id']
+    );
+    $message = $passwordEmailSent
+        ? 'Password updated. A secure password setup link was emailed to the employee.'
+        : 'Password updated, but the setup email could not be sent. The employee can use Forgot password on the sign-in page.';
+    return response()->json([
+        'password_updated' => true,
+        'password_email_sent' => $passwordEmailSent,
+        'message' => $message,
+    ])->header('Cache-Control', 'no-store');
+}
+
+function sendEmployeePasswordResetEmail(PendingRequest $auth, string $email, string $name, string $authUserId): bool
+{
+    $apiKey = trim((string) config('services.resend.key'));
+    if ($apiKey === '') return false;
+
+    try {
+        $generated = sendSupabaseRequest($auth, 'POST', supabaseBaseUrl().'/auth/v1/admin/generate_link', [
+            'type' => 'recovery',
+            'email' => $email,
+            'options' => ['redirectTo' => 'https://app-dev-repository.vercel.app/applicant'],
+        ]);
+        $resetLink = trim((string) ($generated->json('properties.action_link') ?? $generated->json('action_link') ?? ''));
+        if (! $generated->successful() || $resetLink === '') return false;
+
+        $template = \Illuminate\Support\Facades\File::get(resource_path('views/emails/password-reset.html'));
+        $html = preg_replace_callback('/\[\[(name|resetLink)\]\]/', function ($match) use ($name, $resetLink) {
+            return e($match[1] === 'name' ? $name : $resetLink);
+        }, $template);
+        $response = Http::withToken($apiKey)
+            ->withHeader('Idempotency-Key', 'password-reset/'.$authUserId.'/'.\Illuminate\Support\Str::uuid())
+            ->acceptJson()->timeout(8)->post('https://api.resend.com/emails', [
+                'from' => sprintf('%s <%s>', config('services.resend.from_name'), config('services.resend.from_address')),
+                'to' => [$email],
+                'subject' => 'Secure your Buenaventura HRIS account',
+                'html' => $html,
+                'text' => "Hello {$name},\n\nAn authorized HR administrator changed the password for your employee account. For your security, passwords are never sent by email. Use this expiring, one-time link to choose a password only you know:\n\n{$resetLink}\n\nIf you did not expect this change, contact HR. Do not forward this email or its password link.",
+            ]);
+        return $response->successful() && is_string($response->json('id')) && $response->json('id') !== '';
+    } catch (Throwable) {
+        return false;
+    }
 }
 
 function sendAccountWelcomeEmail(string $name, string $email, string $password, string $authUserId): ?string

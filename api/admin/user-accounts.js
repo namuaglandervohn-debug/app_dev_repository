@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { accountServiceUnavailable, createSupabaseFetch } from '../../lib/supabase-request.js';
 
@@ -102,7 +103,7 @@ async function sendWelcomeEmail({ env, fetcher, name, email, password, authUserI
   return typeof id === 'string' && id ? id : null;
 }
 
-async function updateAccountPassword(admin, body, send) {
+async function updateAccountPassword(admin, body, send, env, fetcher) {
   const byAccountId = body.action === 'update_account_password';
   const targetId = clean(byAccountId ? body.user_id : body.employee_id);
   const password = typeof body.password === 'string' ? body.password : '';
@@ -110,7 +111,7 @@ async function updateAccountPassword(admin, body, send) {
     return send(422, { message: 'Select an account and enter a password between 8 and 72 characters.' });
   }
 
-  const accounts = unwrap(await admin.from('user_accounts').select('auth_user_id,email,role,is_active,employee_id,applicant_id')
+  const accounts = unwrap(await admin.from('user_accounts').select('auth_user_id,email,full_name,role,is_active,employee_id,applicant_id')
     .eq(byAccountId ? 'user_id' : 'employee_id', targetId).limit(2));
   const account = accounts?.length === 1 ? accounts[0] : null;
   const unavailable = () => send(409, { message: 'This account needs an active, linked staff login with a matching email.' });
@@ -146,7 +147,58 @@ async function updateAccountPassword(admin, body, send) {
     }
     return send(422, { message: 'The password did not meet the account requirements. Choose a different password and try again.' });
   }
-  return send(200, byAccountId ? { password_updated: true, message: 'Account password updated.' } : { message: 'Employee password updated.' });
+  const passwordEmailSent = await sendPasswordResetEmail({
+    admin,
+    env,
+    fetcher,
+    email: authUser.email,
+    name: clean(account.full_name) || clean(authUser.user_metadata?.full_name) || 'Employee',
+    authUserId: authUser.id,
+  }).catch(() => false);
+  const message = passwordEmailSent
+    ? 'Password updated. A secure password setup link was emailed to the employee.'
+    : 'Password updated, but the setup email could not be sent. The employee can use Forgot password on the sign-in page.';
+  return send(200, { password_updated: true, password_email_sent: passwordEmailSent, message });
+}
+
+async function sendPasswordResetEmail({ admin, env, fetcher, email, name, authUserId }) {
+  const apiKey = clean(env.RESEND_API_KEY);
+  if (!apiKey) return false;
+
+  const generated = await admin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: { redirectTo: 'https://app-dev-repository.vercel.app/applicant' },
+  });
+  if (generated.error) throw generated.error;
+  const resetLink = clean(generated.data?.properties?.action_link ?? generated.data?.action_link);
+  if (!resetLink) throw new Error('Password setup link was not returned.');
+
+  const template = await readFile(new URL('../../resources/views/emails/password-reset.html', import.meta.url), 'utf8');
+  const escapeHtml = (value) => String(value).replace(/[&<>"']/g, char =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  const values = { name: escapeHtml(name), resetLink: escapeHtml(resetLink) };
+  const html = template.replace(/\[\[(name|resetLink)\]\]/g, (_, field) => values[field]);
+  const fromName = clean(env.RESEND_FROM_NAME) || 'Buenaventura HRIS';
+  const fromAddress = clean(env.RESEND_FROM_ADDRESS) || 'no-reply@buenaventura-hris.me';
+  const response = await fetcher('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': `password-reset/${authUserId}/${randomUUID()}`,
+    },
+    signal: AbortSignal.timeout(8000),
+    body: JSON.stringify({
+      from: `${fromName} <${fromAddress}>`,
+      to: [email],
+      subject: 'Secure your Buenaventura HRIS account',
+      html,
+      text: `Hello ${name},\n\nAn authorized HR administrator changed the password for your employee account. For your security, passwords are never sent by email. Use this expiring, one-time link to choose a password only you know:\n\n${resetLink}\n\nIf you did not expect this change, contact HR. Do not forward this email or its password link.`,
+    }),
+  });
+  const result = response.ok ? await response.json().catch(() => null) : null;
+  return typeof result?.id === 'string' && result.id.length > 0;
 }
 
 export function createUserAccountsHandler({ env = process.env, clientFactory = createClient, fetcher = fetch } = {}) {
@@ -198,9 +250,9 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         if (!['hr', 'hr_admin', 'admin'].includes(actorProfile.role)) {
           return send(403, { message: 'Only HR administrators can change passwords in User Accounts.' });
         }
-        return await updateAccountPassword(admin, body, send);
+        return await updateAccountPassword(admin, body, send, env, fetcher);
       }
-      if (body?.action === 'update_employee_password') return await updateAccountPassword(admin, body, send);
+      if (body?.action === 'update_employee_password') return await updateAccountPassword(admin, body, send, env, fetcher);
       const name = clean(body?.name);
       const email = emailKey(body?.email);
       const password = typeof body?.password === 'string' ? body.password : '';

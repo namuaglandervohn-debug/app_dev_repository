@@ -568,7 +568,7 @@ export default function UserManagement() {
         throw new Error(result?.message || 'Could not update the account password.');
       }
       setPasswordForm(EMPTY_PASSWORD_FORM);
-      setSnackbar({ open: true, message: result.message, severity: 'success' });
+      setSnackbar({ open: true, message: result.message, severity: result.password_email_sent ? 'success' : 'warning' });
     } catch (error) {
       setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Could not update the account password.', severity: 'error' });
     } finally {
