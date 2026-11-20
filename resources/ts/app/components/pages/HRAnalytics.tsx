@@ -123,9 +123,9 @@ export default function HRAnalytics() {
     const load = async () => {
       setLoading(true);
       const sources: Array<[keyof AnalyticsData, PromiseLike<any>]> = [
-        ['employees', supabase.from('employees').select('employee_id,outlet,status,department,position,hire_date')],
+        ['employees', supabase.from('employees').select('employee_id,first_name,middle_name,last_name,suffix,outlet,status,department,position,hire_date')],
         ['attendance', supabase.from('attendance_logs').select('employee_id,attendance_date,is_absent,is_late,late_minutes')],
-        ['evaluations', supabase.from('employee_evaluations').select('employee_id,outlet,evaluation_period_end,final_weighted_score,status')],
+        ['evaluations', supabase.from('employee_evaluations').select('employee_id,employee_name,outlet,evaluation_period_end,final_weighted_score,status')],
         ['requests', supabase.from('employee_requests').select('employee_id,request_type,status,created_at,start_date')],
         ['applicants', supabase.from('applicants').select('applicant_id,status,hiring_decision,created_at')],
         ['userAccounts', supabase.from('user_accounts').select('employee_id,applicant_id,outlet')],
@@ -218,17 +218,31 @@ export default function HRAnalytics() {
     return months;
   }, [month, data.attendance, demoAttendance, outlet, employeeOutlets]);
 
+  const employeeNames = useMemo(() => new Map(data.employees.map(row => [
+    String(row.employee_id),
+    [row.first_name, row.middle_name, row.last_name, row.suffix]
+      .map(part => String(part ?? '').trim()).filter(Boolean).join(' '),
+  ])), [data.employees]);
+
   const performanceByOutlet = useMemo(() => {
-    const grouped = new Map<string, { total: number; count: number }>();
+    const grouped = new Map<string, { total: number; count: number; employees: Map<string, string> }>();
     monthEvaluations.forEach(row => {
       const key = outletOf(row, employeeOutlets);
-      const current = grouped.get(key) ?? { total: 0, count: 0 };
+      const current = grouped.get(key) ?? { total: 0, count: 0, employees: new Map<string, string>() };
+      const id = String(row.employee_id ?? '');
+      const name = employeeNames.get(id) || String(row.employee_name ?? '').trim();
+      if (name) current.employees.set(id || name, name);
       current.total += number(row.final_weighted_score);
       current.count += 1;
       grouped.set(key, current);
     });
-    return Array.from(grouped, ([name, result]) => ({ name, average: Number((result.total / result.count).toFixed(1)), evaluations: result.count })).sort((a, b) => b.average - a.average);
-  }, [monthEvaluations, employeeOutlets]);
+    return Array.from(grouped, ([name, result]) => ({
+      name,
+      average: Number((result.total / result.count).toFixed(1)),
+      employees: Array.from(result.employees, ([id, employeeName]) => ({ id, name: employeeName }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    })).sort((a, b) => b.average - a.average);
+  }, [monthEvaluations, employeeOutlets, employeeNames]);
 
   const recruitment = useMemo(() => {
     const statuses = ['For interview', 'Hired', 'Pending review', 'Rejected', 'Withdrawn'];
@@ -337,7 +351,24 @@ export default function HRAnalytics() {
           <ChartCard title="Average Performance by Outlet">
             {!loading && <EmptyChart show={!performanceByOutlet.length} />}
             <ResponsiveContainer width="100%" height="100%"><BarChart data={performanceByOutlet} margin={{ top: 8, right: 12, left: -14, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 11 }} /><YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} />
+              <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 11 }} /><YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 12 }} />
+              <Tooltip content={({ active, label }) => {
+                const result = performanceByOutlet.find(entry => entry.name === label);
+                if (!active || !result) return null;
+                return (
+                  <Paper elevation={0} sx={{ p: 1.25, border: `1px solid ${BORDER}`, borderRadius: '12px', maxWidth: 240 }}>
+                    <Typography variant="body2" fontWeight={700}>{result.name}</Typography>
+                    <Typography variant="body2">Average score (%) : {result.average}</Typography>
+                    {result.employees.length > 0 && (
+                      <Box component="ul" aria-label="Employees included in the average" sx={{ mt: .75, mb: 0, pl: 2.25 }}>
+                        {result.employees.map(employee => (
+                          <Typography key={employee.id} component="li" variant="caption">{employee.name}</Typography>
+                        ))}
+                      </Box>
+                    )}
+                  </Paper>
+                );
+              }} />
               <Bar dataKey="average" name="Average score (%)" radius={[5, 5, 0, 0]}>
                 {performanceByOutlet.map(entry => <Cell key={entry.name} fill={outletColor(entry.name)} />)}
               </Bar>
