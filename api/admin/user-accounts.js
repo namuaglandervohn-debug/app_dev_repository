@@ -19,6 +19,59 @@ const unwrap = ({ data, error }) => {
   return data;
 };
 
+async function approveAlreadyLinkedEmployeeRequest(admin, requestId, reviewerId, send) {
+  if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+    return send(422, { message: 'Select a valid employee registration request.' });
+  }
+
+  const requests = unwrap(await admin.from('employee_account_requests')
+    .select('id,employee_id,email,auth_user_id,status')
+    .eq('id', requestId).limit(2));
+  const request = requests?.length === 1 ? requests[0] : null;
+  if (!request) return send(404, { message: 'The employee registration request could not be found.' });
+  if (request.status !== 'Pending') return send(409, { message: 'This registration request has already been reviewed.' });
+
+  const accounts = unwrap(await admin.from('user_accounts')
+    .select('user_id,employee_id,email,auth_user_id,is_active,role')
+    .eq('employee_id', request.employee_id).limit(2));
+  const account = accounts?.length === 1 ? accounts[0] : null;
+  const sameLinkedLogin = account?.role === 'employee'
+    && account.auth_user_id === request.auth_user_id
+    && emailKey(account.email) === emailKey(request.email);
+  if (!sameLinkedLogin) {
+    return send(409, { message: 'This employee ID is linked to a different HRIS account. Verify the employee account before approving.' });
+  }
+
+  const verified = await admin.auth.admin.getUserById(request.auth_user_id);
+  const authUser = verified.data?.user;
+  if (verified.error || authUser?.id !== request.auth_user_id || !authUser.email
+    || emailKey(authUser.email) !== emailKey(request.email)) {
+    return send(409, { message: 'The registration login no longer matches this employee account.' });
+  }
+  if (!authUser.email_confirmed_at) {
+    return send(409, { message: 'The employee must confirm the registration email before HR approval.' });
+  }
+
+  if (!account.is_active) {
+    unwrap(await admin.from('user_accounts').update({ is_active: true })
+      .eq('user_id', account.user_id).eq('auth_user_id', request.auth_user_id));
+  }
+
+  const reviewed = unwrap(await admin.from('employee_account_requests').update({
+    status: 'Approved', reviewed_by: reviewerId, reviewed_at: new Date().toISOString(),
+  }).eq('id', requestId).eq('status', 'Pending').select('id'));
+  if (reviewed?.length !== 1) return send(409, { message: 'This registration request was reviewed by someone else. Refresh the list.' });
+
+  return send(200, {
+    approved: true,
+    employee_created: false,
+    already_linked: true,
+    employee_id: request.employee_id,
+    user_id: account.user_id,
+  });
+}
+
+
 async function sendWelcomeEmail({ env, fetcher, name, email, password, authUserId }) {
   const key = clean(env.RESEND_API_KEY);
   if (!key) return null;
@@ -134,6 +187,12 @@ export function createUserAccountsHandler({ env = process.env, clientFactory = c
         body = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
       } catch {
         return send(400, { message: 'Invalid request body.' });
+      }
+      if (body?.action === 'approve_employee_account_request') {
+        if (actorProfile.role !== 'hr_admin') {
+          return send(403, { message: 'Only HR administrators can approve employee registration requests.' });
+        }
+        return await approveAlreadyLinkedEmployeeRequest(admin, body.request_id, actor.id, send);
       }
       if (body?.action === 'update_account_password') {
         if (!['hr', 'hr_admin', 'admin'].includes(actorProfile.role)) {

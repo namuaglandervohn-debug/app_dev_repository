@@ -262,9 +262,28 @@ export default function UserManagement() {
     if (reviewingRequestId) return;
     setReviewingRequestId(request.id);
     try {
-      const { data, error } = await supabase.rpc(action === 'approve'
+      let { data, error } = await supabase.rpc(action === 'approve'
         ? 'approve_employee_account_request'
         : 'reject_employee_account_request', { p_request_id: request.id });
+      if (error && action === 'approve') {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+        if (sessionError || !accessToken) throw new Error('Your HR session expired. Sign in again and retry.');
+
+        const response = await fetch('/api/admin/user-accounts', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ action: 'approve_employee_account_request', request_id: request.id }),
+        });
+        const fallbackData = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(fallbackData?.message || error.message || 'Could not approve the registration.');
+        data = fallbackData;
+        error = null;
+      }
       if (error) throw error;
       if (action === 'approve' && data?.approved !== true) throw new Error('HR approval was not confirmed.');
       if (action === 'reject' && data?.rejected !== true) throw new Error('Request rejection was not confirmed.');
@@ -276,7 +295,11 @@ export default function UserManagement() {
           : `Account approved and activated for ${request.employee_id}.`
         : `Registration request for ${request.employee_id} was rejected.`, severity: 'success' });
     } catch (cause) {
-      setSnackbar({ open: true, message: cause instanceof Error ? cause.message : 'Could not review the registration.', severity: 'error' });
+      const message = cause instanceof Error ? cause.message
+        : cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
+          ? cause.message
+          : 'Could not review the registration.';
+      setSnackbar({ open: true, message, severity: 'error' });
       await fetchEmployeeAccountRequests();
     } finally {
       setReviewingRequestId(null);

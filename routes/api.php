@@ -222,6 +222,82 @@ Route::post('/applications/validate-recipient-email', function (Request $request
 Route::post('/admin/user-accounts', function (Request $request) {
     $actor = requireSupabaseAdmin($request);
 
+    if ($request->input('action') === 'approve_employee_account_request') {
+        if (($actor['role'] ?? '') !== 'hr_admin') {
+            return response()->json(['message' => 'Only HR administrators can approve employee registration requests.'], 403);
+        }
+
+        $data = $request->validate(['request_id' => ['required', 'uuid']]);
+        $requestRows = supabaseRest('GET', '/rest/v1/employee_account_requests', null, [
+            'select' => 'id,employee_id,email,auth_user_id,status',
+            'id' => 'eq.'.$data['request_id'],
+            'limit' => 2,
+        ]);
+        $registration = count($requestRows) === 1 ? $requestRows[0] : null;
+        if (! $registration) {
+            return response()->json(['message' => 'The employee registration request could not be found.'], 404);
+        }
+        if (($registration['status'] ?? '') !== 'Pending') {
+            return response()->json(['message' => 'This registration request has already been reviewed.'], 409);
+        }
+
+        $accounts = supabaseRest('GET', '/rest/v1/user_accounts', null, [
+            'select' => 'user_id,employee_id,email,auth_user_id,is_active,role',
+            'employee_id' => 'eq.'.$registration['employee_id'],
+            'limit' => 2,
+        ]);
+        $account = count($accounts) === 1 ? $accounts[0] : null;
+        $sameLinkedLogin = $account
+            && ($account['role'] ?? '') === 'employee'
+            && ($account['auth_user_id'] ?? '') === ($registration['auth_user_id'] ?? null)
+            && strtolower(trim((string) ($account['email'] ?? ''))) === strtolower(trim((string) ($registration['email'] ?? '')));
+        if (! $sameLinkedLogin) {
+            return response()->json(['message' => 'This employee ID is linked to a different HRIS account. Verify the employee account before approving.'], 409);
+        }
+
+        $authResponse = sendSupabaseRequest(Http::withHeaders([
+            'apikey' => supabaseServiceRoleKey(),
+            'Authorization' => 'Bearer '.supabaseServiceRoleKey(),
+        ])->acceptJson(), 'GET', supabaseBaseUrl().'/auth/v1/admin/users/'.rawurlencode((string) $registration['auth_user_id']));
+        if ($authResponse->failed()) {
+            return response()->json(['message' => 'The registration login could not be verified. Refresh and try again.'], 409);
+        }
+        $authUser = $authResponse->json('user') ?? $authResponse->json();
+        if (($authUser['id'] ?? '') !== ($registration['auth_user_id'] ?? '')
+            || strtolower(trim((string) ($authUser['email'] ?? ''))) !== strtolower(trim((string) ($registration['email'] ?? '')))) {
+            return response()->json(['message' => 'The registration login no longer matches this employee account.'], 409);
+        }
+        if (empty($authUser['email_confirmed_at'])) {
+            return response()->json(['message' => 'The employee must confirm the registration email before HR approval.'], 409);
+        }
+
+        if (! ($account['is_active'] ?? false)) {
+            supabaseRest('PATCH', '/rest/v1/user_accounts', ['is_active' => true], [
+                'user_id' => 'eq.'.$account['user_id'],
+                'auth_user_id' => 'eq.'.$registration['auth_user_id'],
+            ]);
+        }
+        $reviewed = supabaseRest('PATCH', '/rest/v1/employee_account_requests', [
+            'status' => 'Approved',
+            'reviewed_by' => $actor['auth_user_id'],
+            'reviewed_at' => now()->toIso8601String(),
+        ], [
+            'id' => 'eq.'.$registration['id'],
+            'status' => 'eq.Pending',
+        ]);
+        if (count($reviewed) !== 1) {
+            return response()->json(['message' => 'This registration request was reviewed by someone else. Refresh the list.'], 409);
+        }
+
+        return response()->json([
+            'approved' => true,
+            'employee_created' => false,
+            'already_linked' => true,
+            'employee_id' => $registration['employee_id'],
+            'user_id' => $account['user_id'],
+        ])->header('Cache-Control', 'no-store');
+    }
+
     if ($request->input('action') === 'update_account_password') {
         if (! in_array($actor['role'], ['hr', 'hr_admin', 'admin'], true)) {
             return response()->json(['message' => 'Only HR administrators can change passwords in User Accounts.'], 403);
