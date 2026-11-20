@@ -295,6 +295,9 @@ const APPLICANT_LIST_COLUMNS = `
   position_applied,
   created_at,
   status,
+  is_archived,
+  archived_at,
+  archived_by,
   email,
   phone_number,
   interview_date,
@@ -320,6 +323,9 @@ const MINIMAL_APPLICANT_LIST_COLUMNS = `
   position_applied,
   created_at,
   status,
+  is_archived,
+  archived_at,
+  archived_by,
   interview_date,
   interview_time
 `;
@@ -334,6 +340,9 @@ const APPLICANT_PROFILE_COLUMNS = `
   position_applied,
   created_at,
   status,
+  is_archived,
+  archived_at,
+  archived_by,
   email,
   phone_number,
   address,
@@ -1100,28 +1109,35 @@ export default function RecruitmentManagement() {
             requirements_note: app.requirementsNote ?? null,
           };
 
-      const { error: archiveError } = await supabase.from('applicants').update(archivePayload).eq('applicant_id', app.id);
+      const { data: saved, error: archiveError } = await supabase.from('applicants')
+        .update(archivePayload)
+        .eq('applicant_id', app.id)
+        .select('status,is_archived,archived_at,archived_by,requirements_note')
+        .maybeSingle();
       if (archiveError) throw archiveError;
+      if (!saved || saved.is_archived !== archive || (!archive && saved.status === 'Archived')) {
+        void fetchApplications({ silent: true });
+        throw new Error('The database did not confirm the change. Refresh the list and try again.');
+      }
 
-      setApplications(prev =>
-        prev.map(item =>
-          item.id === app.id
-            ? {
-                ...item,
-                isArchived: archive,
-                status: !archive && app.status === 'Archived' ? 'Submitted' : item.status,
-                requirementsNote: archivePayload.requirements_note ?? '',
-              }
-            : item
-        )
-      );
+      const applySavedArchive = (item: Application) => item.id === app.id ? {
+        ...item,
+        status: saved.status,
+        isArchived: saved.is_archived,
+        archivedAt: saved.archived_at ?? '',
+        archivedBy: saved.archived_by ?? '',
+        requirementsNote: saved.requirements_note ?? '',
+      } : item;
+      setApplications(prev => prev.map(applySavedArchive));
+      setSelectedApp(prev => prev ? applySavedArchive(prev) : prev);
+      void fetchApplications({ silent: true });
       setSnackbar({
         open: true,
-        message: `Application ${action}d successfully. The record remains retained in the archive.`,
+        message: archive ? 'Application archived successfully.' : 'Application restored successfully.',
         severity: 'success',
       });
-    } catch (e: any) {
-      setSnackbar({ open: true, message: `Failed to ${action}: ${e.message}`, severity: 'error' });
+    } catch (error) {
+      setSnackbar({ open: true, message: `Failed to ${action}: ${readableErrorMessage(error, 'Please try again.')}`, severity: 'error' });
     }
   };
 
