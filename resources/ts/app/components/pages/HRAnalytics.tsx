@@ -63,11 +63,14 @@ const recruitmentStatus = (row: Row) => {
   return 'Pending review';
 };
 
-function ChartCard({ title, children, height = 270 }: { title: string; children: ReactNode; height?: number }) {
+function ChartCard({ title, children, height = 270, footer }: {
+  title: string; children: ReactNode; height?: number; footer?: ReactNode;
+}) {
   return (
     <Paper elevation={0} sx={{ height: '100%', p: { xs: 1.75, sm: 2.25 }, borderRadius: '22px', border: `1px solid ${BORDER}`, bgcolor: 'rgba(255,255,255,.94)', boxShadow: '0 12px 30px rgba(43,91,55,.07)' }}>
       <Typography variant="subtitle1" fontWeight={750} sx={{ color: '#1e2d24' }}>{title}</Typography>
       <Box sx={{ width: '100%', height, mt: 1.5, position: 'relative' }}>{children}</Box>
+      {footer}
     </Paper>
   );
 }
@@ -355,25 +358,33 @@ export default function HRAnalytics() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <ChartCard title="Average Performance by Outlet">
+          <ChartCard
+            title="Average Performance by Outlet"
+            footer={!loading && performanceByOutlet.some(entry => entry.topPerformer) && (
+              <Box sx={{ mt: 1.5 }}>
+                <Typography variant="body2" fontWeight={700}>Top performers this month</Typography>
+                <Box component="ul" sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
+                  gap: 1, mt: .75, mb: 0, p: 0, listStyle: 'none',
+                }}>
+                  {performanceByOutlet.map(({ name, topPerformer }) => topPerformer && (
+                    <Box component="li" key={name} sx={{
+                      px: 1.25, py: .75, borderRadius: 1, bgcolor: '#f5faf4',
+                      borderInlineStart: `3px solid ${outletColor(name)}`,
+                    }}>
+                      <Typography variant="caption" display="block" color="text.secondary">{name}</Typography>
+                      <Typography variant="body2" fontWeight={700}>{topPerformer.name} ({topPerformer.score}%)</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
+          >
             {!loading && <EmptyChart show={!performanceByOutlet.length} />}
             <ResponsiveContainer width="100%" height="100%"><BarChart data={performanceByOutlet} margin={{ top: 8, right: 12, left: -14, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 11 }} /><YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 12 }} />
-              <Tooltip content={({ active, label }) => {
-                const result = performanceByOutlet.find(entry => entry.name === label);
-                if (!active || !result) return null;
-                return (
-                  <Paper elevation={0} sx={{ p: 1.25, border: `1px solid ${BORDER}`, borderRadius: '12px', maxWidth: 240 }}>
-                    <Typography variant="body2" fontWeight={700}>{result.name}</Typography>
-                    <Typography variant="body2">Average score (%) : {result.average}</Typography>
-                    {result.topPerformer && (
-                      <Typography variant="body2" sx={{ mt: .75 }}>
-                        <strong>Top performer:</strong> {result.topPerformer.name} ({result.topPerformer.score}%)
-                      </Typography>
-                    )}
-                  </Paper>
-                );
-              }} />
+              <Tooltip {...tooltip} />
               <Bar dataKey="average" name="Average score (%)" radius={[5, 5, 0, 0]}>
                 {performanceByOutlet.map(entry => <Cell key={entry.name} fill={outletColor(entry.name)} />)}
               </Bar>
