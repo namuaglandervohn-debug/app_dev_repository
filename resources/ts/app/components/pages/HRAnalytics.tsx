@@ -357,7 +357,7 @@ export default function HRAnalytics() {
         <Grid size={{ xs: 12, md: 6 }}>
           <ChartCard title="Average Performance by Outlet">
             {!loading && <EmptyChart show={!performanceByOutlet.length} />}
-            <ResponsiveContainer width="100%" height="100%"><BarChart data={performanceByOutlet} margin={{ top: 8, right: 12, left: -14, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height="100%"><BarChart data={performanceByOutlet} margin={{ top: 60, right: 12, left: -14, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 11 }} /><YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 12 }} />
               <Tooltip {...tooltip} />
               <Bar dataKey="average" name="Average score (%)" radius={[5, 5, 0, 0]}>
@@ -366,23 +366,21 @@ export default function HRAnalytics() {
                   <LabelList content={({ index, viewBox }) => {
                     const performer = index == null ? undefined : performanceByOutlet[index]?.topPerformer;
                     if (!performer || !viewBox || !('width' in viewBox)) return null;
-                    const { x = 0, y = 0, width = 0, height = 0 } = viewBox;
+                    const { x = 0, width = 0 } = viewBox;
                     const labelWidth = Math.min(width, 180);
-                    const labelHeight = 108;
                     return (
                       <foreignObject
                         x={x + (width - labelWidth) / 2}
-                        y={Math.max(8, Math.min(y + 10, y + height - labelHeight))}
+                        y={4}
                         width={labelWidth}
-                        height={labelHeight}
+                        height={52}
                         pointerEvents="none"
                       >
                         <Box sx={{
-                          mx: '3px', py: .5, px: .5, borderRadius: 1, bgcolor: 'rgba(255,255,255,.96)',
+                          px: .25,
                           color: '#1e2d24', fontSize: '.7rem', lineHeight: 1.25, textAlign: 'center',
                           overflowWrap: 'anywhere',
                         }}>
-                          <Box component="span" sx={{ display: 'block', color: '#4f6254' }}>Top performer</Box>
                           <strong>{performer.name}</strong>
                           <Box component="span" sx={{ display: 'block' }}>{performer.score}%</Box>
                         </Box>
