@@ -25,8 +25,14 @@ const GREEN = '#197a49';
 const MUTED = '#718176';
 const BORDER = '#e3eee4';
 const COLORS = ['#197a49', '#37a66b', '#e3ad45', '#c95c54', '#5b8cbd', '#83c996'];
+const OUTLET_COLORS = new Map([
+  ['maria clara resort', '#197a49'],
+  ['maria clara restaurant', '#37a66b'],
+  ['buenaventura café', '#e3ad45'],
+]);
 const EMPTY: AnalyticsData = { employees: [], attendance: [], evaluations: [], requests: [], applicants: [], userAccounts: [], demoRecords: [] };
 const normalized = (value: unknown) => String(value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+const outletColor = (name: string) => OUTLET_COLORS.get(normalized(name)) ?? MUTED;
 const truthy = (value: unknown) => value === true || ['true', 'yes', '1'].includes(normalized(value));
 const number = (value: unknown) => {
   const parsed = Number(String(value ?? 0).replace(/[,%₱]/g, ''));
@@ -331,7 +337,10 @@ export default function HRAnalytics() {
           <ChartCard title="Average Performance by Outlet">
             {!loading && <EmptyChart show={!performanceByOutlet.length} />}
             <ResponsiveContainer width="100%" height="100%"><BarChart data={performanceByOutlet} margin={{ top: 8, right: 12, left: -14, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 11 }} /><YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} /><Bar dataKey="average" name="Average score (%)" fill={GREEN} radius={[5, 5, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 11 }} /><YAxis domain={[0, 100]} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} />
+              <Bar dataKey="average" name="Average score (%)" radius={[5, 5, 0, 0]}>
+                {performanceByOutlet.map(entry => <Cell key={entry.name} fill={outletColor(entry.name)} />)}
+              </Bar>
             </BarChart></ResponsiveContainer>
           </ChartCard>
         </Grid>
@@ -367,7 +376,7 @@ export default function HRAnalytics() {
             {!loading && <EmptyChart show={!employeeDistribution.length} />}
             <ResponsiveContainer width="100%" height="100%"><BarChart data={employeeDistribution} margin={{ top: 8, right: 16, left: -14, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={BORDER} /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 12 }} /><YAxis allowDecimals={false} tick={{ fill: MUTED, fontSize: 12 }} /><Tooltip {...tooltip} /><Bar dataKey="employees" name="Hired employees" fill={GREEN} radius={[5, 5, 0, 0]}>
-                {employeeDistribution.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                {employeeDistribution.map(entry => <Cell key={entry.name} fill={outletColor(entry.name)} />)}
               </Bar>
             </BarChart></ResponsiveContainer>
           </ChartCard>
