@@ -366,18 +366,20 @@ export default function HRAnalytics() {
                   <LabelList content={({ index, viewBox }) => {
                     const performer = index == null ? undefined : performanceByOutlet[index]?.topPerformer;
                     if (!performer || !viewBox || !('width' in viewBox)) return null;
-                    const { x = 0, width = 0 } = viewBox;
+                    const { x = 0, y = 0, width = 0 } = viewBox;
                     const labelWidth = Math.min(width, 180);
+                    const labelHeight = 52;
                     return (
                       <foreignObject
                         x={x + (width - labelWidth) / 2}
-                        y={4}
+                        y={y - labelHeight - 4}
                         width={labelWidth}
-                        height={52}
+                        height={labelHeight}
                         pointerEvents="none"
                       >
                         <Box sx={{
                           px: .25,
+                          minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                           color: '#1e2d24', fontSize: '.7rem', lineHeight: 1.25, textAlign: 'center',
                           overflowWrap: 'anywhere',
                         }}>
