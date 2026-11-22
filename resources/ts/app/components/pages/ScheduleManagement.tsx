@@ -1835,12 +1835,6 @@ export default function ScheduleManagement() {
         </Box>
       </Paper>
 
-      {canManageSchedule && (
-        <Alert severity="info" sx={{ mb: 2, borderRadius: '16px' }}>
-          Supervisors create, edit, and save employee schedules as drafts. HR reviews and validates each draft before it is published to employees.
-        </Alert>
-      )}
-
       <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
         {scheduleStats.map(stat => (
           <Grid key={stat.label} size={{ xs: 12, sm: 6, md: 3 }}>
