@@ -207,7 +207,7 @@ export default function RootLayout({ children, applicant }: {
                 aria-current={selected ? 'page' : undefined}
                 onClick={() => handleNavigate(item.path)}
                 sx={{
-                  minHeight: 46, px: 1.25, gap: 1.25, m: 0, borderRadius: 1,
+                  width: '100%', height: 58, px: 1.25, gap: 1.25, m: 0, borderRadius: 1,
                   borderLeft: '3px solid transparent', color: accountColors.onGreen,
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.09)' },
                   '& .MuiListItemIcon-root': { minWidth: 32, color: accountColors.onGreenMuted },
