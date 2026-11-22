@@ -829,8 +829,8 @@ export default function LandingPage() {
                       height: "100%",
                       borderRadius: 2.5,
                       boxShadow: "0 20px 52px rgba(15,23,42,0.08)",
-                      border: "1px solid rgba(31,122,71,0.11)",
-                      background: "linear-gradient(155deg, #124e34 0%, #1e6a45 100%)",
+                      border: "1px solid rgba(31,122,71,0.24)",
+                      background: "linear-gradient(180deg, #ffffff 0%, #f8fbf8 100%)",
                       transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
                       "&:hover": {
                         transform: "translateY(-6px)",
@@ -859,8 +859,8 @@ export default function LandingPage() {
                             width: 54,
                             height: 54,
                             borderRadius: "20px",
-                            bgcolor: "rgba(255,255,255,0.14)",
-                            color: "#fff",
+                            bgcolor: "rgba(31,122,71,0.11)",
+                            color: "#1f7a47",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -873,8 +873,8 @@ export default function LandingPage() {
                           label={job.employment_type}
                           size="small"
                           sx={{
-                            bgcolor: "rgba(255,255,255,0.14)",
-                            color: "#fff",
+                            bgcolor: "rgba(31,122,71,0.11)",
+                            color: "#17643e",
                             fontWeight: 900,
                             alignSelf: { xs: "flex-start", sm: "center" },
                           }}
@@ -904,7 +904,7 @@ export default function LandingPage() {
                             wordBreak: "break-word",
                           }}
                         >
-                          <Groups fontSize="small" />
+                          <Groups fontSize="small" sx={{ color: "#1f7a47" }} />
                           <strong>Department:</strong> {job.department}
                         </Typography>
 
@@ -917,7 +917,7 @@ export default function LandingPage() {
                             wordBreak: "break-word",
                           }}
                         >
-                          <LocationOn fontSize="small" />
+                          <LocationOn fontSize="small" sx={{ color: "#1f7a47" }} />
                           <strong>Location:</strong> {job.location}
                         </Typography>
 
@@ -927,6 +927,7 @@ export default function LandingPage() {
                             alignItems: "center",
                             gap: 1,
                             fontWeight: 850,
+                            color: "#166534",
                             wordBreak: "break-word",
                           }}
                         >
@@ -934,7 +935,7 @@ export default function LandingPage() {
                         </Typography>
                       </Stack>
 
-                      <Divider sx={{ my: 2, borderColor: "rgba(255,255,255,0.55)" }} />
+                      <Divider sx={{ my: 2, borderColor: "rgba(31,122,71,0.18)" }} />
 
                       <Typography fontWeight={950} sx={{ mb: 1 }}>
                         Job Description
