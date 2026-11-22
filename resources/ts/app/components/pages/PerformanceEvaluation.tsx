@@ -25,7 +25,7 @@ import {
   TableRow,
   Tooltip,
   Typography,
-} from "@mui/material";
+} from "../bootstrap";
 import {
   Add,
   AddCircleOutline,
@@ -38,7 +38,7 @@ import {
   Save,
   Sync,
   TaskAlt,
-} from "@mui/icons-material";
+} from "../bootstrap/icons";
 import { supabase } from "../../lib/supabaseClient";
 import { NO_OUTLET, OUTLETS } from "../../lib/constants";
 import { includeSelectedJobTitle } from '../../lib/jobTitles';

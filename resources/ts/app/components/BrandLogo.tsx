@@ -1,4 +1,4 @@
-import { Box } from '@mui/material';
+import { Box } from './bootstrap';
 
 export default function BrandLogo({ size }: { size: number | string }) {
   return (

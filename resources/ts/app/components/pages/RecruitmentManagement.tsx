@@ -34,7 +34,7 @@ import {
   ArchiveOutlined,
   UnarchiveOutlined,
   HowToReg,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import {
   Alert,
   Box,
@@ -64,7 +64,7 @@ import {
   Tabs,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from '../bootstrap';
 import { useAuth } from '../../context/AuthContext';
 import ActionSnackbar from '../ActionSnackbar';
 

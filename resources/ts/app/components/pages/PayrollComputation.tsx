@@ -6,8 +6,8 @@ import {
   TableContainer, TableHead, TableRow, Chip, Dialog,
   DialogTitle, DialogContent, DialogActions, Grid, CircularProgress,
   Alert, Tooltip, IconButton, MenuItem, InputAdornment, Checkbox, FormControlLabel,
-} from '@mui/material';
-import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings, CalendarMonth } from '@mui/icons-material';
+} from '../bootstrap';
+import { Calculate, Visibility, Send, AddCircleOutline, Sync, Payments, TaskAlt, DeleteOutline, Print, CloudUpload, Download, Settings, CalendarMonth } from '../bootstrap/icons';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { attendancePunchFields, loadAttendanceCalculator } from '../../lib/loadAttendanceCalculator';

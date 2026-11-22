@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { InputAdornment, TextField, type TextFieldProps } from '@mui/material';
+import { InputAdornment, TextField, type TextFieldProps } from './bootstrap';
 import { isPhilippineMobileNumber, localMobileNumber, MOBILE_PREFIX } from '../lib/mobileNumber';
 
 type MobileNumberFieldProps = Omit<TextFieldProps, 'value' | 'onChange'> & {

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Box, Button, CircularProgress, Typography } from '@mui/material';
-import { AddAPhotoOutlined } from '@mui/icons-material';
+import { Box, Button, CircularProgress, Typography } from './bootstrap';
+import { AddAPhotoOutlined } from './bootstrap/icons';
 
 const PHOTO_TYPES = 'image/jpeg,image/png,image/webp';
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;

@@ -11,7 +11,7 @@ import {
   Chip,
   CircularProgress,
   Divider,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   PersonAddAlt1,
   PeopleAlt,
@@ -24,7 +24,7 @@ import {
   WorkspacePremium,
   Insights,
   FactCheck,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import HRAnalytics from './HRAnalytics';

@@ -11,7 +11,7 @@ import {
   Chip,
   CircularProgress,
   LinearProgress,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   CalendarMonth,
   Assignment,
@@ -23,7 +23,7 @@ import {
   WalletRounded,
   FactCheckRounded,
   EmojiEventsRounded,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 

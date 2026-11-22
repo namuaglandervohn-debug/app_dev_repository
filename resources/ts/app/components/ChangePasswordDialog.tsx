@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Stack, TextField, type TextFieldProps } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Stack, TextField, type TextFieldProps } from './bootstrap';
+import { Visibility, VisibilityOff } from './bootstrap/icons';
 import { useAuth } from '../context/AuthContext';
 
 function PasswordField({ label, slotProps, ...props }: TextFieldProps & { label: string }) {

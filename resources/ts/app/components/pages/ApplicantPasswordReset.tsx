@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, Button, CircularProgress, Container, IconButton, InputAdornment, Paper, Stack, TextField, Typography } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Alert, Button, CircularProgress, Container, IconButton, InputAdornment, Paper, Stack, TextField, Typography } from '../bootstrap';
+import { Visibility, VisibilityOff } from '../bootstrap/icons';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import AuthBackground from '../AuthBackground';
 

@@ -23,7 +23,7 @@ import {
   Checkbox,
   IconButton,
   Tooltip,
-} from '@mui/material';
+} from '../bootstrap';
 
 import {
   Send,
@@ -49,7 +49,7 @@ import {
   LocalPhoneRounded,
   Visibility,
   FileDownload,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 
 import AuthBackground from '../AuthBackground';
 import { useAuth } from '../../context/AuthContext';

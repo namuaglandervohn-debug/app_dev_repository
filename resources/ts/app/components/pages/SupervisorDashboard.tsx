@@ -19,7 +19,7 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   CalendarMonth,
   QueryStats,
@@ -28,7 +28,7 @@ import {
   Timelapse,
   EventAvailable,
   Refresh,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 

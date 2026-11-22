@@ -7,13 +7,13 @@ import {
   ListItemIcon, ListItemText, Box, IconButton, Avatar, Menu, MenuItem,
   useMediaQuery, useTheme, Divider, Chip, Tooltip, Badge, Popover, Paper, Button,
   CircularProgress, lighten,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   SpaceDashboard, PersonAddAlt1, Groups, CalendarMonth, Schedule, Assignment,
   Payments, Insights, Analytics, Logout, Menu as MenuIcon,
   NotificationsNone, ManageAccounts, ReceiptLong, AccountCircle, Work,
   KeyboardArrowDown,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useState, useEffect, type ReactNode } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import BrandLogo from '../BrandLogo';

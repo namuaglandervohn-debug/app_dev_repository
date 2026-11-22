@@ -28,7 +28,7 @@ import {
   Tooltip,
   Grid,
   Autocomplete,
-} from "@mui/material";
+} from "../bootstrap";
 import {
   AddCircleOutline,
   Visibility,
@@ -51,7 +51,7 @@ import {
   CoffeeRounded,
   CloseRounded,
   PersonAddAlt1Rounded,
-} from "@mui/icons-material";
+} from "../bootstrap/icons";
 import ActionSnackbar from "../ActionSnackbar";
 import { supabase } from "../../lib/supabaseClient";
 import { nextEmployeeId } from "../../lib/employeeIds";

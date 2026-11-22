@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Avatar, Box, Button, ButtonBase, Dialog, DialogActions, DialogContent, DialogTitle, type SxProps, type Theme } from '@mui/material';
+import { Avatar, Box, Button, ButtonBase, Dialog, DialogActions, DialogContent, DialogTitle, type SxProps, type Theme } from './bootstrap';
 import { profileAvatarSx } from './layouts/profileStyles';
 
 export default function ProfilePhotoAvatar({ photo, initials, name, sx = profileAvatarSx }: {

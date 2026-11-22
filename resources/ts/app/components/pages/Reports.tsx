@@ -23,7 +23,7 @@ import {
   TablePagination,
   IconButton,
   Tooltip,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   Print,
   GridView,
@@ -38,7 +38,7 @@ import {
   InsertDriveFile,
   PictureAsPdf,
   Download,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { COMPANY, OUTLETS } from '../../lib/constants';

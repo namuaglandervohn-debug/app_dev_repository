@@ -36,7 +36,7 @@ import {
   Alert,
   Tooltip,
   IconButton,
-} from "@mui/material";
+} from "../bootstrap";
 import {
   UploadFile,
   AddCircleOutline,
@@ -57,7 +57,7 @@ import {
   CloseRounded,
   VisibilityOutlined,
   BadgeOutlined,
-} from "@mui/icons-material";
+} from "../bootstrap/icons";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import ActionSnackbar from "../ActionSnackbar";

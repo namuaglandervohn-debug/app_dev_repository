@@ -10,7 +10,7 @@ import {
   Alert, Card, CardContent, TextField, Button, IconButton,
   Stack, LinearProgress, Tooltip, Dialog, DialogTitle,
   DialogContent, DialogActions, Tab, Tabs,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   AccountCircle, BusinessCenter, Phone, Email, LocationOn, CalendarMonth,
   PaymentsOutlined,
@@ -18,7 +18,7 @@ import {
   EditNote, Save, Close, CloudUpload, InsertDriveFile, LockReset,
   Cake, Public, Height, Scale, School, AutoAwesome, WorkspacePremium, Draw, Favorite, Place,
   DeleteOutline as DeleteIcon, FileDownload, Visibility,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import ActionSnackbar from '../ActionSnackbar';

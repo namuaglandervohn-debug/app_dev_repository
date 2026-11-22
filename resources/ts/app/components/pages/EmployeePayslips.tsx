@@ -5,7 +5,7 @@ import {
   TableContainer, TableHead, TableRow, Chip, CircularProgress,
   Alert, Dialog, DialogTitle, DialogContent, DialogActions,
   Divider, Tooltip,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   AccountBalanceWallet,
   BadgeOutlined,
@@ -20,7 +20,7 @@ import {
   Sync,
   Visibility,
   WorkOutline,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import ActionSnackbar from '../ActionSnackbar';

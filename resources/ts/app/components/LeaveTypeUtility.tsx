@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ArchiveOutlined, Edit } from '@mui/icons-material';
-import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Stack, TextField, Typography } from '@mui/material';
+import { ArchiveOutlined, Edit } from './bootstrap/icons';
+import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Stack, TextField, Typography } from './bootstrap';
 import { supabase } from '../lib/supabaseClient';
 import { readableErrorMessage } from '../lib/apiError';
 

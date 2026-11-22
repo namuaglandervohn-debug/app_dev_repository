@@ -1,5 +1,5 @@
 import { useAuth } from '../../context/AuthContext';
-import { Alert } from '@mui/material';
+import { Alert } from '../bootstrap';
 import HRDashboard from './HRDashboard';
 import EmployeeDashboard from './EmployeeDashboard';
 import SupervisorDashboard from './SupervisorDashboard';

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router';
-import { Alert, Box, Button, CircularProgress, Container, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
-import { ArrowBackRounded, Badge } from '@mui/icons-material';
+import { Alert, Box, Button, CircularProgress, Container, MenuItem, Paper, Stack, TextField, Typography } from '../bootstrap';
+import { ArrowBackRounded, Badge } from '../bootstrap/icons';
 import AuthBackground from '../AuthBackground';
 import BrandLogo from '../BrandLogo';
 import { COMPANY, OUTLETS } from '../../lib/constants';

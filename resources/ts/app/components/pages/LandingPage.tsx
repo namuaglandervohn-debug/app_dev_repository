@@ -22,7 +22,7 @@ import {
   useMediaQuery,
   useTheme,
   InputAdornment,
-} from "@mui/material";
+} from "../bootstrap";
 import {
   Work,
   LocationOn,
@@ -37,7 +37,7 @@ import {
   LocalCafe,
   ArrowForward,
   CheckCircle,
-} from "@mui/icons-material";
+} from "../bootstrap/icons";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import ActionSnackbar from "../ActionSnackbar";

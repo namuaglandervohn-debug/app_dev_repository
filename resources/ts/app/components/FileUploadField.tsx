@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import {
   Box, Typography, Button, Chip, IconButton, Stack, LinearProgress, TextField, type ButtonProps,
-} from '@mui/material';
+} from './bootstrap';
 import {
   UploadFile, InsertDriveFile, PictureAsPdf, Image as ImageIcon,
   Article, Close, CloudUpload, TaskAlt,
-} from '@mui/icons-material';
+} from './bootstrap/icons';
 
 interface FileUploadFieldProps {
   label: string;

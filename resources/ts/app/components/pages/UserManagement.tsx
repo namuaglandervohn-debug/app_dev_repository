@@ -7,11 +7,11 @@ import {
   DialogContent, DialogActions, TextField, MenuItem, Grid,
   CircularProgress, Alert, Tooltip, IconButton, InputAdornment,
   Divider, Stack,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   AddCircleOutline, Sync, EditNote, Visibility, VisibilityOff, Password, DeleteOutline,
   AdminPanelSettings, Badge, ManageSearch, CheckCircleOutline, HighlightOff, HourglassEmpty,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { supabase } from "../../lib/supabaseClient";
 import { NO_OUTLET, OUTLETS } from '../../lib/constants';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';

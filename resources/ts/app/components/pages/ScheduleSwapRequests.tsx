@@ -14,8 +14,8 @@ import {
   Paper,
   TextField,
   Typography,
-} from '@mui/material';
-import { CheckCircleOutline, Close, EventAvailable, SwapHoriz, Sync } from '@mui/icons-material';
+} from '../bootstrap';
+import { CheckCircleOutline, Close, EventAvailable, SwapHoriz, Sync } from '../bootstrap/icons';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 

@@ -29,7 +29,7 @@ import {
   Tabs,
   Tab,
   InputAdornment,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   AddCircleOutline,
   TaskAlt,
@@ -50,7 +50,7 @@ import {
   DoneAll,
   ManageSearch,
   EditOutlined,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from "../../lib/supabaseClient";
 import ActionSnackbar from '../ActionSnackbar';

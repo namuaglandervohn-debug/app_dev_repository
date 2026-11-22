@@ -19,14 +19,14 @@ import {
   DialogContent,
   DialogTitle,
   Link,
-} from "@mui/material";
+} from "../bootstrap";
 import {
   ArrowBackRounded,
   Visibility,
   VisibilityOff,
   Email,
   VpnKey,
-} from "@mui/icons-material";
+} from "../bootstrap/icons";
 import AuthBackground from "../AuthBackground";
 import BrandLogo from "../BrandLogo";
 import { COMPANY } from "../../lib/constants";

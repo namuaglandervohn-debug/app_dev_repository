@@ -21,7 +21,7 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
-} from "@mui/material";
+} from "../bootstrap";
 import {
   AddCircleOutline,
   AccessTime,
@@ -29,7 +29,7 @@ import {
   Edit,
   LocationOn,
   Work,
-} from "@mui/icons-material";
+} from "../bootstrap/icons";
 import { supabase } from "../../lib/supabaseClient";
 import { getJobTitleOptions, jobTitleKey } from "../../lib/jobTitles";
 import { formatSalaryInput, parseDailyRateInput, readDailyRateEdit } from "../../lib/salaryInput";

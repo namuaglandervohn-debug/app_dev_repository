@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Box, Grid, Paper, Typography } from '@mui/material';
+import { Box, Grid, Paper, Typography } from '../bootstrap';
 import { profileCardSx, profileIconSx } from './profileStyles';
 
 type SummaryItem = { label: string; value: string | number; icon: ReactNode };

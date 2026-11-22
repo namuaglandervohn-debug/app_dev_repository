@@ -1,5 +1,5 @@
-import { Box, Button, Paper, Typography } from '@mui/material';
-import { Home, Login } from '@mui/icons-material';
+import { Box, Button, Paper, Typography } from '../bootstrap';
+import { Home, Login } from '../bootstrap/icons';
 import { Link as RouterLink, useNavigate } from 'react-router';
 
 export default function NotFoundPage() {

@@ -1,4 +1,4 @@
-import { Alert, Snackbar, type AlertColor } from "@mui/material";
+import { Alert, Snackbar, type AlertColor } from "./bootstrap";
 
 interface ActionSnackbarProps {
   open: boolean;

@@ -1,7 +1,10 @@
 import "./bootstrap";
 import { createRoot } from "react-dom/client";
 import App from "./app/App";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap-icons/font/bootstrap-icons.css";
 import "./styles/index.css";
+import "./styles/bootstrap-theme.css";
 
 // If a tab is still running an older deployment and requests a removed
 // content-hashed chunk, refresh once to load the current entry point.

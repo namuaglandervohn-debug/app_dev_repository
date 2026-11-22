@@ -16,14 +16,14 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   Payments,
   TaskAlt,
   Timelapse,
   AccountBalanceWallet,
   Refresh,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 

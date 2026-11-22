@@ -9,7 +9,7 @@ import {
   CircularProgress, Alert, MenuItem, Dialog, DialogTitle,
   DialogContent, DialogActions, IconButton, Tooltip,
   Checkbox, FormControlLabel, FormGroup, InputAdornment, type TextFieldProps,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   ArrowBackIosNew,
   EditNote,
@@ -35,7 +35,7 @@ import {
   Schedule,
   Coffee,
   CheckCircle,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import ActionSnackbar from '../ActionSnackbar';

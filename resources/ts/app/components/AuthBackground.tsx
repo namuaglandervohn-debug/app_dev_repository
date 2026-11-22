@@ -1,5 +1,5 @@
 import { useEffect, useState, ReactNode } from 'react';
-import { Box } from '@mui/material';
+import { Box } from './bootstrap';
 
 const IMAGES = [
   '/images/bg1.jpg',

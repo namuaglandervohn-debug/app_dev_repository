@@ -13,7 +13,7 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   AccessTime,
   AddCircleOutline,
@@ -37,7 +37,7 @@ import {
   TaskAlt,
   ViewWeek,
   WorkOutline,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import * as XLSX from 'xlsx';
 import { supabase } from "../../lib/supabaseClient";
 import { NO_OUTLET, OUTLETS } from '../../lib/constants';

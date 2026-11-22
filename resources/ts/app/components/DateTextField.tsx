@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
-import { Box, IconButton, InputAdornment, TextField as MuiTextField, type TextFieldProps } from '@mui/material';
-import { CalendarMonthOutlined } from '@mui/icons-material';
+import { Box, IconButton, InputAdornment, TextField as MuiTextField, type TextFieldProps } from './bootstrap';
+import { CalendarMonthOutlined } from './bootstrap/icons';
 import { formatDisplayDate, formatTypedDateDigits, parseDisplayDate } from '../lib/displayDate';
 
 // Keep ISO values at the form boundary and render the same date order in every browser locale.

@@ -11,7 +11,7 @@ import {
   Paper,
   Stack,
   Typography,
-} from "@mui/material";
+} from "../bootstrap";
 import {
   AccountBalance,
   EmojiEvents,
@@ -20,7 +20,7 @@ import {
   PersonAddAlt1,
   QueryStats,
   WarningAmber,
-} from "@mui/icons-material";
+} from "../bootstrap/icons";
 import { supabase } from "../../lib/supabaseClient";
 import HRAnalytics from './HRAnalytics';
 

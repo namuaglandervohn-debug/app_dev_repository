@@ -18,7 +18,7 @@ import {
   CircularProgress,
   Stack,
   InputAdornment,
-} from '@mui/material';
+} from '../bootstrap';
 import {
   ArrowBackIosNew,
   ManageSearch,
@@ -35,7 +35,7 @@ import {
   MarkEmailReadOutlined,
   PhoneIphone,
   HelpOutline,
-} from '@mui/icons-material';
+} from '../bootstrap/icons';
 import AuthBackground from '../AuthBackground';
 import { supabase } from '../../lib/supabaseClient';
 import { recruitmentStatusLabel } from '../../lib/recruitmentStatus';

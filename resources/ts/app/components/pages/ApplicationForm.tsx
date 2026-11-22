@@ -6,8 +6,8 @@ import {
   Box, Typography, Paper, TextField, Button, MenuItem, Alert,
   Grid, CircularProgress, Dialog, DialogContent, DialogActions,
   Chip,
-} from '@mui/material';
-import { ArrowBackIosNew, Send, TaskAlt, ContentCopy } from '@mui/icons-material';
+} from '../bootstrap';
+import { ArrowBackIosNew, Send, TaskAlt, ContentCopy } from '../bootstrap/icons';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { copyToClipboard } from '../../lib/copyToClipboard';
 import { supabase } from '../../lib/supabaseClient';
