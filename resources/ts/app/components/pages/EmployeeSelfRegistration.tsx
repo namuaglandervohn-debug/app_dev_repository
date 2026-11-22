@@ -1,12 +1,34 @@
 import { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router';
-import { Alert, Box, Button, CircularProgress, Container, MenuItem, Paper, Stack, TextField, Typography } from '../bootstrap';
-import { ArrowBackRounded, Badge } from '../bootstrap/icons';
+import { Alert, Box, Button, CircularProgress, Container, IconButton, InputAdornment, MenuItem, Paper, Stack, TextField, Typography } from '../bootstrap';
+import { ArrowBackRounded, Badge, Visibility, VisibilityOff } from '../bootstrap/icons';
 import AuthBackground from '../AuthBackground';
 import BrandLogo from '../BrandLogo';
 import { COMPANY, OUTLETS } from '../../lib/constants';
 import { supabase } from '../../lib/supabaseClient';
 import { employeeConfirmationRedirect } from '../../lib/applicantConfirmationRedirect';
+
+function PasswordVisibility({ label, visible, onToggle }: { label: string; visible: boolean; onToggle: () => void }) {
+  return (
+    <InputAdornment position="end">
+      <IconButton
+        type="button"
+        size="small"
+        aria-label={`${visible ? 'Hide' : 'Show'} ${label}`}
+        onMouseDown={event => event.preventDefault()}
+        onClick={onToggle}
+        sx={{
+          color: '#557261',
+          bgcolor: 'rgba(221,245,229,.55)',
+          border: '1px solid rgba(45,168,97,.12)',
+          '&:hover': { bgcolor: '#ddf5e5', color: '#006b3c' },
+        }}
+      >
+        {visible ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+      </IconButton>
+    </InputAdornment>
+  );
+}
 
 export default function EmployeeSelfRegistration() {
   const navigate = useNavigate();
@@ -16,6 +38,8 @@ export default function EmployeeSelfRegistration() {
   const [outlet, setOutlet] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -57,6 +81,8 @@ export default function EmployeeSelfRegistration() {
       if (data.session) await supabase.auth.signOut({ scope: 'local' });
       setPassword('');
       setConfirmation('');
+      setShowPassword(false);
+      setShowConfirmation(false);
       setNotice('Registration submitted for HR approval. Confirm your email and wait for HR to approve your account before signing in.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not submit your registration.');
@@ -72,9 +98,6 @@ export default function EmployeeSelfRegistration() {
           <Stack alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
             <BrandLogo size={76} />
             <Typography variant="h4" component="h1" textAlign="center" fontWeight={750} sx={{ color: '#193c27', letterSpacing: '-.04em' }}>Employee account registration</Typography>
-            <Typography variant="body2" textAlign="center" sx={{ color: '#607366' }}>
-              Enter your Employee ID and information. HR will verify them and approve your account before you can sign in.
-            </Typography>
           </Stack>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
@@ -83,17 +106,19 @@ export default function EmployeeSelfRegistration() {
               onChange={event => setFullName(event.target.value)} margin="normal" />
             <TextField fullWidth required label="Employee ID" autoComplete="off" value={employeeId}
               onChange={event => setEmployeeId(event.target.value)} margin="normal"
-              InputProps={{ startAdornment: <Badge sx={{ mr: 1, color: '#087443' }} /> }} />
+              InputProps={{ startAdornment: <InputAdornment position="start"><Badge fontSize="small" /></InputAdornment> }} />
             <TextField fullWidth required label="Email address" type="email" autoComplete="email" value={email}
               onChange={event => setEmail(event.target.value)} margin="normal" />
             <TextField fullWidth required select label="Assigned Outlet" value={outlet}
               onChange={event => setOutlet(event.target.value)} margin="normal">
               {OUTLETS.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
             </TextField>
-            <TextField fullWidth required label="New password" type="password" autoComplete="new-password" value={password}
-              onChange={event => setPassword(event.target.value)} margin="normal" helperText="At least 8 characters." />
-            <TextField fullWidth required label="Confirm password" type="password" autoComplete="new-password" value={confirmation}
+            <TextField fullWidth required label="New password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password}
+              onChange={event => setPassword(event.target.value)} margin="normal" helperText="At least 8 characters."
+              InputProps={{ endAdornment: <PasswordVisibility label="new password" visible={showPassword} onToggle={() => setShowPassword(visible => !visible)} /> }} />
+            <TextField fullWidth required label="Confirm password" type={showConfirmation ? 'text' : 'password'} autoComplete="new-password" value={confirmation}
               onChange={event => setConfirmation(event.target.value)} margin="normal"
+              InputProps={{ endAdornment: <PasswordVisibility label="confirm password" visible={showConfirmation} onToggle={() => setShowConfirmation(visible => !visible)} /> }}
               error={Boolean(confirmation && password !== confirmation)}
               helperText={confirmation ? (password === confirmation ? 'Passwords match.' : 'Passwords do not match.') : undefined} />
             <Button type="submit" fullWidth variant="contained" disabled={busy} startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
