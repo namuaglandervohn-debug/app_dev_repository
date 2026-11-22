@@ -44,6 +44,7 @@ import { NO_OUTLET, OUTLETS } from '../../lib/constants';
 import { includeSelectedJobTitle } from '../../lib/jobTitles';
 import { useJobTitleOptions } from '../../lib/useJobTitleOptions';
 import { parseRegularScheduleShift, splitShiftExample } from '../../lib/regularScheduleShift';
+import { normalizePhotoShift, parseSchedulePhoto, readSchedulePhotoPage } from '../../lib/scheduleImageImport';
 import ActionSnackbar from '../ActionSnackbar';
 import ScheduleSwapRequests from './ScheduleSwapRequests';
 
@@ -69,7 +70,7 @@ interface ScheduleEmployeeOption {
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type ScheduleDay = (typeof DAYS)[number];
-type ImageScheduleDraftRow = { detectedName: string; employeeId: string; shifts: Record<ScheduleDay, string> };
+type ImageScheduleDraftRow = { detectedName: string; employeeId: string; shifts: Record<ScheduleDay, string>; uncertainDays: ScheduleDay[] };
 const DEFAULT_WORKDAYS: ScheduleDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const REST_DAY = 'Rest Day';
@@ -90,6 +91,7 @@ function scheduleDays(draft: Record<ScheduleDay, string>, existing?: Schedule) {
     const value = draft[day].trim();
     if (!value) return [day, ''];
     if (/^off$/i.test(value)) return [day, 'Off'];
+    if (/^leave$/i.test(value)) return [day, 'Leave'];
     if (/^(rd|rest day)$/i.test(value)) return [day, REST_DAY];
     if (/^(flex|suspended)$/i.test(value)) return [day, value.toUpperCase()];
 
@@ -828,7 +830,7 @@ export default function ScheduleManagement() {
       return {
         employeeId,
         name,
-        aliases: Array.from(new Set([name, ...accounts.map((account: any) => String(account.full_name ?? '').trim())].filter(Boolean))),
+        aliases: Array.from(new Set([name, String(e.last_name ?? '').trim(), ...accounts.map((account: any) => String(account.full_name ?? '').trim())].filter(Boolean))),
         position: e.position ?? "",
         outlet: accounts.find((account: any) => account.outlet)?.outlet || e.outlet || "",
       };
@@ -1532,6 +1534,8 @@ export default function ScheduleManagement() {
         const aliasParts = alias.split(' ').filter(Boolean);
         if (!alias) return 0;
         if (alias === target) return 1;
+        if (targetParts.length === 1 && target.length >= 4 && aliasParts.includes(target)) return 0.98;
+        if (aliasParts.length === 1 && alias.length >= 4 && targetParts.includes(alias)) return 0.98;
         if (alias.length >= 5 && (target.includes(alias) || alias.includes(target))) return 0.97;
         const overlap = aliasParts.filter(part => targetParts.some(word => word === part || (word.length >= 3 && part.startsWith(word)))).length;
         if (overlap >= 2 && overlap / Math.min(aliasParts.length, targetParts.length) >= 0.75) return 0.88 + Math.min(.08, overlap / aliasParts.length * .08);
@@ -1540,7 +1544,7 @@ export default function ScheduleManagement() {
       return { employee, score };
     }).sort((a, b) => b.score - a.score);
     if (!ranked[0] || ranked[0].score < 0.82) return undefined;
-    if (ranked[1] && ranked[0].score - ranked[1].score < 0.06 && ranked[0].score < 0.97) return undefined;
+    if (ranked[1] && ranked[0].score - ranked[1].score < 0.06) return undefined;
     return ranked[0].employee;
   };
 
@@ -1565,93 +1569,19 @@ export default function ScheduleManagement() {
         workerPath: `${assets}worker.min.js`, corePath: assets, langPath: assets.replace(/\/$/, ''),
         workerBlobURL: false,
       });
-      let recognized: any;
       try {
-        await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
-        recognized = (await worker.recognize(file)).data;
+        const pages = [];
+        for (const mode of [PSM.AUTO, PSM.SPARSE_TEXT]) {
+          await worker.setParameters({ tessedit_pageseg_mode: mode });
+          const { data } = await worker.recognize(file, {}, { blocks: true });
+          pages.push(readSchedulePhotoPage(data));
+        }
+        const { rows, week } = parseSchedulePhoto(pages, name => findEmployeeForPhotoRow(name, currentEmployees)?.employeeId);
+        setImageReviewRows(rows);
+        setImageReviewWeek(week);
       } finally {
         await worker.terminate();
       }
-
-      const lines = (recognized.lines ?? []).filter((line: any) => line.words?.length);
-      const dayIndexForWord = (value: string) => {
-        const word = normalizePersonName(value).replace(/\s/g, '');
-        return DAYS.findIndex(day => word.startsWith(day.slice(0, 3)) || word.startsWith(day));
-      };
-      const headers = lines.map((line: any) => ({
-        line,
-        matches: line.words.map((word: any) => ({ word, day: dayIndexForWord(word.text) })).filter((item: any) => item.day >= 0),
-      })).sort((a: any, b: any) => b.matches.length - a.matches.length);
-      const header = headers.find((item: any) => item.matches.length >= 4);
-      if (!header) throw new Error('Could not read a weekday header. Use a clear image of a weekly table with Monday through Sunday columns.');
-
-      const centers: Array<number | null> = Array(7).fill(null);
-      header.matches.forEach(({ word, day }: any) => { centers[day] = (word.bbox.x0 + word.bbox.x1) / 2; });
-      const known = centers.map((value, index) => value === null ? null : { index, value }).filter(Boolean) as { index: number; value: number }[];
-      if (known.length < 4) throw new Error('Could not identify enough weekday columns in the image.');
-      const gaps = known.slice(1).map((point, index) => (point.value - known[index].value) / (point.index - known[index].index)).filter(value => value > 0);
-      const averageGap = gaps.reduce((sum, value) => sum + value, 0) / Math.max(1, gaps.length);
-      for (let index = 0; index < centers.length; index += 1) {
-        if (centers[index] !== null) continue;
-        const before = [...known].reverse().find(point => point.index < index);
-        const after = known.find(point => point.index > index);
-        centers[index] = before && after
-          ? before.value + ((after.value - before.value) * (index - before.index)) / (after.index - before.index)
-          : before ? before.value + averageGap * (index - before.index) : after!.value - averageGap * (after!.index - index);
-      }
-      const dayCenters = centers as number[];
-      const weekdayGap = (dayCenters[1] - dayCenters[0]) || averageGap;
-      const firstDayBoundary = dayCenters[0] - weekdayGap / 2;
-      const rowCandidates = lines.filter((line: any) => line.bbox.y0 > header.line.bbox.y1 + 2).map((line: any) => {
-        const leftWords = line.words.filter((word: any) => (word.bbox.x0 + word.bbox.x1) / 2 < firstDayBoundary);
-        const detectedName = leftWords.map((word: any) => word.text).join(' ').replace(/\s+/g, ' ').trim();
-        return { line, leftWords, detectedName, employee: findEmployeeForPhotoRow(detectedName, currentEmployees) };
-      }).filter((item: any) => (item.leftWords.length >= 2 || item.employee) && item.detectedName.length >= 3);
-      const rowAnchors: typeof rowCandidates = [];
-      rowCandidates.sort((a: any, b: any) => a.line.bbox.y0 - b.line.bbox.y0).forEach((candidate: any) => {
-        const previous = rowAnchors[rowAnchors.length - 1];
-        const centerY = (candidate.line.bbox.y0 + candidate.line.bbox.y1) / 2;
-        const previousCenterY = previous ? (previous.line.bbox.y0 + previous.line.bbox.y1) / 2 : -Infinity;
-        if (previous && Math.abs(centerY - previousCenterY) < Math.max(12, candidate.line.bbox.y1 - candidate.line.bbox.y0)) {
-          previous.leftWords.push(...candidate.leftWords);
-          previous.detectedName = previous.leftWords.map((word: any) => word.text).join(' ').replace(/\s+/g, ' ').trim();
-          previous.employee = findEmployeeForPhotoRow(previous.detectedName, currentEmployees) || previous.employee;
-        } else rowAnchors.push(candidate);
-      });
-      if (!rowAnchors.length) throw new Error('No employee rows were detected. Use a clear image with employee names in the first column.');
-
-      const allWords = lines.flatMap((line: any) => line.words);
-      const emptyShifts = (): Record<ScheduleDay, string> => ({ monday: '', tuesday: '', wednesday: '', thursday: '', friday: '', saturday: '', sunday: '' });
-      const reviewRows: ImageScheduleDraftRow[] = rowAnchors.map((anchor: any, index: number) => {
-        const centerY = (anchor.line.bbox.y0 + anchor.line.bbox.y1) / 2;
-        const previousCenterY = index ? (rowAnchors[index - 1].line.bbox.y0 + rowAnchors[index - 1].line.bbox.y1) / 2 : header.line.bbox.y1;
-        const nextCenterY = index + 1 < rowAnchors.length ? (rowAnchors[index + 1].line.bbox.y0 + rowAnchors[index + 1].line.bbox.y1) / 2 : Infinity;
-        const top = index ? (previousCenterY + centerY) / 2 : previousCenterY;
-        const bottom = index + 1 < rowAnchors.length ? (centerY + nextCenterY) / 2 : Infinity;
-        const shifts = emptyShifts();
-        const valuesByDay: string[][] = Array.from({ length: 7 }, () => []);
-        allWords.filter((word: any) => {
-          const y = (word.bbox.y0 + word.bbox.y1) / 2;
-          const x = (word.bbox.x0 + word.bbox.x1) / 2;
-          return y >= top && y < bottom && x >= firstDayBoundary;
-        }).sort((a: any, b: any) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0).forEach((word: any) => {
-          const x = (word.bbox.x0 + word.bbox.x1) / 2;
-          const day = dayCenters.reduce((best, value, dayNumber) => Math.abs(value - x) < Math.abs(dayCenters[best] - x) ? dayNumber : best, 0);
-          valuesByDay[day].push(word.text);
-        });
-        valuesByDay.forEach((words, day) => {
-          let value = words.join(' ').replace(/\s+/g, ' ').trim().replace(/\s*[-–—]\s*/g, ' - ').replace(/\s*\/\s*/g, ' / ');
-          const normalizedValue = normalizePersonName(value).replace(/\s/g, '');
-          if (/^(rd|restday|off|flex|suspended|leave)$/.test(normalizedValue)) {
-            value = normalizedValue === 'restday' ? REST_DAY : normalizedValue === 'rd' ? 'RD' : normalizedValue.charAt(0).toUpperCase() + normalizedValue.slice(1);
-          }
-          shifts[DAYS[day]] = value;
-        });
-        return { detectedName: anchor.detectedName, employeeId: anchor.employee?.employeeId ?? '', shifts };
-      });
-      const weekMatch = String(recognized.text ?? '').match(/([A-Za-z]{3,9}\s+\d{1,2}\s*[-–]\s*\d{1,2},?\s+\d{4})/);
-      setImageReviewRows(reviewRows);
-      setImageReviewWeek(weekMatch?.[1]?.replace(/\s*[-–]\s*/, '–') ?? getWeekRange(0));
       setImageReviewError('');
       setImageReviewOpen(true);
     } catch (err: any) {
@@ -1663,8 +1593,8 @@ export default function ScheduleManagement() {
 
   const confirmImageScheduleImport = async () => {
     setImageReviewError('');
-    if (!imageReviewWeek.trim()) {
-      setImageReviewError('Enter the week for these schedules.');
+    if (!parseScheduleDateRange(imageReviewWeek)) {
+      setImageReviewError('Enter a valid schedule week, for example November 9–15, 2026.');
       return;
     }
     const employeeById = new Map(employeeList.map(employee => [employee.employeeId, employee]));
@@ -1684,7 +1614,17 @@ export default function ScheduleManagement() {
 
     setSaving(true);
     try {
-      const normalizedRows = imageReviewRows.map(row => ({ employee: employeeById.get(row.employeeId)!, shifts: scheduleDays(row.shifts) }));
+      const normalizedRows = imageReviewRows.map(row => {
+        const employee = employeeById.get(row.employeeId)!;
+        const reviewed = { ...row.shifts };
+        for (const day of DAYS) {
+          if (!reviewed[day].trim()) continue;
+          const shift = normalizePhotoShift(reviewed[day]);
+          if (!shift) throw new Error(`${employee.name}: check the ${DAY_NAMES[day]} shift against the photo.`);
+          reviewed[day] = shift;
+        }
+        return { employee, shifts: scheduleDays(reviewed) };
+      });
       const ids = await nextScheduleIds(normalizedRows.length);
       const payloads = normalizedRows.map(({ employee, shifts }, index) => ({
         schedule_id: ids[index],
@@ -3092,7 +3032,7 @@ export default function ScheduleManagement() {
         <DialogTitle sx={{ bgcolor: '#f3fbf2', color: GREEN_UI.text, fontWeight: 800 }}>Review imported schedule image</DialogTitle>
         <DialogContent sx={{ bgcolor: '#fbfff9', pt: 2.5 }}>
           <Typography variant="body2" sx={{ color: GREEN_UI.muted, mb: 2 }}>
-            Check the employee match and recognized shifts before saving. Unmatched names can be linked to an employee here.
+            Compare the week, employee matches, and shifts with the photo. Review the highlighted cells and fill in any missed shifts.
           </Typography>
           <TextField
             fullWidth
@@ -3110,6 +3050,7 @@ export default function ScheduleManagement() {
                   <TableCell sx={{ minWidth: 180 }}>Name read from image</TableCell>
                   <TableCell sx={{ minWidth: 260 }}>Match employee record</TableCell>
                   {DAYS.map((day, index) => <TableCell key={day} sx={{ minWidth: 150 }}>{DAY_NAMES[day]}</TableCell>)}
+                  <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -3131,11 +3072,22 @@ export default function ScheduleManagement() {
                       <TextField
                         size="small"
                         value={row.shifts[day]}
-                        placeholder="Shift, RD, or Off"
-                        onChange={event => setImageReviewRows(current => current.map((item, index) => index === rowIndex ? { ...item, shifts: { ...item.shifts, [day]: event.target.value } } : item))}
+                        error={row.uncertainDays.includes(day)}
+                        placeholder="Shift, RD, or Leave"
+                        inputProps={{ 'aria-label': `${row.detectedName} — ${DAY_NAMES[day]}` }}
+                        onChange={event => setImageReviewRows(current => current.map((item, index) => index === rowIndex ? {
+                          ...item,
+                          shifts: { ...item.shifts, [day]: event.target.value },
+                          uncertainDays: item.uncertainDays.filter(uncertain => uncertain !== day),
+                        } : item))}
                         sx={softTextFieldSx}
                       />
                     </TableCell>)}
+                    <TableCell sx={{ verticalAlign: 'top' }}>
+                      <Button size="small" color="error" onClick={() => setImageReviewRows(current => current.filter((_, index) => index !== rowIndex))}>
+                        Remove
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
