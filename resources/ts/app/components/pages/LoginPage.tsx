@@ -392,6 +392,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
+                className="hris-public-action"
                 disabled={loading || signingIn || sendingEmail}
                 aria-busy={loading || signingIn}
                 startIcon={loading || signingIn ? <CircularProgress size={18} color="inherit" /> : undefined}
@@ -407,13 +408,8 @@ export default function LoginPage() {
                   fontSize: "0.98rem",
                   fontWeight: 700,
                   letterSpacing: "-0.01em",
-                  color: "#FFFFFF",
-                  background:
-                    "linear-gradient(135deg, #087443 0%, #2DA861 56%, #61C982 100%)",
                   boxShadow: "0 18px 32px rgba(8,116,67,0.28)",
                   "&:hover": {
-                    background:
-                      "linear-gradient(135deg, #006B3C 0%, #229756 56%, #4FBC73 100%)",
                     boxShadow: "0 22px 38px rgba(8,116,67,0.34)",
                     transform: "translateY(-1px)",
                   },

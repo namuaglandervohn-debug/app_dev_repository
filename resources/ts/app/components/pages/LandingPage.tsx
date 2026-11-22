@@ -411,6 +411,7 @@ export default function LandingPage() {
 
             <Button
               variant="contained"
+              className="hris-public-action"
               startIcon={<Login />}
               onClick={handleSignIn}
               sx={{
@@ -418,7 +419,6 @@ export default function LandingPage() {
                 py: 1.15,
                 fontWeight: 900,
                 textTransform: "none",
-                background: "linear-gradient(135deg, #154f31 0%, #1F7A47 55%, #41a767 100%)",
                 boxShadow: "0 14px 30px rgba(31,122,71,0.28)",
                 whiteSpace: "nowrap",
                 fontSize: { xs: "0.76rem", sm: "0.875rem" },
@@ -726,6 +726,7 @@ export default function LandingPage() {
 
           <Button
             variant="contained"
+            className="hris-public-action"
             onClick={() => document.getElementById("jobs")?.scrollIntoView({ behavior: "smooth" })}
             fullWidth={isMobile}
             endIcon={<ArrowForward />}
@@ -736,7 +737,6 @@ export default function LandingPage() {
               fontWeight: 950,
               whiteSpace: "nowrap",
               textTransform: "none",
-              background: "linear-gradient(135deg, #154f31 0%, #1F7A47 65%, #4caf70 100%)",
             }}
           >
             Search Jobs
@@ -824,12 +824,13 @@ export default function LandingPage() {
               {filteredJobs.map((job) => (
                 <Grid key={job.id} size={{ xs: 12, sm: 12, md: 6, lg: 4 }}>
                   <Card
+                    className="hris-position-card"
                     sx={{
                       height: "100%",
                       borderRadius: 2.5,
                       boxShadow: "0 20px 52px rgba(15,23,42,0.08)",
                       border: "1px solid rgba(31,122,71,0.11)",
-                      background: "linear-gradient(180deg, #ffffff 0%, #f8fbf8 100%)",
+                      background: "linear-gradient(155deg, #124e34 0%, #1e6a45 100%)",
                       transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
                       "&:hover": {
                         transform: "translateY(-6px)",
@@ -858,8 +859,8 @@ export default function LandingPage() {
                             width: 54,
                             height: 54,
                             borderRadius: "20px",
-                            bgcolor: "rgba(31,122,71,0.10)",
-                            color: "#1F7A47",
+                            bgcolor: "rgba(255,255,255,0.14)",
+                            color: "#fff",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -872,8 +873,8 @@ export default function LandingPage() {
                           label={job.employment_type}
                           size="small"
                           sx={{
-                            bgcolor: "rgba(31,122,71,0.10)",
-                            color: "#1F7A47",
+                            bgcolor: "rgba(255,255,255,0.14)",
+                            color: "#fff",
                             fontWeight: 900,
                             alignSelf: { xs: "flex-start", sm: "center" },
                           }}
@@ -887,7 +888,6 @@ export default function LandingPage() {
                           fontSize: { xs: "1.28rem", sm: "1.48rem" },
                           letterSpacing: "-0.035em",
                           wordBreak: "break-word",
-                          color: "#102016",
                           mb: 2,
                         }}
                       >
@@ -900,11 +900,11 @@ export default function LandingPage() {
                             display: "flex",
                             alignItems: "center",
                             gap: 1,
-                            color: "#5d6d63",
+                            color: "var(--hris-position-muted)",
                             wordBreak: "break-word",
                           }}
                         >
-                          <Groups fontSize="small" sx={{ color: "#1F7A47" }} />
+                          <Groups fontSize="small" />
                           <strong>Department:</strong> {job.department}
                         </Typography>
 
@@ -913,11 +913,11 @@ export default function LandingPage() {
                             display: "flex",
                             alignItems: "center",
                             gap: 1,
-                            color: "#5d6d63",
+                            color: "var(--hris-position-muted)",
                             wordBreak: "break-word",
                           }}
                         >
-                          <LocationOn fontSize="small" sx={{ color: "#1F7A47" }} />
+                          <LocationOn fontSize="small" />
                           <strong>Location:</strong> {job.location}
                         </Typography>
 
@@ -926,7 +926,6 @@ export default function LandingPage() {
                             display: "flex",
                             alignItems: "center",
                             gap: 1,
-                            color: "#166534",
                             fontWeight: 850,
                             wordBreak: "break-word",
                           }}
@@ -935,13 +934,13 @@ export default function LandingPage() {
                         </Typography>
                       </Stack>
 
-                      <Divider sx={{ my: 2, borderColor: "rgba(31,122,71,0.12)" }} />
+                      <Divider sx={{ my: 2, borderColor: "rgba(255,255,255,0.55)" }} />
 
-                      <Typography fontWeight={950} sx={{ mb: 1, color: "#102016" }}>
+                      <Typography fontWeight={950} sx={{ mb: 1 }}>
                         Job Description
                       </Typography>
                       <Typography
-                        color="text.secondary"
+                        color="var(--hris-position-muted)"
                         sx={{
                           mb: 3,
                           flexGrow: 1,
@@ -959,6 +958,7 @@ export default function LandingPage() {
                       <Button
                         fullWidth
                         variant="contained"
+                        className="hris-public-action"
                         endIcon={<ArrowForward />}
                         onClick={() => handleApplyForPosition(job)}
                         sx={{
@@ -966,7 +966,6 @@ export default function LandingPage() {
                           borderRadius: 1,
                           fontWeight: 950,
                           textTransform: "none",
-                          background: "linear-gradient(135deg, #154f31 0%, #1F7A47 65%, #4caf70 100%)",
                           boxShadow: "0 14px 28px rgba(31,122,71,0.20)",
                         }}
                       >

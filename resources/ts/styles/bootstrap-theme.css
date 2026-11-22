@@ -37,6 +37,28 @@
   --bs-btn-hover-bg: #edf6ee;
   --bs-btn-hover-border-color: #1f7a47;
 }
+.hris-button.btn-primary.hris-public-action {
+  --bs-btn-bg: #17643e;
+  --bs-btn-border-color: var(--hris-action-border, #17643e);
+  --bs-btn-hover-bg: #fff;
+  --bs-btn-hover-color: #17643e;
+  --bs-btn-hover-border-color: #17643e;
+  --bs-btn-active-bg: #fff;
+  --bs-btn-active-color: #17643e;
+  --bs-btn-active-border-color: #17643e;
+  color: #fff;
+  background-image: linear-gradient(135deg, #125536, #217b4b);
+}
+.hris-button.btn-primary.hris-public-action:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible, :active) {
+  background: #fff;
+  border-color: #17643e;
+  color: #17643e;
+}
+.hris-position-card {
+  --hris-action-border: #a3d4b4;
+  --hris-position-muted: #dcefe3;
+  color: #fff;
+}
 .hris-button-base, .hris-icon-button {
   background: transparent;
   border: 0;
