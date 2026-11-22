@@ -528,8 +528,7 @@ function WeeklySchedule({ schedules, onRequestSwap, showSwapRequest = false }: {
               </TextField>
             </Box>
           )}
-          <Button variant="contained" color="inherit" size="small" startIcon={<Print />} onClick={printSchedule}
-            sx={{ background: '#fff', color: GREEN_UI.greenDark, '&:hover': { background: GREEN_UI.greenSoft } }}>
+          <Button variant="outlined" className="hris-light-action" size="small" startIcon={<Print />} onClick={printSchedule}>
             Print
           </Button>
           <Button variant="outlined" color="inherit" size="small" startIcon={<Download />} onClick={downloadCsv}

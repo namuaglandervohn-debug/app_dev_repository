@@ -1524,10 +1524,11 @@ export default function Reports() {
           </Button>
           <Button
             variant="outlined"
+            className="hris-light-action"
             startIcon={<FileDownload />}
             onClick={exportCSV}
             disabled={loadingAll || filtered.length === 0}
-            sx={{ ...pillButtonSx, borderColor: GREEN_UI.borderStrong, color: GREEN_UI.greenDark, bgcolor: '#ffffff' }}
+            sx={pillButtonSx}
           >
             Export CSV
           </Button>
