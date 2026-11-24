@@ -24,6 +24,7 @@ const GREEN = '#197a49';
 const MUTED = '#718176';
 const BORDER = '#e3eee4';
 const COLORS = ['#197a49', '#37a66b', '#e3ad45', '#c95c54', '#5b8cbd', '#83c996'];
+const REPORTING_YEARS = [2026, 2025, 2024];
 const OUTLET_COLORS = new Map([
   ['maria clara resort', '#3b82c4'],
   ['maria clara restaurant', '#37a66b'],
@@ -90,9 +91,12 @@ type AttendanceTotal = { month_number: number; present: number; late: number; ab
 
 export default function HRAnalytics() {
   const monthOptions = useMemo(getMonthOptions, []);
-  const currentYear = new Date().getFullYear();
-  const [reportingYear, setReportingYear] = useState(currentYear);
-  const [reportingMonth, setReportingMonth] = useState(new Date().getMonth() + 1);
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const [reportingYear, setReportingYear] = useState(
+    REPORTING_YEARS.find(year => year <= currentYear) ?? REPORTING_YEARS[REPORTING_YEARS.length - 1],
+  );
+  const [reportingMonth, setReportingMonth] = useState(today.getMonth() + 1);
   const month = `${reportingYear}-${String(reportingMonth).padStart(2, '0')}`;
   const [outlet, setOutlet] = useState('All Outlets');
   const [data, setData] = useState<AnalyticsData>(EMPTY);
@@ -330,7 +334,6 @@ export default function HRAnalytics() {
   const averagePerformance = monthEvaluations.length ? monthEvaluations.reduce((sum, row) => sum + number(row.final_weighted_score), 0) / monthEvaluations.length : null;
   const tooltip = { contentStyle: { borderRadius: 12, borderColor: BORDER }, labelStyle: { color: '#1e2d24', fontWeight: 700 } };
   const monthLabel = `${monthOptions[Number(visibleMonth.slice(5)) - 1]?.label ?? ''} ${visibleMonth.slice(0, 4)}`.trim();
-  const yearOptions = Array.from({ length: currentYear - 1990 + 1 }, (_, index) => currentYear - index);
 
   return (
     <Box sx={{ mt: 2.5, mb: 2.5 }}>
@@ -356,7 +359,7 @@ export default function HRAnalytics() {
           <FormControl size="small" sx={{ minWidth: 115, bgcolor: 'white' }}>
             <InputLabel id="analytics-year-label">Year</InputLabel>
             <Select labelId="analytics-year-label" value={reportingYear} label="Year" onChange={event => setReportingYear(Number(event.target.value))}>
-              {yearOptions.map(year => <MenuItem key={year} value={year}>{year}</MenuItem>)}
+              {REPORTING_YEARS.map(year => <MenuItem key={year} value={year}>{year}</MenuItem>)}
             </Select>
           </FormControl>
         </Stack>
